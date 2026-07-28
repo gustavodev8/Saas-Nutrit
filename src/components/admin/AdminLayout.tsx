@@ -23,6 +23,7 @@ const NAV_PRIMARY_GROUPS: NavGroup[] = [
     label: "Site",
     icon: FileText,
     items: [
+      { to: "/admin/auditoria",  icon: FileText,    label: "Auditoria clínica" },
       { to: "/admin/hero",       icon: Sparkles,   label: "Seção principal" },
       { to: "/admin/sobre",      icon: User,       label: "Sobre mim" },
       { to: "/admin/servicos",   icon: Layers,     label: "Serviços" },

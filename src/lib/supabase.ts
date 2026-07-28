@@ -541,6 +541,24 @@ export interface MealPlan {
   created_at?: string;
 }
 
+export type PatientAuditAction = "create" | "update" | "delete";
+
+export interface PatientAuditLog {
+  id: number;
+  patient_id?: number | null;
+  patient_name: string;
+  section_key: string;
+  section_label: string;
+  action: PatientAuditAction;
+  entity_type: string;
+  entity_id?: number | null;
+  summary: string;
+  actor_email?: string | null;
+  changed_fields?: string[];
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface SubstitutionItem {
   food_name:     string;
   quantity?:     number;
@@ -597,6 +615,162 @@ export interface MealFood {
 
 // ─── Clínica ? CRUD ──────────────────────────────────────────────────────────────────?
 
+type AuditMetadata = Record<string, unknown>;
+
+const compactAuditMetadata = <T extends AuditMetadata>(value: T): T =>
+  Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined && entry !== null)) as T;
+
+const normalizeAuditValue = (value: unknown): string => {
+  if (value === undefined || value === null || value === "") return "";
+  if (typeof value === "string") return value.trim();
+  return JSON.stringify(value);
+};
+
+const getChangedFields = (
+  before: Record<string, unknown> | null | undefined,
+  after: Record<string, unknown> | null | undefined,
+): string[] => {
+  const keys = new Set<string>([
+    ...Object.keys(before ?? {}),
+    ...Object.keys(after ?? {}),
+  ]);
+
+  return [...keys].filter((key) => normalizeAuditValue(before?.[key]) !== normalizeAuditValue(after?.[key]));
+};
+
+async function getAuditActorEmail(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.user.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function getPatientAuditSnapshot(patientId: number): Promise<{ id: number; name: string } | null> {
+  const { data, error } = await supabaseAdmin
+    .from("patients")
+    .select("id, name")
+    .eq("id", patientId)
+    .maybeSingle();
+  if (error) return null;
+  return data ?? null;
+}
+
+async function insertPatientAuditLog(input: {
+  patientId?: number | null;
+  patientName?: string | null;
+  sectionKey: string;
+  sectionLabel: string;
+  action: PatientAuditAction;
+  entityType: string;
+  entityId?: number | null;
+  summary: string;
+  changedFields?: string[];
+  metadata?: AuditMetadata;
+}): Promise<void> {
+  try {
+    const patientSnapshot = input.patientId ? await getPatientAuditSnapshot(input.patientId) : null;
+    const actorEmail = await getAuditActorEmail();
+
+    const payload = {
+      patient_id: patientSnapshot?.id ?? input.patientId ?? null,
+      patient_name: patientSnapshot?.name ?? input.patientName ?? "Paciente removido",
+      section_key: input.sectionKey,
+      section_label: input.sectionLabel,
+      action: input.action,
+      entity_type: input.entityType,
+      entity_id: input.entityId ?? null,
+      summary: input.summary,
+      actor_email: actorEmail,
+      changed_fields: input.changedFields ?? [],
+      metadata: compactAuditMetadata(input.metadata ?? {}),
+    };
+
+    const { error } = await supabaseAdmin.from("patient_audit_logs").insert(payload);
+    if (error) console.error("[Supabase] insertPatientAuditLog:", error.message);
+  } catch (error) {
+    console.error("[Supabase] insertPatientAuditLog exception:", error);
+  }
+}
+
+async function mergeRecentPatientAuditLog(input: {
+  patientId: number;
+  patientName?: string | null;
+  sectionKey: string;
+  sectionLabel: string;
+  entityType: string;
+  entityId?: number | null;
+  summary: string;
+  changedFields?: string[];
+  metadata?: AuditMetadata;
+  mergeWindowMinutes?: number;
+}): Promise<void> {
+  const actorEmail = await getAuditActorEmail();
+  const patientSnapshot = await getPatientAuditSnapshot(input.patientId);
+  const since = new Date(Date.now() - (input.mergeWindowMinutes ?? 5) * 60_000).toISOString();
+
+  try {
+    let query = supabaseAdmin
+      .from("patient_audit_logs")
+      .select("id")
+      .eq("patient_id", input.patientId)
+      .eq("section_key", input.sectionKey)
+      .eq("action", "update")
+      .eq("entity_type", input.entityType)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (input.entityId != null) query = query.eq("entity_id", input.entityId);
+    if (actorEmail) query = query.eq("actor_email", actorEmail);
+
+    const { data: recent, error: recentError } = await query.maybeSingle();
+    if (recentError) console.error("[Supabase] mergeRecentPatientAuditLog query:", recentError.message);
+
+    const payload = {
+      patient_id: patientSnapshot?.id ?? input.patientId,
+      patient_name: patientSnapshot?.name ?? input.patientName ?? "Paciente removido",
+      section_key: input.sectionKey,
+      section_label: input.sectionLabel,
+      action: "update" as const,
+      entity_type: input.entityType,
+      entity_id: input.entityId ?? null,
+      summary: input.summary,
+      actor_email: actorEmail,
+      changed_fields: input.changedFields ?? [],
+      metadata: compactAuditMetadata(input.metadata ?? {}),
+      created_at: new Date().toISOString(),
+    };
+
+    if (recent?.id) {
+      const { error } = await supabaseAdmin.from("patient_audit_logs").update(payload).eq("id", recent.id);
+      if (error) console.error("[Supabase] mergeRecentPatientAuditLog update:", error.message);
+      return;
+    }
+
+    const { error } = await supabaseAdmin.from("patient_audit_logs").insert(payload);
+    if (error) console.error("[Supabase] mergeRecentPatientAuditLog insert:", error.message);
+  } catch (error) {
+    console.error("[Supabase] mergeRecentPatientAuditLog exception:", error);
+  }
+}
+
+export async function fetchPatientAuditLogs(limit = 400): Promise<PatientAuditLog[]> {
+  const { data, error } = await supabaseAdmin
+    .from("patient_audit_logs")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("[Supabase] fetchPatientAuditLogs:", error.message);
+    return [];
+  }
+
+  return (data ?? []) as PatientAuditLog[];
+}
+
 // Patients
 export async function fetchPatients(): Promise<Patient[]> {
   const { data, error } = await supabaseAdmin
@@ -620,19 +794,71 @@ export async function fetchPatient(id: number | string): Promise<Patient | null>
 export async function upsertPatient(patient: Patient): Promise<Patient | null> {
   const { id, ...fields } = patient;
   if (id) {
+    const previous = await fetchPatient(id);
     const { error } = await supabaseAdmin.from("patients").update(fields).eq("id", id);
     if (error) { console.error("[Supabase] upsertPatient update:", error.message); return null; }
+    await insertPatientAuditLog({
+      patientId: id,
+      patientName: fields.name ?? previous?.name ?? null,
+      sectionKey: "perfil",
+      sectionLabel: "Perfil do paciente",
+      action: "update",
+      entityType: "patient",
+      entityId: id,
+      summary: `Perfil atualizado para ${fields.name ?? previous?.name ?? "Paciente"}.`,
+      changedFields: getChangedFields(
+        previous as Record<string, unknown> | null,
+        { ...(previous ?? {}), ...fields, id } as Record<string, unknown>,
+      ),
+      metadata: compactAuditMetadata({
+        email: fields.email,
+        phone: fields.phone,
+        city: fields.city,
+      }),
+    });
     return { id, ...fields };
   } else {
     const { data, error } = await supabaseAdmin.from("patients").insert(fields).select().single();
     if (error) { console.error("[Supabase] upsertPatient insert:", error.message); return null; }
+    await insertPatientAuditLog({
+      patientId: data.id,
+      patientName: data.name,
+      sectionKey: "perfil",
+      sectionLabel: "Perfil do paciente",
+      action: "create",
+      entityType: "patient",
+      entityId: data.id,
+      summary: `Paciente ${data.name} cadastrado.`,
+      changedFields: Object.keys(fields),
+      metadata: compactAuditMetadata({
+        email: data.email,
+        phone: data.phone,
+        city: data.city,
+      }),
+    });
     return data;
   }
 }
 
 export async function deletePatient(id: number): Promise<boolean> {
+  const previous = await fetchPatient(id);
   const { error } = await supabaseAdmin.from("patients").delete().eq("id", id);
   if (error) { console.error("[Supabase] deletePatient:", error.message); return false; }
+  await insertPatientAuditLog({
+    patientId: id,
+    patientName: previous?.name ?? "Paciente removido",
+    sectionKey: "perfil",
+    sectionLabel: "Perfil do paciente",
+    action: "delete",
+    entityType: "patient",
+    entityId: id,
+    summary: `Paciente ${previous?.name ?? `#${id}`} excluído.`,
+    changedFields: [],
+    metadata: compactAuditMetadata({
+      email: previous?.email,
+      city: previous?.city,
+    }),
+  });
   return true;
 }
 
@@ -709,19 +935,69 @@ export async function upsertPatientReport(report: PatientReport): Promise<Patien
     updated_at: new Date().toISOString(),
   };
   if (report.id) {
+    const { data: previous } = await supabaseAdmin.from("patient_reports").select("*").eq("id", report.id).maybeSingle();
     const { id, ...fields } = payload;
     const { error } = await supabaseAdmin.from("patient_reports").update(fields).eq("id", id);
     if (error) { console.error("[Supabase] upsertPatientReport update:", error.message); return null; }
+    await insertPatientAuditLog({
+      patientId: report.patient_id,
+      sectionKey: "relatorio_clinico",
+      sectionLabel: "Relatório clínico",
+      action: "update",
+      entityType: "patient_report",
+      entityId: report.id,
+      summary: `Relatório "${report.title}" atualizado.`,
+      changedFields: getChangedFields(
+        previous as Record<string, unknown> | null,
+        { ...(previous ?? {}), ...payload } as Record<string, unknown>,
+      ),
+      metadata: {
+        title: report.title,
+        report_date: report.report_date,
+        characters: report.report_text.trim().length,
+      },
+    });
     return { id, ...fields };
   }
   const { data, error } = await supabaseAdmin.from("patient_reports").insert(payload).select().single();
   if (error) { console.error("[Supabase] upsertPatientReport insert:", error.message); return null; }
+  await insertPatientAuditLog({
+    patientId: data.patient_id,
+    sectionKey: "relatorio_clinico",
+    sectionLabel: "Relatório clínico",
+    action: "create",
+    entityType: "patient_report",
+    entityId: data.id,
+    summary: `Relatório "${data.title}" criado.`,
+    changedFields: ["title", "report_date", "report_text"],
+    metadata: {
+      title: data.title,
+      report_date: data.report_date,
+      characters: data.report_text?.trim().length ?? 0,
+    },
+  });
   return data;
 }
 
 export async function deletePatientReport(id: number): Promise<boolean> {
+  const { data: previous } = await supabaseAdmin.from("patient_reports").select("*").eq("id", id).maybeSingle();
   const { error } = await supabaseAdmin.from("patient_reports").delete().eq("id", id);
   if (error) { console.error("[Supabase] deletePatientReport:", error.message); return false; }
+  await insertPatientAuditLog({
+    patientId: previous?.patient_id ?? null,
+    patientName: null,
+    sectionKey: "relatorio_clinico",
+    sectionLabel: "Relatório clínico",
+    action: "delete",
+    entityType: "patient_report",
+    entityId: id,
+    summary: `Relatório "${previous?.title ?? `#${id}`}" excluído.`,
+    changedFields: [],
+    metadata: compactAuditMetadata({
+      title: previous?.title,
+      report_date: previous?.report_date,
+    }),
+  });
   return true;
 }
 
@@ -739,13 +1015,44 @@ export async function fetchAnamnesis(patientId: number): Promise<Anamnesis | nul
 export async function upsertAnamnesis(a: Anamnesis): Promise<{ id: number } | string> {
   const payload = { ...a, updated_at: new Date().toISOString() };
   if (a.id) {
+    const { data: previous } = await supabaseAdmin.from("anamnesis").select("*").eq("id", a.id).maybeSingle();
     const { id, ...fields } = payload;
     const { error } = await supabaseAdmin.from("anamnesis").update(fields).eq("id", id);
     if (error) { console.error("[Supabase] upsertAnamnesis update:", error.message); return error.message; }
+    await insertPatientAuditLog({
+      patientId: a.patient_id,
+      sectionKey: "anamnese",
+      sectionLabel: "Anamnese",
+      action: "update",
+      entityType: "anamnesis",
+      entityId: a.id,
+      summary: "Anamnese atualizada.",
+      changedFields: getChangedFields(
+        previous as Record<string, unknown> | null,
+        { ...(previous ?? {}), ...payload } as Record<string, unknown>,
+      ),
+      metadata: {
+        has_structured_data: Boolean(a.structured_data),
+        filled_fields: Object.keys(compactAuditMetadata(fields as Record<string, unknown>)).length,
+      },
+    });
     return { id };
   } else {
     const { data, error } = await supabaseAdmin.from("anamnesis").insert(payload).select("id").single();
     if (error) { console.error("[Supabase] upsertAnamnesis insert:", error.message); return error.message; }
+    await insertPatientAuditLog({
+      patientId: a.patient_id,
+      sectionKey: "anamnese",
+      sectionLabel: "Anamnese",
+      action: "create",
+      entityType: "anamnesis",
+      entityId: data.id,
+      summary: "Anamnese criada.",
+      changedFields: Object.keys(compactAuditMetadata(payload as Record<string, unknown>)),
+      metadata: {
+        has_structured_data: Boolean(a.structured_data),
+      },
+    });
     return { id: data.id };
   }
 }
@@ -765,11 +1072,28 @@ export async function insertMeasurement(m: Measurement): Promise<Measurement | n
   const { id, ...fields } = m;
   const { data, error } = await supabaseAdmin.from("measurements").insert(fields).select().single();
   if (error) { console.error("[Supabase] insertMeasurement:", error.message); return null; }
+  await insertPatientAuditLog({
+    patientId: data.patient_id,
+    sectionKey: "antropometria",
+    sectionLabel: "Antropometria",
+    action: "create",
+    entityType: "measurement",
+    entityId: data.id,
+    summary: `Avaliação antropométrica registrada em ${data.assessment_date}.`,
+    changedFields: Object.keys(compactAuditMetadata(fields as Record<string, unknown>)),
+    metadata: compactAuditMetadata({
+      assessment_date: data.assessment_date,
+      weight: data.weight,
+      body_fat: data.body_fat,
+      protocol: data.sf_protocol,
+    }),
+  });
   return data;
 }
 
 export async function updateMeasurement(id: number, m: Partial<Measurement>): Promise<Measurement | null> {
   try {
+    const { data: previous } = await supabaseAdmin.from("measurements").select("*").eq("id", id).maybeSingle();
     const { id: _id, ...fields } = m;
     const { data, error } = await supabaseAdmin
       .from("measurements")
@@ -778,6 +1102,22 @@ export async function updateMeasurement(id: number, m: Partial<Measurement>): Pr
       .select()
       .single();
     if (error) { console.error("[Supabase] updateMeasurement:", error.message); return null; }
+    await insertPatientAuditLog({
+      patientId: data.patient_id,
+      sectionKey: "antropometria",
+      sectionLabel: "Antropometria",
+      action: "update",
+      entityType: "measurement",
+      entityId: data.id,
+      summary: `Avaliação antropométrica de ${data.assessment_date} atualizada.`,
+      changedFields: getChangedFields(previous as Record<string, unknown> | null, data as Record<string, unknown>),
+      metadata: compactAuditMetadata({
+        assessment_date: data.assessment_date,
+        weight: data.weight,
+        body_fat: data.body_fat,
+        protocol: data.sf_protocol,
+      }),
+    });
     return data;
   } catch (err) {
     console.error("[Supabase] updateMeasurement exception:", err);
@@ -786,8 +1126,23 @@ export async function updateMeasurement(id: number, m: Partial<Measurement>): Pr
 }
 
 export async function deleteMeasurement(id: number): Promise<boolean> {
+  const { data: previous } = await supabaseAdmin.from("measurements").select("*").eq("id", id).maybeSingle();
   const { error } = await supabaseAdmin.from("measurements").delete().eq("id", id);
   if (error) { console.error("[Supabase] deleteMeasurement:", error.message); return false; }
+  await insertPatientAuditLog({
+    patientId: previous?.patient_id ?? null,
+    sectionKey: "antropometria",
+    sectionLabel: "Antropometria",
+    action: "delete",
+    entityType: "measurement",
+    entityId: id,
+    summary: `Avaliação antropométrica ${previous?.assessment_date ? `de ${previous.assessment_date}` : `#${id}`} excluída.`,
+    changedFields: [],
+    metadata: compactAuditMetadata({
+      assessment_date: previous?.assessment_date,
+      weight: previous?.weight,
+    }),
+  });
   return true;
 }
 
@@ -811,13 +1166,44 @@ export async function upsertMealPlan(plan: MealPlan): Promise<MealPlan | null> {
   } else {
     const { data, error } = await supabaseAdmin.from("meal_plans").insert(fields).select().single();
     if (error) { console.error("[Supabase] upsertMealPlan insert:", error.message); return null; }
+    await insertPatientAuditLog({
+      patientId: data.patient_id,
+      sectionKey: "plano_alimentar",
+      sectionLabel: "Plano alimentar",
+      action: "create",
+      entityType: "meal_plan",
+      entityId: data.id,
+      summary: `Plano "${data.title}" criado.`,
+      changedFields: Object.keys(compactAuditMetadata(fields as Record<string, unknown>)),
+      metadata: compactAuditMetadata({
+        title: data.title,
+        daily_calories: data.daily_calories,
+        strategy_type: data.strategy_type,
+        measurement_id: data.measurement_id,
+      }),
+    });
     return data;
   }
 }
 
 export async function deleteMealPlan(id: number): Promise<boolean> {
+  const { data: previous } = await supabaseAdmin.from("meal_plans").select("*").eq("id", id).maybeSingle();
   const { error } = await supabaseAdmin.from("meal_plans").delete().eq("id", id);
   if (error) { console.error("[Supabase] deleteMealPlan:", error.message); return false; }
+  await insertPatientAuditLog({
+    patientId: previous?.patient_id ?? null,
+    sectionKey: "plano_alimentar",
+    sectionLabel: "Plano alimentar",
+    action: "delete",
+    entityType: "meal_plan",
+    entityId: id,
+    summary: `Plano "${previous?.title ?? `#${id}`}" excluído.`,
+    changedFields: [],
+    metadata: compactAuditMetadata({
+      title: previous?.title,
+      daily_calories: previous?.daily_calories,
+    }),
+  });
   return true;
 }
 
@@ -833,7 +1219,17 @@ export async function fetchFullMealPlan(planId: number): Promise<Meal[]> {
   return ((data ?? []) as MealRow[]).map((m) => ({ ...m, foods: m.foods ?? [] }));
 }
 
-export async function saveMeals(planId: number, meals: Meal[]): Promise<string | null> {
+export async function saveMeals(
+  planId: number,
+  meals: Meal[],
+  auditOptions?: { source?: "manual" | "autosave"; mergeWindowMinutes?: number },
+): Promise<string | null> {
+  const { data: planSnapshot } = await supabaseAdmin
+    .from("meal_plans")
+    .select("id, patient_id, title, daily_calories, strategy_type")
+    .eq("id", planId)
+    .maybeSingle();
+
   const { error: delError } = await supabaseAdmin.from("meals").delete().eq("plan_id", planId);
   if (delError) { console.error("[Supabase] saveMeals delete:", delError.message); return delError.message; }
 
@@ -877,6 +1273,28 @@ export async function saveMeals(planId: number, meals: Meal[]): Promise<string |
       }
     }
   }
+
+  if (planSnapshot?.patient_id) {
+    await mergeRecentPatientAuditLog({
+      patientId: planSnapshot.patient_id,
+      sectionKey: "plano_alimentar",
+      sectionLabel: "Plano alimentar",
+      entityType: "meal_plan",
+      entityId: planId,
+      summary: `Plano "${planSnapshot.title}" atualizado${auditOptions?.source === "autosave" ? " via salvamento automático" : ""}.`,
+      changedFields: ["meals"],
+      metadata: compactAuditMetadata({
+        title: planSnapshot.title,
+        meals_count: meals.length,
+        foods_count: meals.reduce((acc, meal) => acc + (meal.foods?.filter((food) => food.food_name.trim() !== "").length ?? 0), 0),
+        source: auditOptions?.source ?? "manual",
+        daily_calories: planSnapshot.daily_calories,
+        strategy_type: planSnapshot.strategy_type,
+      }),
+      mergeWindowMinutes: auditOptions?.mergeWindowMinutes ?? 5,
+    });
+  }
+
   return null;
 }
 
@@ -1894,6 +2312,21 @@ export async function createExamRequest(
     const { error: itemErr } = await supabaseAdmin.from("patient_exam_request_items").insert(rows);
     if (itemErr) { console.error("[Supabase] createExamRequest items:", itemErr.message); return null; }
   }
+  await insertPatientAuditLog({
+    patientId,
+    sectionKey: "protocolos_exames",
+    sectionLabel: "Protocolos de exames",
+    action: "create",
+    entityType: "exam_request",
+    entityId: requestId,
+    summary: `${items.length} exame(s) solicitado(s).`,
+    changedFields: ["items", "notes", "status"],
+    metadata: compactAuditMetadata({
+      protocol_id: protocolId ?? null,
+      exams_count: items.length,
+      notes,
+    }),
+  });
   return requestId;
 }
 
@@ -1916,6 +2349,11 @@ export async function saveExamResults(
   requestId: number,
   results: PatientExamResult[],
 ): Promise<boolean> {
+  const { data: requestSnapshot } = await supabaseAdmin
+    .from("patient_exam_requests")
+    .select("id, patient_id, status_key")
+    .eq("id", requestId)
+    .maybeSingle();
   const { error: deleteError } = await supabaseAdmin
     .from("patient_exam_results")
     .delete()
@@ -1938,15 +2376,51 @@ export async function saveExamResults(
     console.error("[Supabase] saveExamResults insert:", error.message);
     return false;
   }
+  if (requestSnapshot?.patient_id) {
+    await insertPatientAuditLog({
+      patientId: requestSnapshot.patient_id,
+      sectionKey: "protocolos_exames",
+      sectionLabel: "Protocolos de exames",
+      action: "update",
+      entityType: "exam_request",
+      entityId: requestId,
+      summary: `Resultados laboratoriais atualizados para o pedido #${requestId}.`,
+      changedFields: ["results"],
+      metadata: {
+        exams_with_results: results.filter((result) => result.result_value != null).length,
+        total_results: results.length,
+        previous_status: requestSnapshot.status_key,
+      },
+    });
+  }
   return true;
 }
 
 export async function deleteExamRequest(requestId: number): Promise<boolean> {
+  const { data: previous } = await supabaseAdmin
+    .from("patient_exam_requests")
+    .select("id, patient_id, notes, status_key")
+    .eq("id", requestId)
+    .maybeSingle();
   const { error } = await supabaseAdmin
     .from("patient_exam_requests")
     .delete()
     .eq("id", requestId);
   if (error) { console.error("[Supabase] deleteExamRequest:", error.message); return false; }
+  await insertPatientAuditLog({
+    patientId: previous?.patient_id ?? null,
+    sectionKey: "protocolos_exames",
+    sectionLabel: "Protocolos de exames",
+    action: "delete",
+    entityType: "exam_request",
+    entityId: requestId,
+    summary: `Pedido de exames #${requestId} excluído.`,
+    changedFields: [],
+    metadata: compactAuditMetadata({
+      previous_status: previous?.status_key,
+      notes: previous?.notes,
+    }),
+  });
   return true;
 }
 
@@ -2221,6 +2695,21 @@ export async function savePrescription(
       if (itemErr) { console.error("[Supabase] savePrescription items insert:", itemErr.message); return false; }
     }
   }
+  await insertPatientAuditLog({
+    patientId,
+    sectionKey: "prescricao",
+    sectionLabel: "Prescrição",
+    action: prescriptionId ? "update" : "create",
+    entityType: "prescription",
+    entityId: targetId ?? null,
+    summary: `${prescriptionId ? "Prescrição atualizada" : "Prescrição criada"} com ${blocks.length} bloco(s).`,
+    changedFields: ["blocks"],
+    metadata: {
+      blocks_count: blocks.length,
+      items_count: blocks.reduce((acc, block) => acc + block.items.length, 0),
+      labels: blocks.map((block) => block.label).filter(Boolean),
+    },
+  });
   return true;
 }
 
@@ -2257,8 +2746,26 @@ export async function fetchPrescriptions(patientId: number): Promise<SavedPrescr
 }
 
 export async function deletePrescription(prescriptionId: number): Promise<boolean> {
+  const { data: previous } = await supabaseAdmin
+    .from("prescriptions")
+    .select("id, patient_id, created_at")
+    .eq("id", prescriptionId)
+    .maybeSingle();
   const { error } = await supabaseAdmin.from("prescriptions").delete().eq("id", prescriptionId);
   if (error) { console.error("[Supabase] deletePrescription:", error.message); return false; }
+  await insertPatientAuditLog({
+    patientId: previous?.patient_id ?? null,
+    sectionKey: "prescricao",
+    sectionLabel: "Prescrição",
+    action: "delete",
+    entityType: "prescription",
+    entityId: prescriptionId,
+    summary: `Prescrição #${prescriptionId} excluída.`,
+    changedFields: [],
+    metadata: compactAuditMetadata({
+      created_at: previous?.created_at,
+    }),
+  });
   return true;
 }
 

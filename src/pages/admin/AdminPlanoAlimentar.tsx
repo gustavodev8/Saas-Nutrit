@@ -736,7 +736,10 @@ export default function AdminPlanoAlimentar() {
       setPlan((current) => ({ ...current, id: savedPlan.id }));
 
       const dbMeals = meals.map((meal) => editorToMeal(meal, savedPlan.id));
-      const saveErr = await saveMeals(savedPlan.id, dbMeals);
+      const saveErr = await saveMeals(savedPlan.id, dbMeals, {
+        source: autosave ? "autosave" : "manual",
+        mergeWindowMinutes: autosave ? 5 : 2,
+      });
       if (saveErr) {
         if (!silent) toast.error(`Erro ao salvar as refeições: ${saveErr}`);
         if (autosave) {
