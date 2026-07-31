@@ -23,6 +23,8 @@ import {
   Pencil,
   Download,
   Send,
+  Copy,
+  Clock3,
   type LucideIcon,
 } from "lucide-react";
 import { ExamProtocolsTab } from "@/components/admin/ExamProtocolsTab";
@@ -133,6 +135,64 @@ const formatDate = (dateStr: string) =>
   });
 
 const todayISO = () => new Date().toISOString().split("T")[0];
+
+const createReportTitle = (date = todayISO()) => `Evolução clínica — ${formatDate(date)}`;
+
+const REPORT_SECTION_SNIPPETS = [
+  {
+    key: "overview",
+    label: "Evolução",
+    text: "Evolução clínica:\n- \n\nAdesão ao plano:\n- \n",
+  },
+  {
+    key: "symptoms",
+    label: "Sinais e sintomas",
+    text: "Sinais e sintomas:\n- \n",
+  },
+  {
+    key: "conduct",
+    label: "Conduta",
+    text: "Conduta nutricional:\n- \n",
+  },
+  {
+    key: "next",
+    label: "Próximos passos",
+    text: "Próximos passos:\n- \n",
+  },
+];
+
+const REPORT_FULL_TEMPLATE = [
+  "Evolução clínica:",
+  "- ",
+  "",
+  "Adesão ao plano:",
+  "- ",
+  "",
+  "Sinais e sintomas:",
+  "- ",
+  "",
+  "Conduta nutricional:",
+  "- ",
+  "",
+  "Próximos passos:",
+  "- ",
+].join("\n");
+
+const getReportSignature = (report: Pick<PatientReport, "id" | "title" | "report_date" | "report_text">) =>
+  JSON.stringify({
+    id: report.id ?? null,
+    title: report.title,
+    report_date: report.report_date,
+    report_text: report.report_text,
+  });
+
+const formatSavedTime = (value?: string | null) =>
+  value
+    ? new Date(value).toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
 
 // â”€â”€â”€ Tab config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -837,41 +897,101 @@ function ReportTab({
   const [loadingReports, setLoadingReports] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
-  const [draft, setDraft] = useState<PatientReport>(() => ({
+  const [historySearch, setHistorySearch] = useState("");
+  const [historySort, setHistorySort] = useState<"recent" | "oldest">("recent");
+  const lastSavedSignatureRef = useRef("");
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+
+  const makeBlankReport = (text = ""): PatientReport => ({
     patient_id: Number(patient.id ?? 0),
-    title: `Relatório ${new Date().toLocaleDateString('pt-BR')}`,
+    title: createReportTitle(),
     report_date: todayISO(),
-    report_text: patient.report_text ?? '',
+    report_text: text,
+  });
+
+  const [draft, setDraft] = useState<PatientReport>(() => ({
+    ...makeBlankReport(patient.report_text ?? ""),
   }));
 
+  const syncDraftFromSaved = (report: PatientReport) => {
+    setDraft(report);
+    lastSavedSignatureRef.current = getReportSignature(report);
+    setLastSavedAt(report.updated_at ?? report.created_at ?? null);
+  };
+
   useEffect(() => {
-    setDraft({
-      patient_id: Number(patient.id ?? 0),
-      title: `Relatório ${new Date().toLocaleDateString('pt-BR')}`,
-      report_date: todayISO(),
-      report_text: patient.report_text ?? '',
-    });
+    const blank = makeBlankReport(patient.report_text ?? "");
+    setDraft(blank);
+    lastSavedSignatureRef.current = "";
+    setLastSavedAt(null);
     setLoadingReports(true);
     fetchPatientReports(Number(patient.id)).then((data) => {
       setReports(data);
       if (data.length > 0) {
-        setDraft(data[0]);
+        syncDraftFromSaved(data[0]);
+      } else {
+        setDraft(blank);
       }
       setLoadingReports(false);
     });
   }, [patient.id, patient.report_text]);
 
+  const isDirty = getReportSignature(draft) !== lastSavedSignatureRef.current;
+  const hasMeaningfulContent = draft.report_text.trim().length > 0;
+  const hasDraftChangesBeyondDefault =
+    hasMeaningfulContent ||
+    draft.title.trim() !== createReportTitle(draft.report_date || todayISO()) ||
+    draft.report_date !== todayISO();
+  const saveStatus: "saving" | "saved" | "dirty" | "unsaved" =
+    saving ? "saving" : draft.id ? (isDirty ? "dirty" : "saved") : "unsaved";
+
+  const ensureCanDiscardDraft = () => {
+    if (draft.id && !isDirty) return true;
+    if (!draft.id && !hasDraftChangesBeyondDefault) return true;
+    return window.confirm("Existem alterações não salvas neste relatório. Deseja descartá-las?");
+  };
+
   const selectReport = (report: PatientReport) => {
-    setDraft(report);
+    if (!ensureCanDiscardDraft()) return;
+    syncDraftFromSaved(report);
   };
 
   const createNewReport = () => {
+    if (!ensureCanDiscardDraft()) return;
+    setDraft(makeBlankReport());
+    lastSavedSignatureRef.current = "";
+    setLastSavedAt(null);
+  };
+
+  const duplicateCurrentReport = () => {
+    if (!ensureCanDiscardDraft()) return;
     setDraft({
-      patient_id: Number(patient.id ?? 0),
-      title: `Relatório ${new Date().toLocaleDateString('pt-BR')}`,
-      report_date: todayISO(),
-      report_text: '',
+      ...makeBlankReport(draft.report_text),
+      title: `${createReportTitle()} (cópia)`,
     });
+    lastSavedSignatureRef.current = "";
+    setLastSavedAt(null);
+  };
+
+  const appendSnippet = (text: string) => {
+    setDraft((prev) => ({
+      ...prev,
+      report_text: prev.report_text.trim()
+        ? `${prev.report_text.replace(/\s+$/, "")}\n\n${text}`
+        : text,
+    }));
+  };
+
+  const ensureReportReady = (action: "visualizar" | "exportar" | "enviar") => {
+    if (!draft.report_text.trim()) {
+      toast.error("Preencha o relatório antes de continuar.");
+      return false;
+    }
+    if (!draft.id || isDirty) {
+      toast.error(`Salve o relatório antes de ${action}.`);
+      return false;
+    }
+    return true;
   };
 
   const handleSave = async () => {
@@ -895,11 +1015,11 @@ function ReportTab({
         return;
       }
 
-      setDraft(saved);
+      syncDraftFromSaved(saved);
       const freshList = await fetchPatientReports(Number(patient.id));
       setReports(freshList);
       toast.success('Relatório salvo com sucesso!');
-      onSaved({ ...patient, report_text: draft.report_text });
+      onSaved({ ...patient, report_text: saved.report_text });
     } catch {
       toast.error('Erro inesperado ao salvar.');
     } finally {
@@ -924,11 +1044,13 @@ function ReportTab({
   };
 
   const handleDownloadPdf = async () => {
+    if (!ensureReportReady("exportar")) return;
     const doc = await generatePatientReportPdf(patient, draft);
     doc.save(`${draft.title.toLowerCase().replace(/\s+/g, '-')}.pdf`);
   };
 
   const handlePreviewPdf = async () => {
+    if (!ensureReportReady("visualizar")) return;
     const doc = await generatePatientReportPdf(patient, draft);
     const blob = doc.output('blob');
     const url = URL.createObjectURL(blob);
@@ -945,6 +1067,36 @@ function ReportTab({
   const reportWordCount = draft.report_text.trim() ? draft.report_text.trim().split(/\s+/).length : 0;
   const estimatedReadMinutes = Math.max(1, Math.ceil(reportWordCount / 180));
   const latestReport = reports[0];
+  const filteredReports = [...reports]
+    .filter((report) => {
+      const q = historySearch.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        report.title.toLowerCase().includes(q) ||
+        report.report_text.toLowerCase().includes(q) ||
+        report.report_date.includes(q)
+      );
+    })
+    .sort((a, b) =>
+      historySort === "recent"
+        ? `${b.report_date}${b.created_at ?? ""}`.localeCompare(`${a.report_date}${a.created_at ?? ""}`)
+        : `${a.report_date}${a.created_at ?? ""}`.localeCompare(`${b.report_date}${b.created_at ?? ""}`)
+    );
+  const savedTimeLabel = formatSavedTime(lastSavedAt);
+  const saveStatusLabel =
+    saveStatus === "saving"
+      ? "Salvando..."
+      : saveStatus === "saved"
+        ? `Salvo${savedTimeLabel ? ` às ${savedTimeLabel}` : ""}`
+        : saveStatus === "dirty"
+          ? "Alterações não salvas"
+          : "Novo documento não salvo";
+  const saveStatusClass =
+    saveStatus === "saved"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : saveStatus === "saving"
+        ? "border-blue-200 bg-blue-50 text-blue-700"
+        : "border-amber-200 bg-amber-50 text-amber-700";
 
   return (
     <div className="space-y-4">
@@ -973,11 +1125,24 @@ function ReportTab({
                 <span className="rounded-md border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
                   Leitura em aprox. {estimatedReadMinutes} min
                 </span>
+                <span className={cn("rounded-md border px-3 py-1 text-xs font-semibold", saveStatusClass)}>
+                  {saveStatus === "saving" ? <Loader2 size={12} className="mr-1 inline animate-spin" /> : <Clock3 size={12} className="mr-1 inline" />}
+                  {saveStatusLabel}
+                </span>
               </div>
             </div>
 
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto lg:justify-end">
               <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 rounded-lg gap-2 border-border/70 bg-background px-3 text-sm font-medium shadow-none hover:bg-muted/40"
+                  onClick={duplicateCurrentReport}
+                >
+                  <Copy size={14} />
+                  Duplicar
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -999,7 +1164,10 @@ function ReportTab({
                 <Button
                   type="button"
                   className="h-9 rounded-lg gap-2 bg-primary/90 px-4 text-sm font-medium shadow-none hover:bg-primary"
-                  onClick={() => setShowEmail(true)}
+                  onClick={() => {
+                    if (!ensureReportReady("enviar")) return;
+                    setShowEmail(true);
+                  }}
                   disabled={!patient.email}
                   title={patient.email ? 'Enviar relatório por e-mail' : 'Cadastre um e-mail no perfil primeiro'}
                 >
@@ -1033,7 +1201,7 @@ function ReportTab({
                   value={draft.title}
                   onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
                   className="h-10 rounded-lg border-border bg-background"
-                  placeholder="Ex.: Relatório 22/06/2026"
+                  placeholder="Ex.: Evolução clínica — 31/07/2026"
                 />
               </div>
               <div className="space-y-2">
@@ -1067,11 +1235,43 @@ function ReportTab({
                 placeholder="Ex.: Paciente evoluiu bem, com boa adesão ao plano, redução de compulsão noturna e melhora do padrão intestinal..."
                 className="min-h-[220px] rounded-xl border-border bg-background text-[15px] leading-7 shadow-inner"
               />
+              <div className="space-y-2 rounded-xl border border-dashed border-border/80 bg-background/70 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Estrutura guiada
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-md text-xs"
+                    onClick={() => appendSnippet(REPORT_FULL_TEMPLATE)}
+                  >
+                    Inserir estrutura completa
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {REPORT_SECTION_SNIPPETS.map((snippet) => (
+                    <Button
+                      key={snippet.key}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 rounded-md border border-border bg-background text-xs hover:bg-muted"
+                      onClick={() => appendSnippet(snippet.text)}
+                    >
+                      {snippet.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-border/60 bg-background/95 pt-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-muted-foreground">
-                {draft.id ? `Documento aberto: ${draft.title} · ${reportDateLabel}` : 'Novo documento ainda não salvo.'}
+                {draft.id
+                  ? `Documento aberto: ${draft.title} · ${reportDateLabel}`
+                  : 'Novo documento ainda não salvo.'}
               </p>
               <Button onClick={handleSave} disabled={saving} className="h-10 rounded-lg px-6 font-semibold">
                 {saving ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Save size={16} className="mr-2" />}
@@ -1084,7 +1284,7 @@ function ReportTab({
 
       <aside className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
         <div className="border-b border-border bg-muted/20 p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3">
             <div className="space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">Documentos</p>
               <h3 className="text-lg font-semibold tracking-tight text-foreground">Relatórios clínicos</h3>
@@ -1093,48 +1293,95 @@ function ReportTab({
                 {latestReport ? ` · último em ${new Date(`${latestReport.report_date}T12:00:00`).toLocaleDateString('pt-BR')}` : ''}
               </p>
             </div>
-            <Button type="button" size="sm" variant="outline" className="h-9 rounded-lg gap-2" onClick={createNewReport}>
-              <Plus size={14} />
-              Novo
-            </Button>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-1 flex-col gap-3 sm:flex-row">
+                <Input
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="h-9 rounded-lg"
+                  placeholder="Buscar por título, conteúdo ou data..."
+                />
+                <select
+                  value={historySort}
+                  onChange={(e) => setHistorySort(e.target.value as "recent" | "oldest")}
+                  className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+                >
+                  <option value="recent">Mais recentes</option>
+                  <option value="oldest">Mais antigos</option>
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" className="h-9 rounded-lg gap-2" onClick={duplicateCurrentReport}>
+                  <Copy size={14} />
+                  Duplicar atual
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-9 rounded-lg gap-2" onClick={createNewReport}>
+                  <Plus size={14} />
+                  Novo em branco
+                </Button>
+              </div>
+            </div>
           </div>
 
         </div>
 
-        <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-3 p-4">
           {loadingReports ? (
-            <div className="flex items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-6 text-muted-foreground md:col-span-2 xl:col-span-4">
+            <div className="flex items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-6 text-muted-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Carregando relatórios...
             </div>
           ) : reports.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border bg-muted/20 p-5 text-center md:col-span-2 xl:col-span-4">
+            <div className="rounded-xl border border-dashed border-border bg-muted/20 p-5 text-center">
               <FileText className="mx-auto mb-3 h-9 w-9 text-muted-foreground/40" />
               <p className="text-sm font-semibold text-foreground">Nenhum relatório salvo</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                 Crie o primeiro documento para registrar a evolução do paciente.
               </p>
             </div>
+          ) : filteredReports.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border bg-muted/20 p-5 text-center">
+              <p className="text-sm font-semibold text-foreground">Nenhum relatório encontrado</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Ajuste a busca ou a ordenação para localizar outro documento.
+              </p>
+            </div>
           ) : (
-            reports.map((report, index) => {
+            filteredReports.map((report, index) => {
               const isActive = draft.id === report.id;
               const labelDate = new Date(`${report.report_date}T12:00:00`).toLocaleDateString('pt-BR');
+              const words = report.report_text.trim() ? report.report_text.trim().split(/\s+/).length : 0;
               return (
                 <button
                   key={report.id}
                   type="button"
                   onClick={() => selectReport(report)}
                   className={cn(
-                    'group w-full rounded-xl border p-3 text-left transition-colors',
+                    'group w-full rounded-xl border p-4 text-left transition-colors',
                     isActive
                       ? 'border-primary/30 bg-primary/8 ring-1 ring-primary/15'
                       : 'border-border bg-background hover:border-primary/20 hover:bg-muted/20'
                   )}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-foreground">{report.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{labelDate}</p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-bold text-foreground">{report.title}</p>
+                        <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          {labelDate}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                        <span>{words} palavras</span>
+                        <span>·</span>
+                        <span>{report.report_text.trim().length} caracteres</span>
+                        {report.updated_at ? (
+                          <>
+                            <span>·</span>
+                            <span>Atualizado às {formatSavedTime(report.updated_at)}</span>
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                     <span
                       className={cn(
@@ -1147,7 +1394,7 @@ function ReportTab({
                       {isActive ? 'Aberto' : `#${index + 1}`}
                     </span>
                   </div>
-                  <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                  <p className="mt-3 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
                     {report.report_text || 'Sem conteúdo'}
                   </p>
                 </button>

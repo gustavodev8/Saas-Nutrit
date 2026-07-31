@@ -220,12 +220,16 @@ function DateSelector({
   measurements,
   selectedIds,
   onToggle,
+  onSelectLatestTwo,
+  onSelectLatestThree,
   onSelectAll,
   onClear,
 }: {
   measurements: Measurement[];
   selectedIds: number[];
   onToggle: (id: number) => void;
+  onSelectLatestTwo: () => void;
+  onSelectLatestThree: () => void;
   onSelectAll: () => void;
   onClear: () => void;
 }) {
@@ -259,6 +263,29 @@ function DateSelector({
       {/* Body */}
       {open && (
         <div className="px-5 py-4">
+          <div className="mb-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onSelectLatestTwo}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-muted"
+            >
+              Últimas 2
+            </button>
+            <button
+              type="button"
+              onClick={onSelectLatestThree}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-muted"
+            >
+              Últimas 3
+            </button>
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-muted"
+            >
+              Todas
+            </button>
+          </div>
           <div className="flex flex-wrap gap-2 mb-3">
             {/* newest first for the UI list */}
             {measurements.map((m) => {
@@ -283,14 +310,6 @@ function DateSelector({
             })}
           </div>
           <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={onSelectAll}
-              className="text-xs text-primary hover:underline font-medium"
-            >
-              Selecionar todas
-            </button>
-            <span className="text-muted-foreground/40">·</span>
             <button
               type="button"
               onClick={onClear}
@@ -344,6 +363,12 @@ export default function AdminRelatorioAntropometrico() {
 
   const selectAll = () =>
     setSelectedIds(measurements.map((m) => m.id!).filter(Boolean));
+
+  const selectLatestTwo = () =>
+    setSelectedIds(measurements.slice(0, 2).map((m) => m.id!).filter(Boolean));
+
+  const selectLatestThree = () =>
+    setSelectedIds(measurements.slice(0, 3).map((m) => m.id!).filter(Boolean));
 
   const clearAll = () => setSelectedIds([]);
 
@@ -510,6 +535,8 @@ export default function AdminRelatorioAntropometrico() {
         measurements={measurements}
         selectedIds={selectedIds}
         onToggle={toggleId}
+        onSelectLatestTwo={selectLatestTwo}
+        onSelectLatestThree={selectLatestThree}
         onSelectAll={selectAll}
         onClear={clearAll}
       />
