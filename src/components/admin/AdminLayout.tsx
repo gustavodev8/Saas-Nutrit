@@ -65,7 +65,7 @@ const NAV_PRIMARY_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Resultados e conteúdo",
+    label: "Autoridade",
     icon: Star,
     items: [
       { to: "/admin/resultados",  icon: TrendingUp,         label: "Resultados" },
