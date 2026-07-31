@@ -17,6 +17,7 @@ const STRATEGY_LABELS: Record<string, string> = {
   mediterranea: "Mediterranea",
   hipertrofia: "Hipertrofia",
   emagrecimento: "Emagrecimento",
+  ganho_peso: "Ganho de peso",
 };
 
 const STRATEGY_COLORS: Record<string, string> = {
@@ -24,6 +25,7 @@ const STRATEGY_COLORS: Record<string, string> = {
   mediterranea: "bg-teal-100 text-teal-700 border-teal-200",
   hipertrofia: "bg-emerald-100 text-emerald-700 border-emerald-200",
   emagrecimento: "bg-amber-100 text-amber-700 border-amber-200",
+  ganho_peso: "bg-rose-100 text-rose-700 border-rose-200",
 };
 
 function strategyBadge(strategy?: string) {

@@ -39,6 +39,7 @@ const STRATEGIES = [
   { value: "mediterranea", label: "Mediterrânea"       },
   { value: "hipertrofia",  label: "Hipertrofia"        },
   { value: "emagrecimento",label: "Emagrecimento"      },
+  { value: "ganho_peso",   label: "Ganho de peso"      },
   { value: "manutencao",   label: "Manutenção"         },
   { value: "vegetariano",  label: "Vegetariano"        },
   { value: "vegano",       label: "Vegano"             },
