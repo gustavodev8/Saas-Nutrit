@@ -713,6 +713,9 @@ const paymentStatusLabel = (status?: Booking["payment_status"]) => {
   return status ? map[status] : "Pagamento não informado";
 };
 
+const pluralLabel = (count: number, singular: string, plural: string) =>
+  `${count} ${count === 1 ? singular : plural}`;
+
 function ClinicalCentralTab({
   patient,
   onNavigateTab,
@@ -783,8 +786,8 @@ function ClinicalCentralTab({
     !activePlan
       ? {
           id: "plan",
-          title: "Paciente sem plano alimentar ativo",
-          description: "Crie ou vincule um plano para manter a conduta registrada.",
+          title: "Criar plano alimentar",
+          description: "Paciente sem plano ativo.",
           tab: "planos" as TabKey,
           icon: Utensils,
         }
@@ -792,8 +795,8 @@ function ClinicalCentralTab({
     !latestMeasurement
       ? {
           id: "measurement",
-          title: "Sem avaliação antropométrica registrada",
-          description: "Registre medidas para embasar relatórios, estratégias e evolução.",
+          title: "Registrar primeira avaliação",
+          description: "Sem medidas antropométricas registradas.",
           tab: "antropometria" as TabKey,
           icon: Activity,
         }
@@ -801,8 +804,8 @@ function ClinicalCentralTab({
     pendingExamRequests.length > 0
       ? {
           id: "exams",
-          title: `${pendingExamRequests.length} pedido(s) de exame pendente(s)`,
-          description: "Confira se os resultados já podem ser lançados ou enviados.",
+          title: "Lançar resultados de exames",
+          description: `${pluralLabel(pendingExamRequests.length, "solicitação pendente", "solicitações pendentes")}.`,
           tab: "protocolos" as TabKey,
           icon: FlaskConical,
         }
@@ -810,8 +813,8 @@ function ClinicalCentralTab({
     !nextBooking
       ? {
           id: "booking",
-          title: "Nenhum retorno futuro encontrado",
-          description: "Se o acompanhamento continua, programe a próxima sessão.",
+          title: "Agendar retorno",
+          description: "Nenhuma consulta futura encontrada.",
           tab: "perfil" as TabKey,
           icon: CalendarCheck,
         }
@@ -819,8 +822,8 @@ function ClinicalCentralTab({
     !latestReport
       ? {
           id: "report",
-          title: "Sem relatório clínico registrado",
-          description: "Documente a evolução e a conduta em linguagem profissional.",
+          title: "Registrar evolução clínica",
+          description: "Sem relatório clínico no histórico.",
           tab: "relatorio" as TabKey,
           icon: FileText,
         }
@@ -871,7 +874,7 @@ function ClinicalCentralTab({
       id: `exam-${request.id}`,
       dateValue: request.created_at ?? today,
       title: request.status === "completed" ? "Resultados de exames lançados" : "Pedido de exames solicitado",
-      description: `${request.items?.length ?? 0} exame(s) · ${request.results?.length ?? 0} resultado(s) registrado(s)`,
+      description: `${pluralLabel(request.items?.length ?? 0, "exame", "exames")} · ${pluralLabel(request.results?.length ?? 0, "resultado registrado", "resultados registrados")}`,
       badge: request.status === "completed" ? "Concluído" : "Pendente",
       icon: FlaskConical,
       toneClass: request.status === "completed" ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-amber-700 bg-amber-50 border-amber-100",
@@ -891,7 +894,7 @@ function ClinicalCentralTab({
       id: `prescription-${prescription.id}`,
       dateValue: prescription.created_at,
       title: "Prescrição magistral",
-      description: `${prescription.blocks.length} bloco(s) · ${prescription.blocks.reduce((acc, block) => acc + block.items.length, 0)} ativo(s)`,
+      description: `${pluralLabel(prescription.blocks.length, "bloco", "blocos")} · ${pluralLabel(prescription.blocks.reduce((acc, block) => acc + block.items.length, 0), "ativo", "ativos")}`,
       badge: "Prescrição",
       icon: Pill,
       toneClass: "text-violet-700 bg-violet-50 border-violet-100",
@@ -923,12 +926,17 @@ function ClinicalCentralTab({
     },
     {
       label: "Exames",
-      value: pendingExamRequests.length > 0 ? `${pendingExamRequests.length} pendente(s)` : "Sem pendências",
-      detail: `${data.examRequests.length} pedido(s) no histórico`,
+      value: pendingExamRequests.length > 0 ? pluralLabel(pendingExamRequests.length, "pendente", "pendentes") : "Sem pendências",
+      detail: pluralLabel(data.examRequests.length, "pedido no histórico", "pedidos no histórico"),
       icon: FlaskConical,
       tab: "protocolos" as TabKey,
     },
   ];
+  const primaryAction = pendingActions[0];
+  const statusLabel = nextBooking ? "Acompanhamento ativo" : "Retorno não agendado";
+  const statusDetail = nextBooking
+    ? `${formatClinicalDate(nextBooking.appointment_date, nextBooking.appointment_time)} · ${bookingStatusLabel(nextBooking.status)}`
+    : "Defina a próxima consulta para manter o acompanhamento em dia.";
 
   if (loading) {
     return (
@@ -940,24 +948,45 @@ function ClinicalCentralTab({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-primary">Central clínica</p>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Visão operacional do paciente</h2>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Resumo dos próximos passos, pendências e histórico clínico em uma linha do tempo única.
-            </p>
+    <div className="space-y-4">
+      <section className="rounded-3xl border border-primary/10 bg-gradient-to-br from-primary/10 via-background to-background p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-primary">Resumo do acompanhamento</p>
+            <h2 className="mt-1 text-xl font-black tracking-tight text-foreground">{statusLabel}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{statusDetail}</p>
           </div>
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-            <CircleDot size={13} className="text-primary" />
-            {timeline.length} evento{timeline.length === 1 ? "" : "s"} registrado{timeline.length === 1 ? "" : "s"}
-          </div>
-        </div>
-      </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {primaryAction ? (
+            <button
+              type="button"
+              onClick={() => onNavigateTab(primaryAction.tab)}
+              className="flex w-full items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-amber-900 transition-all hover:-translate-y-0.5 hover:shadow-sm lg:max-w-[360px]"
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="rounded-xl bg-white/70 p-2 text-amber-700">
+                  <primaryAction.icon size={18} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[10px] font-black uppercase tracking-widest text-amber-700/80">Próxima ação</span>
+                  <span className="block truncate text-sm font-black">{primaryAction.title}</span>
+                </span>
+              </span>
+              <ChevronRight size={16} className="shrink-0" />
+            </button>
+          ) : (
+            <div className="flex w-full items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-emerald-900 lg:max-w-[320px]">
+              <CheckCircle2 size={18} className="shrink-0 text-emerald-700" />
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700/80">Próxima ação</p>
+                <p className="text-sm font-black">Sem pendências agora</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => {
           const Icon = card.icon;
           return (
@@ -965,28 +994,29 @@ function ClinicalCentralTab({
               key={card.label}
               type="button"
               onClick={() => onNavigateTab(card.tab)}
-              className="rounded-2xl border border-border bg-background p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-sm"
+              className="rounded-2xl border border-border bg-background px-3 py-3 text-left transition-all hover:border-primary/30 hover:bg-muted/30"
             >
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <span className="rounded-xl bg-primary/10 p-2 text-primary">
-                  <Icon size={18} />
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 rounded-xl bg-primary/10 p-2 text-primary">
+                  <Icon size={16} />
                 </span>
-                <ChevronRight size={15} className="text-muted-foreground/40" />
+                <span className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">{card.label}</p>
+                  <p className="mt-0.5 line-clamp-1 text-sm font-black text-foreground">{card.value}</p>
+                  <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{card.detail}</p>
+                </span>
               </div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">{card.label}</p>
-              <p className="mt-1 line-clamp-2 text-base font-bold text-foreground">{card.value}</p>
-              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{card.detail}</p>
             </button>
           );
         })}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <section className="rounded-3xl border border-border bg-background p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="grid gap-4 xl:grid-cols-[330px_minmax(0,1fr)]">
+        <section className="rounded-3xl border border-border bg-background p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-primary">Pendências</p>
-              <h3 className="mt-1 text-lg font-bold text-foreground">Ações recomendadas</h3>
+              <p className="text-[10px] font-black uppercase tracking-widest text-primary">Conduta sugerida</p>
+              <h3 className="mt-1 text-base font-black text-foreground">Ações recomendadas</h3>
             </div>
             {pendingActions.length === 0 ? (
               <CheckCircle2 size={20} className="text-emerald-600" />
@@ -996,27 +1026,27 @@ function ClinicalCentralTab({
           </div>
 
           {pendingActions.length === 0 ? (
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-800">
-              Tudo organizado: não há pendências clínicas evidentes para este paciente.
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
+              Sem pendências agora.
             </div>
           ) : (
-            <div className="space-y-3">
-              {pendingActions.map((action) => {
+            <div className="space-y-2">
+              {pendingActions.slice(0, 5).map((action) => {
                 const Icon = action.icon;
                 return (
                   <button
                     key={action.id}
                     type="button"
                     onClick={() => onNavigateTab(action.tab)}
-                    className="w-full rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/30 hover:bg-primary/5"
+                    className="w-full rounded-2xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5"
                   >
-                    <div className="flex gap-3">
-                      <span className="mt-0.5 rounded-xl bg-amber-50 p-2 text-amber-700">
-                        <Icon size={16} />
+                    <div className="flex items-start gap-3">
+                      <span className="rounded-xl bg-amber-50 p-1.5 text-amber-700">
+                        <Icon size={15} />
                       </span>
                       <span className="min-w-0">
                         <span className="block text-sm font-bold text-foreground">{action.title}</span>
-                        <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{action.description}</span>
+                        <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{action.description}</span>
                       </span>
                     </div>
                   </button>
@@ -1026,13 +1056,13 @@ function ClinicalCentralTab({
           )}
         </section>
 
-        <section className="rounded-3xl border border-border bg-background p-5">
-          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <section className="rounded-3xl border border-border bg-background p-4">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[10px] font-black uppercase tracking-widest text-primary">Linha do tempo</p>
-              <h3 className="mt-1 text-lg font-bold text-foreground">Histórico clínico unificado</h3>
+              <h3 className="mt-1 text-base font-black text-foreground">Últimos eventos</h3>
             </div>
-            <p className="text-xs text-muted-foreground">Mostrando os 14 eventos mais recentes</p>
+            <p className="text-xs text-muted-foreground">{timeline.length} evento{timeline.length === 1 ? "" : "s"}</p>
           </div>
 
           {timeline.length === 0 ? (
@@ -1042,24 +1072,24 @@ function ClinicalCentralTab({
               <p className="mt-1 text-xs text-muted-foreground">Crie uma consulta, plano, avaliação ou relatório para iniciar a linha do tempo.</p>
             </div>
           ) : (
-            <div className="relative space-y-4 before:absolute before:left-[18px] before:top-2 before:h-[calc(100%-16px)] before:w-px before:bg-border">
-              {timeline.slice(0, 14).map((event) => {
+            <div className="relative space-y-2 before:absolute before:left-[17px] before:top-2 before:h-[calc(100%-16px)] before:w-px before:bg-border">
+              {timeline.slice(0, 8).map((event) => {
                 const Icon = event.icon;
                 return (
                   <button
                     key={event.id}
                     type="button"
                     onClick={() => onNavigateTab(event.actionTab)}
-                    className="relative flex w-full gap-4 rounded-2xl p-2 text-left transition-colors hover:bg-muted/40"
+                    className="relative flex w-full gap-3 rounded-2xl p-1.5 text-left transition-colors hover:bg-muted/40"
                   >
-                    <span className={cn("relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border", event.toneClass)}>
-                      <Icon size={16} />
+                    <span className={cn("relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border", event.toneClass)}>
+                      <Icon size={14} />
                     </span>
-                    <span className="min-w-0 flex-1 rounded-2xl border border-border bg-card px-4 py-3">
+                    <span className="min-w-0 flex-1 rounded-2xl border border-border bg-card px-3 py-2.5">
                       <span className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <span className="min-w-0">
                           <span className="block text-sm font-bold text-foreground">{event.title}</span>
-                          <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{event.description}</span>
+                          <span className="mt-0.5 block line-clamp-1 text-xs text-muted-foreground">{event.description}</span>
                         </span>
                         <span className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
                           <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
