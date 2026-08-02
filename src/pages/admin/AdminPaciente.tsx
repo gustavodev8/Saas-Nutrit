@@ -389,7 +389,7 @@ export default function AdminPaciente() {
             <div className="lg:col-span-4 bg-primary rounded-[40px] p-8 text-primary-foreground shadow-2xl shadow-primary/20 flex flex-col justify-between overflow-hidden relative group">
               <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:bg-white/20 transition-all duration-700" />
               <div className="relative z-10">
-                <p className="text-[11px] font-black uppercase tracking-[0.25em] opacity-70 mb-1">Status Metab?lico</p>
+                <p className="text-[11px] font-black uppercase tracking-[0.25em] opacity-70 mb-1">Status Metabólico</p>
                 <h3 className="text-6xl font-black tracking-tighter tabular-nums mb-4">{bmi ?? "—"}</h3>
                 {bmiInfo && (
                   <div className="inline-flex items-center px-4 py-2 rounded-2xl bg-white/20 backdrop-blur-md border border-white/10 text-xs font-black uppercase tracking-widest">
@@ -475,7 +475,7 @@ export default function AdminPaciente() {
               <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-4 text-primary">
                   <MessageSquareQuote size={20} />
-                  <h4 className="text-[11px] font-black uppercase tracking-[0.2em]">Parecer T?cnico Nutricional</h4>
+                  <h4 className="text-[11px] font-black uppercase tracking-[0.2em]">Parecer Técnico Nutricional</h4>
                 </div>
                 <p className="text-lg text-foreground/80 leading-relaxed font-medium italic">
                   "{m.notes}"
@@ -1831,62 +1831,84 @@ function PlanosTab({
         />
       )}
 
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="font-black text-lg">Dieta & Planos</h2>
+      <div className="space-y-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-primary">Planos alimentares</p>
+            <h2 className="mt-1 text-lg font-bold tracking-tight text-foreground">Dietas e estratégias do paciente</h2>
+            <p className="text-sm text-muted-foreground">
+              Crie, revise e acompanhe os planos vinculados ao prontuário.
+            </p>
+          </div>
           <Button
             onClick={() => setShowModal(true)}
-            className="rounded-2xl h-11 px-6 font-bold shadow-lg shadow-primary/20"
+            className="rounded-xl h-10 px-5 font-bold shadow-sm"
           >
-            <Plus size={18} className="mr-2" /> Novo Plano
+            <Plus size={16} className="mr-2" /> Novo plano
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 gap-3">
-          {plans.map((p) => {
-            const strategyInfo = p.strategy_type ? STRATEGY_LABELS[p.strategy_type] : null;
-            return (
-              <div
-                key={p.id ?? `${p.patient_id}-${p.title}`}
-                className="bg-card border border-border/60 rounded-2xl p-5 flex items-center justify-between group"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                    <BookOpen size={24} />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="font-black text-foreground">{p.title || "Plano sem título"}</p>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {strategyInfo && (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${strategyInfo.cls}`}>
-                          {strategyInfo.label}
-                        </span>
-                      )}
-                      {p.target_calories && (
-                        <span className="text-[10px] text-muted-foreground font-semibold">
-                          {p.target_calories} kcal · {p.target_protein_g}g PTN · {p.target_carbs_g}g CHO · {p.target_fat_g}g LIP
-                        </span>
-                      )}
-                      {!p.target_calories && (
-                        <span className="text-xs text-muted-foreground font-semibold">
-                          Criado em {p.created_at ? new Date(p.created_at).toLocaleDateString("pt-BR") : "—"}
-                        </span>
-                      )}
+        {plans.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-primary/25 bg-primary/[0.03] p-8 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <BookOpen size={22} />
+            </div>
+            <h3 className="mt-4 text-base font-bold text-foreground">Nenhum plano alimentar criado</h3>
+            <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+              Comece criando uma estratégia personalizada. Você pode usar a última avaliação antropométrica
+              {latestMeasurement ? " registrada" : " quando houver medidas registradas"} para estimar metas e macros.
+            </p>
+            <Button onClick={() => setShowModal(true)} className="mt-5 h-10 rounded-xl px-5 font-bold">
+              <Plus size={16} className="mr-2" />
+              Criar primeiro plano
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3">
+            {plans.map((p) => {
+              const strategyInfo = p.strategy_type ? STRATEGY_LABELS[p.strategy_type] : null;
+              return (
+                <div
+                  key={p.id ?? `${p.patient_id}-${p.title}`}
+                  className="group flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-4 shadow-sm transition-colors hover:border-primary/25 hover:bg-primary/[0.02] sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <BookOpen size={21} />
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <p className="truncate font-bold text-foreground">{p.title || "Plano sem título"}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {strategyInfo && (
+                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${strategyInfo.cls}`}>
+                            {strategyInfo.label}
+                          </span>
+                        )}
+                        {p.target_calories ? (
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {p.target_calories} kcal · {p.target_protein_g ?? 0}g PTN · {p.target_carbs_g ?? 0}g CHO · {p.target_fat_g ?? 0}g LIP
+                          </span>
+                        ) : (
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Criado em {p.created_at ? new Date(p.created_at).toLocaleDateString("pt-BR") : "—"}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => p.id && navigate(`/admin/pacientes/${patientRouteId}/plano/${p.id}`)}
+                    disabled={!p.id}
+                    className="h-9 rounded-xl border-border/60 font-bold transition-all hover:border-primary hover:bg-primary hover:text-white"
+                  >
+                    Abrir plano
+                  </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() => p.id && navigate(`/admin/pacientes/${patientRouteId}/plano/${p.id}`)}
-                  disabled={!p.id}
-                  className="rounded-xl font-bold border-border/60 hover:bg-primary hover:text-white hover:border-primary transition-all"
-                >
-                  Abrir Plano
-                </Button>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </>
   );

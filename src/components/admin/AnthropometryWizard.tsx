@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { AlertCircle, CheckCircle2, Copy, Crosshair, Loader2, Pencil, Save, Scale, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, Copy, Crosshair, Loader2, Pencil, Save, Scale, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   calcBodyFat,
@@ -107,17 +108,39 @@ function SkinfoldNI({
 }
 
 function Section({
-  title, subtitle, children, className,
+  title, subtitle, children, className, defaultOpen = true, collapsible = false,
 }: {
-  title: string; subtitle?: string; children: React.ReactNode; className?: string;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+  className?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+
   return (
     <div className={cn("bg-card border border-border/70 rounded-2xl overflow-hidden", className)}>
-      <div className="px-6 py-3.5 border-b border-border/50 bg-muted/30">
-        <h3 className="text-sm font-bold text-foreground">{title}</h3>
-        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
-      </div>
-      <div className="px-6 py-5">{children}</div>
+      <button
+        type="button"
+        onClick={() => collapsible && setOpen((prev) => !prev)}
+        className={cn(
+          "w-full px-6 py-3.5 border-b border-border/50 bg-muted/30 text-left flex items-center justify-between gap-3",
+          collapsible && "transition-colors hover:bg-muted/45"
+        )}
+      >
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-foreground">{title}</h3>
+          {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+        </div>
+        {collapsible && (
+          <ChevronDown
+            size={15}
+            className={cn("shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+          />
+        )}
+      </button>
+      {open && <div className="px-6 py-5">{children}</div>}
     </div>
   );
 }
@@ -298,6 +321,28 @@ export function AnthropometryWizard({
   };
 
   const isEditing = !!editingMeasurement;
+  const currentWeight = form.weight ? parseFloat(form.weight) : null;
+  const currentHeight = form.height ? parseFloat(form.height) : null;
+  const currentBmi = currentWeight && currentHeight
+    ? currentWeight / ((currentHeight / 100) ** 2)
+    : null;
+  const officialFatPct = effectiveOfficial === "bio"
+    ? bioFatPct
+    : effectiveOfficial === "skinfold"
+      ? sfResult?.fatPct ?? null
+      : null;
+  const officialLeanKg = effectiveOfficial === "bio" ? bioLeanKg : effectiveOfficial === "skinfold" ? sfLeanKg : null;
+  const officialSourceLabel = effectiveOfficial === "bio"
+    ? "Bioimpedância"
+    : effectiveOfficial === "skinfold"
+      ? "Adipômetro"
+      : "Não definido";
+  const filledCircumferences = [
+    "neck", "shoulder", "chest", "waist", "abdomen", "hip",
+    "arm_relax_r", "arm_relax_l", "arm_contract_r", "arm_contract_l",
+    "forearm_r", "forearm_l", "wrist_r", "wrist_l",
+    "thigh_prox_r", "thigh_prox_l", "thigh_r", "thigh_l", "calf_r", "calf_l",
+  ].filter((key) => Boolean((form as Record<string, string>)[key])).length;
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 space-y-3">
@@ -351,7 +396,8 @@ export function AnthropometryWizard({
       </div>
 
       {/* ── Seções empilhadas ── */}
-      <div className="flex flex-col gap-6 pb-10">
+      <div className="grid gap-5 pb-10 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="flex min-w-0 flex-col gap-5">
 
         {/* ── 1. Dados Básicos ── */}
         <Section title="Dados Básicos" subtitle="Peso e altura do paciente">
@@ -473,7 +519,7 @@ export function AnthropometryWizard({
         </Section>
 
         {/* ── 4. Tronco ── */}
-        <Section title="Circunferências — Tronco" subtitle="Em centímetros (cm)">
+        <Section title="Circunferências — Tronco" subtitle="Em centímetros (cm)" collapsible>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
             <NI label="Pescoço"  field="neck"     form={form} setField={setField} />
             <NI label="Ombro"    field="shoulder" form={form} setField={setField} />
@@ -485,7 +531,12 @@ export function AnthropometryWizard({
         </Section>
 
         {/* ── 5. Membros Superiores ── */}
-        <Section title="Circunferências — Membros Superiores" subtitle="Direito (D) e Esquerdo (E), em centímetros">
+        <Section
+          title="Circunferências — Membros Superiores"
+          subtitle="Direito (D) e Esquerdo (E), em centímetros"
+          collapsible
+          defaultOpen={false}
+        >
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
             <NI label="Braço Rel. D"  field="arm_relax_r"    form={form} setField={setField} />
             <NI label="Braço Rel. E"  field="arm_relax_l"    form={form} setField={setField} />
@@ -499,7 +550,12 @@ export function AnthropometryWizard({
         </Section>
 
         {/* ── 6. Membros Inferiores ── */}
-        <Section title="Circunferências — Membros Inferiores" subtitle="Direito (D) e Esquerdo (E), em centímetros">
+        <Section
+          title="Circunferências — Membros Inferiores"
+          subtitle="Direito (D) e Esquerdo (E), em centímetros"
+          collapsible
+          defaultOpen={false}
+        >
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
             <NI label="Coxa Prox. D"  field="thigh_prox_r" form={form} setField={setField} />
             <NI label="Coxa Prox. E"  field="thigh_prox_l" form={form} setField={setField} />
@@ -690,14 +746,86 @@ export function AnthropometryWizard({
         )}
 
         {/* ── 8. Observações ── */}
-        <Section title="Observações" subtitle="Parecer técnico ou anotações da avaliação">
-          <Input
+        <Section
+          title="Observações"
+          subtitle="Parecer técnico ou anotações da avaliação"
+          collapsible
+          defaultOpen={false}
+        >
+          <Textarea
             value={(form as Record<string, string>).notes ?? ""}
             onChange={(e) => setField("notes", e.target.value)}
-            placeholder="Ex: Paciente em processo de emagrecimento, boa hidratação…"
-            className="h-10 text-sm"
+            placeholder="Ex: paciente em processo de emagrecimento, boa hidratação, adesão ao protocolo e pontos de atenção para a próxima consulta…"
+            className="min-h-[84px] resize-none text-sm"
           />
         </Section>
+        </div>
+
+        <aside className="xl:sticky xl:top-20 h-fit space-y-3">
+          <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-primary">Resumo ao vivo</p>
+                <p className="mt-1 text-xs text-muted-foreground">Prévia técnica da avaliação atual.</p>
+              </div>
+              <span className={cn(
+                "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
+                effectiveOfficial ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+              )}>
+                {effectiveOfficial ? "Oficial" : "Rascunho"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Peso</p>
+                <p className="mt-1 text-xl font-black tabular-nums text-foreground">
+                  {currentWeight ? `${currentWeight.toFixed(1)} kg` : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">IMC</p>
+                <p className="mt-1 text-xl font-black tabular-nums text-foreground">
+                  {currentBmi ? currentBmi.toFixed(1) : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">% gordura</p>
+                <p className="mt-1 text-xl font-black tabular-nums text-foreground">
+                  {officialFatPct != null ? `${officialFatPct.toFixed(1)}%` : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Massa magra</p>
+                <p className="mt-1 text-xl font-black tabular-nums text-foreground">
+                  {officialLeanKg != null ? `${officialLeanKg.toFixed(1)} kg` : "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2 rounded-xl border border-border/60 bg-background p-3 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Fonte oficial</span>
+                <span className="font-semibold text-foreground">{officialSourceLabel}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Protocolo de dobras</span>
+                <span className="font-semibold text-foreground">{protocol}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Circunferências</span>
+                <span className="font-semibold text-foreground">{filledCircumferences}/20</span>
+              </div>
+            </div>
+
+            {bioAvailable && sfAvailable && effectiveOfficial === null && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                Escolha o método oficial antes de salvar.
+              </div>
+            )}
+          </div>
+        </aside>
 
       </div>
     </div>

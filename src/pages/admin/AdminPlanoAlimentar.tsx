@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ArrowLeft, Plus, Save, Loader2, FileText, Mail, Zap, Soup, ChevronUp, ChevronDown,
-  AlertTriangle, TrendingDown, TrendingUp, Info, LayoutList, Printer, Copy, ShoppingCart,
+  AlertTriangle, TrendingDown, TrendingUp, Info, LayoutList, Printer, Copy, ShoppingCart, MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -890,6 +890,13 @@ export default function AdminPlanoAlimentar() {
     goalKcal:     plan.daily_calories,
     weightKg:     latestMeasurement?.weight,
   });
+  const kcalDelta = plan.daily_calories ? Math.round(grand.cal - plan.daily_calories) : null;
+  const filledMeals = meals.filter((meal) => hasFilledFoods(meal.foods)).length;
+  const sidebarMacroRows = [
+    { label: "Proteínas", actual: grand.prot, goal: macroGoals?.protein_g, unit: "g" },
+    { label: "Carboidratos", actual: grand.carbs, goal: macroGoals?.carbs_g, unit: "g" },
+    { label: "Gorduras", actual: grand.fat, goal: macroGoals?.fat_g, unit: "g" },
+  ];
 
   if (loading || ctxLoading) {
     return (
@@ -906,8 +913,8 @@ export default function AdminPlanoAlimentar() {
     <div className="min-h-screen bg-background">
 
       {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <header className="sticky top-0 z-30 bg-card border-b border-border">
-        <div className="max-w-5xl mx-auto px-3 sm:px-6 flex items-center gap-2 sm:gap-3 py-3">
+      <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/90">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 flex items-center gap-2 sm:gap-3 py-2.5">
           <Link to={`/admin/pacientes/${id}?tab=planos`}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 p-1">
             <ArrowLeft size={16} />
@@ -969,11 +976,13 @@ export default function AdminPlanoAlimentar() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0 space-y-4">
 
         {/* â”€â”€ Metadados â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-        <section className="bg-card border border-border/60 rounded-lg p-5">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-4">Dados do Plano</p>
+        <section className="bg-card border border-border/60 rounded-2xl p-4 shadow-sm">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-3">Dados do plano</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Início</Label>
@@ -1006,7 +1015,7 @@ export default function AdminPlanoAlimentar() {
         <ClinicalInsightsPanel
           alerts={consistencyAlerts}
           defaultOpen={false}
-          title="Alertas de Inconsistencia do Plano"
+          title="Alertas de inconsistência do plano"
           subtitle="Gerado automaticamente a partir da distribuição, metas e refeições do plano."
         />
 
@@ -1087,7 +1096,7 @@ export default function AdminPlanoAlimentar() {
                     onChange={e => setAdjustment(Number(e.target.value))}
                     className="w-full accent-primary cursor-pointer" />
                   <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
-                    <span>âˆ’40% (corte agressivo)</span><span>+40% (bulk)</span>
+                    <span>−40% (corte agressivo)</span><span>+40% (bulk)</span>
                   </div>
                 </div>
               </div>
@@ -1316,44 +1325,57 @@ export default function AdminPlanoAlimentar() {
 
         {/* Refeições */}
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-primary">
-              Refeições — {meals.length} cadastradas
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => {
-                setTemplateScope("plan");
-                setTemplateTargetMealIndex(null);
-                setShowTemplate(true);
-              }}
-                className="flex items-center gap-1.5 text-xs font-medium border border-border rounded-lg px-3 py-1.5 text-foreground hover:bg-muted/60 transition-colors">
-                <LayoutList size={13} />
-                <span className="hidden sm:inline">Importar dieta</span>
-                <span className="sm:hidden">Dieta</span>
-              </button>
-              <button type="button" onClick={openSavePlanTemplateDialog}
-                className="flex items-center gap-1.5 text-xs font-medium border border-border rounded-lg px-3 py-1.5 text-foreground hover:bg-muted/60 transition-colors">
-                <Save size={13} />
-                <span className="hidden sm:inline">Salvar dieta como modelo</span>
-                <span className="sm:hidden">Salvar modelo</span>
-              </button>
-              <button type="button" onClick={() => setShowMealPresetImport(true)}
-                className="flex items-center gap-1.5 text-xs font-medium border border-border rounded-lg px-3 py-1.5 text-foreground hover:bg-muted/60 transition-colors">
-                <Soup size={13} />
-                <span className="hidden sm:inline">Importar refeição</span>
-                <span className="sm:hidden">Refeição</span>
-              </button>
-              <button type="button" onClick={() => setShowShoppingList(true)}
-                className="flex items-center gap-1.5 text-xs font-medium border border-border rounded-lg px-3 py-1.5 text-foreground hover:bg-muted/60 transition-colors">
-                <ShoppingCart size={13} />
-                <span className="hidden sm:inline">Lista do mês</span>
-                <span className="sm:hidden">Compras</span>
-              </button>
-              <button type="button" onClick={addMeal}
-                className="flex items-center gap-1.5 text-xs font-medium border border-border rounded-lg px-3 py-1.5 text-foreground hover:bg-muted/60 transition-colors">
+          <div className="mb-3 flex flex-col gap-3 rounded-2xl border border-border/60 bg-card p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary">
+                Refeições — {meals.length} cadastradas
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Organize as refeições do plano e use modelos/importações quando precisar acelerar.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <button
+                type="button"
+                onClick={addMeal}
+                className="flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+              >
                 <Plus size={13} />
                 Nova refeição
               </button>
+
+              <details className="relative">
+                <summary className="flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-xl border border-border px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted/60 [&::-webkit-details-marker]:hidden">
+                  <MoreHorizontal size={14} />
+                  Ações
+                </summary>
+                <div className="absolute right-0 z-20 mt-2 w-60 overflow-hidden rounded-2xl border border-border bg-popover p-1.5 shadow-xl">
+                  <button type="button" onClick={() => {
+                    setTemplateScope("plan");
+                    setTemplateTargetMealIndex(null);
+                    setShowTemplate(true);
+                  }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-foreground hover:bg-muted/70">
+                    <LayoutList size={13} />
+                    Importar dieta modelo
+                  </button>
+                  <button type="button" onClick={openSavePlanTemplateDialog}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-foreground hover:bg-muted/70">
+                    <Save size={13} />
+                    Salvar dieta como modelo
+                  </button>
+                  <button type="button" onClick={() => setShowMealPresetImport(true)}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-foreground hover:bg-muted/70">
+                    <Soup size={13} />
+                    Importar refeição pronta
+                  </button>
+                  <button type="button" onClick={() => setShowShoppingList(true)}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-foreground hover:bg-muted/70">
+                    <ShoppingCart size={13} />
+                    Gerar lista do mês
+                  </button>
+                </div>
+              </details>
             </div>
           </div>
 
@@ -1438,6 +1460,101 @@ export default function AdminPlanoAlimentar() {
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             {saving ? "Salvando..." : "Salvar plano alimentar"}
           </Button>
+        </div>
+          </div>
+
+          <aside className="xl:sticky xl:top-20 h-fit space-y-3">
+            <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Resumo do plano</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Acompanhamento rápido enquanto monta a dieta.</p>
+                </div>
+                <span className={cn(
+                  "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
+                  autosaveState === "error" ? "bg-destructive/10 text-destructive" :
+                    autosaveState === "saving" ? "bg-primary/10 text-primary" :
+                      "bg-muted text-muted-foreground"
+                )}>
+                  Autosave
+                </span>
+              </div>
+
+              <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Calorias</p>
+                    <p className="mt-1 text-3xl font-black leading-none tabular-nums text-foreground">
+                      {grand.cal > 0 ? n0(grand.cal) : "—"}
+                    </p>
+                  </div>
+                  <p className="text-right text-xs text-muted-foreground">
+                    meta<br />
+                    <span className="font-bold text-foreground">{plan.daily_calories ? `${n0(plan.daily_calories)} kcal` : "—"}</span>
+                  </p>
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-border">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      plan.daily_calories && grand.cal > plan.daily_calories ? "bg-destructive" : "bg-primary"
+                    )}
+                    style={{ width: `${goalPct}%` }}
+                  />
+                </div>
+                {kcalDelta != null && (
+                  <p className={cn(
+                    "mt-2 text-xs font-semibold tabular-nums",
+                    kcalDelta > 0 ? "text-destructive" : kcalDelta < 0 ? "text-amber-600" : "text-primary"
+                  )}>
+                    {kcalDelta === 0 ? "Na meta calórica" : `${kcalDelta > 0 ? "+" : ""}${kcalDelta} kcal vs. meta`}
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {sidebarMacroRows.map((row) => {
+                  const pct = row.goal && row.goal > 0 ? Math.min(100, (row.actual / row.goal) * 100) : 0;
+                  return (
+                    <div key={row.label} className="rounded-xl border border-border/60 bg-background p-3">
+                      <div className="flex items-center justify-between gap-3 text-xs">
+                        <span className="font-semibold text-foreground">{row.label}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {row.actual > 0 ? n1(row.actual) : "—"}{row.unit}
+                          {row.goal ? ` / ${n1(row.goal)}${row.unit}` : ""}
+                        </span>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border">
+                        <div className="h-full rounded-full bg-primary/80 transition-all duration-500" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Checklist</p>
+              <div className="mt-3 space-y-2 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Refeições com alimentos</span>
+                  <span className="font-semibold text-foreground">{filledMeals}/{meals.length}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Alertas clínicos</span>
+                  <span className="font-semibold text-foreground">{clinicalAlerts.length}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Inconsistências</span>
+                  <span className="font-semibold text-foreground">{consistencyAlerts.length}</span>
+                </div>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-muted-foreground">Salvamento</span>
+                  <span className={cn("max-w-[170px] text-right font-semibold", autosaveToneClass)}>{autosaveLabel}</span>
+                </div>
+              </div>
+            </section>
+          </aside>
         </div>
       </main>
 

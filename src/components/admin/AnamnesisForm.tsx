@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Loader2, Save, Target, Salad, Dumbbell, Moon, Stethoscope, FlaskConical } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock3, Loader2, Save, Target, Salad, Dumbbell, Moon, Stethoscope, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
@@ -25,21 +25,42 @@ import {
 function Section({
   icon,
   title,
+  summary,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
+  summary?: string;
   children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(true);
+
   return (
-    <div className="border border-border rounded-md overflow-hidden bg-card">
-      <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center gap-2.5">
-        <span className="text-muted-foreground shrink-0">{icon}</span>
-        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-          {title}
-        </p>
-      </div>
-      <div className="divide-y divide-border/40">{children}</div>
+    <div className="border border-border/70 rounded-2xl overflow-hidden bg-card shadow-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="w-full px-5 py-3 border-b border-border/60 bg-muted/20 flex items-center justify-between gap-3 text-left transition-colors hover:bg-muted/35"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="text-primary shrink-0">{icon}</span>
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-widest text-foreground">
+              {title}
+            </p>
+            {summary && (
+              <p className="mt-0.5 truncate text-[11px] font-medium text-muted-foreground">
+                {summary}
+              </p>
+            )}
+          </div>
+        </div>
+        <ChevronDown
+          size={15}
+          className={cn("shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+        />
+      </button>
+      {open && <div className="divide-y divide-border/40">{children}</div>}
     </div>
   );
 }
@@ -176,13 +197,18 @@ export function AnamnesisForm({
   const [sd, setSd] = useState<AnamnesisStructured>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savedSignature, setSavedSignature] = useState("{}");
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAnamnesis(pid).then((data) => {
+      const structuredData = data?.structured_data ?? {};
       if (data) {
         setAnamnesisId(data.id ?? null);
-        setSd(data.structured_data ?? {});
+        setSd(structuredData);
       }
+      setSavedSignature(JSON.stringify(structuredData));
+      setLastSavedAt(data?.updated_at ?? data?.created_at ?? null);
       setLoading(false);
     });
   }, [pid]);
@@ -199,16 +225,42 @@ export function AnamnesisForm({
       structured_data: sd,
       ...(anamnesisId ? { id: anamnesisId } : {}),
     };
-    const result = await upsertAnamnesis(payload);
-    if (typeof result === "string") {
-      toast.error("Falha ao salvar: " + result);
-    } else {
-      if (!anamnesisId) setAnamnesisId(result.id);
-      toast.success("Anamnese salva!");
-      onSaved?.({ ...payload, id: result.id });
+    try {
+      const result = await upsertAnamnesis(payload);
+      if (typeof result === "string") {
+        toast.error("Falha ao salvar: " + result);
+      } else {
+        if (!anamnesisId) setAnamnesisId(result.id);
+        setSavedSignature(JSON.stringify(sd));
+        setLastSavedAt(result.updated_at ?? new Date().toISOString());
+        toast.success("Anamnese salva!");
+        onSaved?.({ ...payload, id: result.id });
+      }
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
+
+  const hasChanges = JSON.stringify(sd) !== savedSignature;
+  const filledCount = Object.entries(sd).filter(([, value]) => {
+    if (typeof value === "boolean") return value;
+    return String(value ?? "").trim().length > 0;
+  }).length;
+  const clinicalAlertCount = [
+    sd.clinical_treatment,
+    sd.clinical_medications,
+    sd.clinical_family_history,
+    sd.clinical_hypertension,
+    sd.clinical_diabetes,
+    sd.clinical_dyslipidemia,
+    sd.clinical_hypothyroidism,
+    sd.clinical_pcos,
+    sd.clinical_mental_health,
+    Boolean(String(sd.clinical_allergies ?? "").trim()),
+  ].filter(Boolean).length;
+  const savedAtLabel = lastSavedAt
+    ? new Date(lastSavedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : null;
 
   if (loading) {
     return (
@@ -220,9 +272,54 @@ export function AnamnesisForm({
 
   return (
     <div className="space-y-4">
+      <div className="sticky top-0 z-20 -mx-2 rounded-2xl border border-border/70 bg-background/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-primary">Anamnese estruturada</p>
+              {clinicalAlertCount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                  <AlertTriangle size={11} />
+                  {clinicalAlertCount} alerta{clinicalAlertCount !== 1 ? "s" : ""} clínico{clinicalAlertCount !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>{filledCount} resposta{filledCount !== 1 ? "s" : ""} preenchida{filledCount !== 1 ? "s" : ""}</span>
+              <span>Objetivo: {sd.goal_primary ? String(sd.goal_primary).replaceAll("_", " ") : "não definido"}</span>
+              <span>Treino: {sd.training_active ? "ativo" : "não informado"}</span>
+              <span>Sono: {sd.habit_sleep ? String(sd.habit_sleep) : "não informado"}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <span className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+              hasChanges
+                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+            )}>
+              {hasChanges ? <Clock3 size={12} /> : <CheckCircle2 size={12} />}
+              {hasChanges ? "Alterações não salvas" : savedAtLabel ? `Salvo às ${savedAtLabel}` : "Tudo salvo"}
+            </span>
+            <Button
+              onClick={handleSave}
+              disabled={saving || !hasChanges}
+              className="h-9 rounded-xl px-4 font-bold gap-2"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {saving ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* ── 1. OBJETIVO ──────────────────────────────────────────────────── */}
-      <Section icon={<Target size={14} />} title="Objetivo">
+      <Section
+        icon={<Target size={14} />}
+        title="Objetivo"
+        summary={sd.goal_primary ? String(sd.goal_primary).replaceAll("_", " ") : "Objetivo principal ainda não definido"}
+      >
         <SelectRow
           label="Objetivo principal"
           field="goal_primary"
@@ -244,7 +341,11 @@ export function AnamnesisForm({
       </Section>
 
       {/* ── 2. DIETA ─────────────────────────────────────────────────────── */}
-      <Section icon={<Salad size={14} />} title="Dieta & Alimentação">
+      <Section
+        icon={<Salad size={14} />}
+        title="Dieta & Alimentação"
+        summary={`${sd.diet_meals_per_day ? `${sd.diet_meals_per_day} refeições/dia` : "Refeições não informadas"} · ${sd.diet_water_liters ?? "água não informada"}`}
+      >
         <BoolRow
           label="Consome frutas e hortaliças diariamente"
           description="Pelo menos 2 porções de fruta + vegetais por dia"
@@ -297,7 +398,11 @@ export function AnamnesisForm({
       </Section>
 
       {/* ── 3. TREINO ────────────────────────────────────────────────────── */}
-      <Section icon={<Dumbbell size={14} />} title="Treino & Atividade Física">
+      <Section
+        icon={<Dumbbell size={14} />}
+        title="Treino & Atividade Física"
+        summary={sd.training_active ? `Ativo${sd.training_frequency ? ` · ${sd.training_frequency}` : ""}` : "Sem treino regular informado"}
+      >
         <BoolRow
           label="Pratica exercício físico regularmente"
           description="Ao menos 1 vez por semana de forma estruturada"
@@ -347,7 +452,11 @@ export function AnamnesisForm({
       </Section>
 
       {/* ── 4. HÁBITOS & LIFESTYLE ───────────────────────────────────────── */}
-      <Section icon={<Moon size={14} />} title="Hábitos & Estilo de Vida">
+      <Section
+        icon={<Moon size={14} />}
+        title="Hábitos & Estilo de Vida"
+        summary={`Sono: ${sd.habit_sleep ?? "não informado"} · Estresse: ${sd.habit_stress ?? "não informado"}`}
+      >
         <BoolRow label="Tabagista" field="habit_smokes" data={sd} set={set} />
         <SelectRow
           label="Consumo de álcool"
@@ -401,7 +510,11 @@ export function AnamnesisForm({
       </Section>
 
       {/* ── 5. CLÍNICO / PATOLOGIAS ──────────────────────────────────────── */}
-      <Section icon={<Stethoscope size={14} />} title="Clínico / Patologias">
+      <Section
+        icon={<Stethoscope size={14} />}
+        title="Clínico / Patologias"
+        summary={clinicalAlertCount > 0 ? `${clinicalAlertCount} alerta${clinicalAlertCount !== 1 ? "s" : ""} clínico${clinicalAlertCount !== 1 ? "s" : ""}` : "Sem alertas clínicos marcados"}
+      >
         <BoolRow label="Está em tratamento médico atualmente"      field="clinical_treatment"     data={sd} set={set} />
         <BoolRow label="Faz uso de medicação contínua"             field="clinical_medications"   data={sd} set={set} />
         {sd.clinical_medications && (
@@ -460,7 +573,13 @@ export function AnamnesisForm({
       </Section>
 
       {/* ── 6. EXAMES LABORATORIAIS ──────────────────────────────────────── */}
-      <Section icon={<FlaskConical size={14} />} title="Exames Laboratoriais — Histórico">
+      <Section
+        icon={<FlaskConical size={14} />}
+        title="Exames Laboratoriais — Histórico"
+        summary={[sd.exam_anemia, sd.exam_low_b12, sd.exam_low_vitd, sd.exam_low_iron].filter(Boolean).length > 0
+          ? `${[sd.exam_anemia, sd.exam_low_b12, sd.exam_low_vitd, sd.exam_low_iron].filter(Boolean).length} histórico${[sd.exam_anemia, sd.exam_low_b12, sd.exam_low_vitd, sd.exam_low_iron].filter(Boolean).length !== 1 ? "s" : ""} marcado${[sd.exam_anemia, sd.exam_low_b12, sd.exam_low_vitd, sd.exam_low_iron].filter(Boolean).length !== 1 ? "s" : ""}`
+          : "Sem alterações laboratoriais marcadas"}
+      >
         <BoolRow
           label="Histórico de anemia"
           description="Hemoglobina ou eritrócitos abaixo do valor de referência"
