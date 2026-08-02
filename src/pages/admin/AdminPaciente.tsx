@@ -7,17 +7,23 @@ import {
   Activity,
   BookOpen,
   FileText,
+  LayoutDashboard,
   Save,
   Plus,
   Trash2,
   Loader2,
   Calendar,
+  CalendarCheck,
   ChevronRight,
+  CheckCircle2,
+  CircleDot,
   Scale,
+  AlertCircle,
   Camera,
   X,
   ImageIcon,
   Eye,
+  FlaskConical,
   MapPin,
   MessageSquareQuote,
   Pencil,
@@ -25,6 +31,8 @@ import {
   Send,
   Copy,
   Clock3,
+  Pill,
+  Utensils,
   type LucideIcon,
 } from "lucide-react";
 import { ExamProtocolsTab } from "@/components/admin/ExamProtocolsTab";
@@ -61,11 +69,18 @@ import {
   fetchPatientReports,
   upsertPatientReport,
   deletePatientReport,
+  fetchBookings,
+  isPendingBookingExpired,
+  fetchExamRequests,
+  fetchPrescriptions,
   type Patient,
   type Measurement,
   type MealPlan,
   type PatientPhoto,
   type PatientReport,
+  type Booking,
+  type PatientExamRequest,
+  type SavedPrescription,
 } from "@/lib/supabase";
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -196,9 +211,10 @@ const formatSavedTime = (value?: string | null) =>
 
 // â”€â”€â”€ Tab config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-type TabKey = "perfil" | "anamnese" | "relatorio" | "antropometria" | "planos" | "protocolos" | "prescricao";
+type TabKey = "central" | "perfil" | "anamnese" | "relatorio" | "antropometria" | "planos" | "protocolos" | "prescricao";
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+  { key: "central",      label: "Central",              icon: <LayoutDashboard size={16} /> },
   { key: "perfil",       label: "Perfil",               icon: <User size={16} /> },
   { key: "anamnese",     label: "Anamnese",              icon: <ClipboardList size={16} /> },
   { key: "relatorio",    label: "Relatório",            icon: <FileText size={16} /> },
@@ -240,7 +256,7 @@ export default function AdminPaciente() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = (searchParams.get("tab") as TabKey) || "perfil";
+  const activeTab = (searchParams.get("tab") as TabKey) || "central";
 
   // â”€â”€ ConsultationContext â€” ctxSetAnamnesis passado para AnamnesisForm â”€â”€â”€
   const { setAnamnesis: ctxSetAnamnesis } = useConsultation();
@@ -498,7 +514,7 @@ export default function AdminPaciente() {
           <ChevronRight size={12} className="opacity-50" />
           <span className="text-foreground/70">{patient.name || "Prontuário"}</span>
           <ChevronRight size={12} className="opacity-50" />
-          <span className="text-primary">{TABS.find((tab) => tab.key === activeTab)?.label ?? "Perfil"}</span>
+          <span className="text-primary">{TABS.find((tab) => tab.key === activeTab)?.label ?? "Central"}</span>
         </div>
         
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-3">
@@ -586,6 +602,9 @@ export default function AdminPaciente() {
       {activeTab !== "antropometria" && (
         <div className="bg-card border border-border shadow-sm rounded-[24px] overflow-hidden">
           <div className="p-6 sm:p-8">
+            {activeTab === "central" && (
+              <ClinicalCentralTab patient={patient} onNavigateTab={setTab} />
+            )}
             {activeTab === "perfil" && (
               <PerfilTab patient={patient} onSaved={setPatient} />
             )}
@@ -618,6 +637,450 @@ export default function AdminPaciente() {
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // TAB 1: Perfil (Cadastro Básico)
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+interface ClinicalCentralData {
+  measurements: Measurement[];
+  mealPlans: MealPlan[];
+  reports: PatientReport[];
+  examRequests: PatientExamRequest[];
+  prescriptions: SavedPrescription[];
+  bookings: Booking[];
+}
+
+interface ClinicalTimelineEvent {
+  id: string;
+  dateValue: string;
+  timeValue?: string | null;
+  title: string;
+  description: string;
+  badge: string;
+  icon: LucideIcon;
+  toneClass: string;
+  actionTab: TabKey;
+}
+
+const emptyClinicalData: ClinicalCentralData = {
+  measurements: [],
+  mealPlans: [],
+  reports: [],
+  examRequests: [],
+  prescriptions: [],
+  bookings: [],
+};
+
+const dateOnly = (value?: string | null) => {
+  if (!value) return null;
+  return value.includes("T") ? value.split("T")[0] : value;
+};
+
+const dateTimeValue = (date?: string | null, time?: string | null) => {
+  if (!date) return 0;
+  const normalizedDate = dateOnly(date);
+  const iso = time ? `${normalizedDate}T${time}` : `${normalizedDate}T12:00:00`;
+  const parsed = new Date(iso).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatClinicalDate = (date?: string | null, time?: string | null) => {
+  const normalizedDate = dateOnly(date);
+  if (!normalizedDate) return "Sem data";
+  const label = new Date(`${normalizedDate}T12:00:00`).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  return time ? `${label} às ${time.slice(0, 5)}` : label;
+};
+
+const bookingStatusLabel = (status?: Booking["status"]) => {
+  const map: Record<NonNullable<Booking["status"]>, string> = {
+    pending: "Pendente",
+    confirmed: "Confirmada",
+    completed: "Concluída",
+    no_show: "Falta",
+    cancelled: "Cancelada",
+  };
+  return status ? map[status] : "Agendada";
+};
+
+const paymentStatusLabel = (status?: Booking["payment_status"]) => {
+  const map: Record<NonNullable<Booking["payment_status"]>, string> = {
+    pending: "Pagamento pendente",
+    paid: "Pagamento aprovado",
+    cancelled: "Pagamento cancelado",
+    free: "Sem cobrança",
+  };
+  return status ? map[status] : "Pagamento não informado";
+};
+
+function ClinicalCentralTab({
+  patient,
+  onNavigateTab,
+}: {
+  patient: Patient;
+  onNavigateTab: (tab: TabKey) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<ClinicalCentralData>(emptyClinicalData);
+
+  useEffect(() => {
+    if (!patient.id) return;
+    let active = true;
+    setLoading(true);
+
+    Promise.all([
+      fetchMeasurements(patient.id),
+      fetchMealPlans(patient.id),
+      fetchPatientReports(patient.id),
+      fetchExamRequests(patient.id),
+      fetchPrescriptions(patient.id),
+      fetchBookings(),
+    ])
+      .then(([measurements, mealPlans, reports, examRequests, prescriptions, allBookings]) => {
+        if (!active) return;
+        const patientEmail = patient.email?.trim().toLowerCase();
+        const patientPhone = patient.phone?.replace(/\D/g, "");
+        const bookings = allBookings.filter((booking) => {
+          if (booking.patient_id === patient.id) return true;
+          const bookingEmail = booking.client_email?.trim().toLowerCase();
+          const bookingPhone = booking.client_phone?.replace(/\D/g, "");
+          return Boolean(
+            (patientEmail && bookingEmail === patientEmail) ||
+            (patientPhone && bookingPhone === patientPhone)
+          );
+        });
+
+        setData({ measurements, mealPlans, reports, examRequests, prescriptions, bookings });
+      })
+      .catch(() => toast.error("Erro ao carregar a central clínica."))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [patient.id, patient.email, patient.phone]);
+
+  const now = Date.now();
+  const today = todayISO();
+  const latestMeasurement = data.measurements[0];
+  const latestReport = data.reports[0];
+  const activePlan = data.mealPlans.find((plan) => {
+    const startsOk = !plan.start_date || plan.start_date <= today;
+    const endsOk = !plan.end_date || plan.end_date >= today;
+    return startsOk && endsOk;
+  });
+  const pendingExamRequests = data.examRequests.filter((request) => request.status !== "completed");
+  const upcomingBookings = data.bookings
+    .filter((booking) => !["completed", "cancelled", "no_show"].includes(booking.status ?? ""))
+    .filter((booking) => !isPendingBookingExpired(booking))
+    .filter((booking) => dateTimeValue(booking.appointment_date, booking.appointment_time) >= now)
+    .sort((a, b) => dateTimeValue(a.appointment_date, a.appointment_time) - dateTimeValue(b.appointment_date, b.appointment_time));
+  const nextBooking = upcomingBookings[0];
+
+  const pendingActions = [
+    !activePlan
+      ? {
+          id: "plan",
+          title: "Paciente sem plano alimentar ativo",
+          description: "Crie ou vincule um plano para manter a conduta registrada.",
+          tab: "planos" as TabKey,
+          icon: Utensils,
+        }
+      : null,
+    !latestMeasurement
+      ? {
+          id: "measurement",
+          title: "Sem avaliação antropométrica registrada",
+          description: "Registre medidas para embasar relatórios, estratégias e evolução.",
+          tab: "antropometria" as TabKey,
+          icon: Activity,
+        }
+      : null,
+    pendingExamRequests.length > 0
+      ? {
+          id: "exams",
+          title: `${pendingExamRequests.length} pedido(s) de exame pendente(s)`,
+          description: "Confira se os resultados já podem ser lançados ou enviados.",
+          tab: "protocolos" as TabKey,
+          icon: FlaskConical,
+        }
+      : null,
+    !nextBooking
+      ? {
+          id: "booking",
+          title: "Nenhum retorno futuro encontrado",
+          description: "Se o acompanhamento continua, programe a próxima sessão.",
+          tab: "perfil" as TabKey,
+          icon: CalendarCheck,
+        }
+      : null,
+    !latestReport
+      ? {
+          id: "report",
+          title: "Sem relatório clínico registrado",
+          description: "Documente a evolução e a conduta em linguagem profissional.",
+          tab: "relatorio" as TabKey,
+          icon: FileText,
+        }
+      : null,
+  ].filter((item): item is NonNullable<typeof item> => item !== null);
+
+  const timeline: ClinicalTimelineEvent[] = [
+    ...data.bookings.map((booking) => ({
+      id: `booking-${booking.id ?? booking.booking_group_id}-${booking.session_number}`,
+      dateValue: booking.appointment_date,
+      timeValue: booking.appointment_time,
+      title: booking.session_number > 1 ? `Retorno ${booking.session_number - 1}` : "Consulta inicial",
+      description: `${booking.plan_name || "Consulta"} · ${booking.type === "online" ? "Online" : "Presencial"} · ${paymentStatusLabel(booking.payment_status)}`,
+      badge: bookingStatusLabel(booking.status),
+      icon: CalendarCheck,
+      toneClass: booking.status === "completed" ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-blue-700 bg-blue-50 border-blue-100",
+      actionTab: "perfil" as TabKey,
+    })),
+    ...data.measurements.map((measurement) => ({
+      id: `measurement-${measurement.id}`,
+      dateValue: measurement.assessment_date,
+      title: "Avaliação antropométrica",
+      description: [
+        measurement.weight != null ? `${measurement.weight} kg` : null,
+        measurement.body_fat != null ? `${measurement.body_fat}% gordura` : null,
+        measurement.waist != null ? `cintura ${measurement.waist} cm` : null,
+      ].filter(Boolean).join(" · ") || "Medidas registradas no prontuário.",
+      badge: "Medidas",
+      icon: Activity,
+      toneClass: "text-primary bg-primary/10 border-primary/10",
+      actionTab: "antropometria" as TabKey,
+    })),
+    ...data.mealPlans.map((plan) => ({
+      id: `plan-${plan.id}`,
+      dateValue: plan.start_date ?? plan.created_at ?? today,
+      title: plan.title || "Plano alimentar",
+      description: [
+        plan.daily_calories ? `${plan.daily_calories} kcal/dia` : null,
+        plan.strategy_type ? `estratégia: ${plan.strategy_type}` : null,
+        plan.end_date ? `até ${formatClinicalDate(plan.end_date)}` : null,
+      ].filter(Boolean).join(" · ") || "Plano alimentar criado.",
+      badge: "Plano",
+      icon: Utensils,
+      toneClass: "text-emerald-700 bg-emerald-50 border-emerald-100",
+      actionTab: "planos" as TabKey,
+    })),
+    ...data.examRequests.map((request) => ({
+      id: `exam-${request.id}`,
+      dateValue: request.created_at ?? today,
+      title: request.status === "completed" ? "Resultados de exames lançados" : "Pedido de exames solicitado",
+      description: `${request.items?.length ?? 0} exame(s) · ${request.results?.length ?? 0} resultado(s) registrado(s)`,
+      badge: request.status === "completed" ? "Concluído" : "Pendente",
+      icon: FlaskConical,
+      toneClass: request.status === "completed" ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-amber-700 bg-amber-50 border-amber-100",
+      actionTab: "protocolos" as TabKey,
+    })),
+    ...data.reports.map((report) => ({
+      id: `report-${report.id}`,
+      dateValue: report.report_date,
+      title: report.title || "Relatório clínico",
+      description: `${report.report_text.trim().length} caracteres · atualizado ${formatClinicalDate(report.updated_at ?? report.created_at ?? report.report_date)}`,
+      badge: "Relatório",
+      icon: FileText,
+      toneClass: "text-slate-700 bg-slate-50 border-slate-100",
+      actionTab: "relatorio" as TabKey,
+    })),
+    ...data.prescriptions.map((prescription) => ({
+      id: `prescription-${prescription.id}`,
+      dateValue: prescription.created_at,
+      title: "Prescrição magistral",
+      description: `${prescription.blocks.length} bloco(s) · ${prescription.blocks.reduce((acc, block) => acc + block.items.length, 0)} ativo(s)`,
+      badge: "Prescrição",
+      icon: Pill,
+      toneClass: "text-violet-700 bg-violet-50 border-violet-100",
+      actionTab: "prescricao" as TabKey,
+    })),
+  ].sort((a, b) => dateTimeValue(b.dateValue, b.timeValue) - dateTimeValue(a.dateValue, a.timeValue));
+
+  const summaryCards = [
+    {
+      label: "Próxima consulta",
+      value: nextBooking ? formatClinicalDate(nextBooking.appointment_date, nextBooking.appointment_time) : "Não agendada",
+      detail: nextBooking ? `${nextBooking.plan_name} · ${bookingStatusLabel(nextBooking.status)}` : "Sem retorno futuro encontrado",
+      icon: CalendarCheck,
+      tab: "perfil" as TabKey,
+    },
+    {
+      label: "Plano ativo",
+      value: activePlan?.title ?? "Sem plano ativo",
+      detail: activePlan?.daily_calories ? `${activePlan.daily_calories} kcal/dia` : "Conduta alimentar não vinculada",
+      icon: Utensils,
+      tab: "planos" as TabKey,
+    },
+    {
+      label: "Última avaliação",
+      value: latestMeasurement ? formatClinicalDate(latestMeasurement.assessment_date) : "Sem medidas",
+      detail: latestMeasurement?.weight ? `${latestMeasurement.weight} kg${latestMeasurement.body_fat ? ` · ${latestMeasurement.body_fat}% gordura` : ""}` : "Registre antropometria",
+      icon: Activity,
+      tab: "antropometria" as TabKey,
+    },
+    {
+      label: "Exames",
+      value: pendingExamRequests.length > 0 ? `${pendingExamRequests.length} pendente(s)` : "Sem pendências",
+      detail: `${data.examRequests.length} pedido(s) no histórico`,
+      icon: FlaskConical,
+      tab: "protocolos" as TabKey,
+    },
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-muted-foreground">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        Carregando central clínica...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2">
+        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-primary">Central clínica</p>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Visão operacional do paciente</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Resumo dos próximos passos, pendências e histórico clínico em uma linha do tempo única.
+            </p>
+          </div>
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+            <CircleDot size={13} className="text-primary" />
+            {timeline.length} evento{timeline.length === 1 ? "" : "s"} registrado{timeline.length === 1 ? "" : "s"}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {summaryCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <button
+              key={card.label}
+              type="button"
+              onClick={() => onNavigateTab(card.tab)}
+              className="rounded-2xl border border-border bg-background p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-sm"
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span className="rounded-xl bg-primary/10 p-2 text-primary">
+                  <Icon size={18} />
+                </span>
+                <ChevronRight size={15} className="text-muted-foreground/40" />
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">{card.label}</p>
+              <p className="mt-1 line-clamp-2 text-base font-bold text-foreground">{card.value}</p>
+              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{card.detail}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <section className="rounded-3xl border border-border bg-background p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-primary">Pendências</p>
+              <h3 className="mt-1 text-lg font-bold text-foreground">Ações recomendadas</h3>
+            </div>
+            {pendingActions.length === 0 ? (
+              <CheckCircle2 size={20} className="text-emerald-600" />
+            ) : (
+              <AlertCircle size={20} className="text-amber-600" />
+            )}
+          </div>
+
+          {pendingActions.length === 0 ? (
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-800">
+              Tudo organizado: não há pendências clínicas evidentes para este paciente.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pendingActions.map((action) => {
+                const Icon = action.icon;
+                return (
+                  <button
+                    key={action.id}
+                    type="button"
+                    onClick={() => onNavigateTab(action.tab)}
+                    className="w-full rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/30 hover:bg-primary/5"
+                  >
+                    <div className="flex gap-3">
+                      <span className="mt-0.5 rounded-xl bg-amber-50 p-2 text-amber-700">
+                        <Icon size={16} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-bold text-foreground">{action.title}</span>
+                        <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{action.description}</span>
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-3xl border border-border bg-background p-5">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-primary">Linha do tempo</p>
+              <h3 className="mt-1 text-lg font-bold text-foreground">Histórico clínico unificado</h3>
+            </div>
+            <p className="text-xs text-muted-foreground">Mostrando os 14 eventos mais recentes</p>
+          </div>
+
+          {timeline.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-8 text-center">
+              <Clock3 className="mx-auto mb-3 text-muted-foreground/40" size={28} />
+              <p className="text-sm font-semibold text-foreground">Nenhum evento clínico registrado ainda.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Crie uma consulta, plano, avaliação ou relatório para iniciar a linha do tempo.</p>
+            </div>
+          ) : (
+            <div className="relative space-y-4 before:absolute before:left-[18px] before:top-2 before:h-[calc(100%-16px)] before:w-px before:bg-border">
+              {timeline.slice(0, 14).map((event) => {
+                const Icon = event.icon;
+                return (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => onNavigateTab(event.actionTab)}
+                    className="relative flex w-full gap-4 rounded-2xl p-2 text-left transition-colors hover:bg-muted/40"
+                  >
+                    <span className={cn("relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border", event.toneClass)}>
+                      <Icon size={16} />
+                    </span>
+                    <span className="min-w-0 flex-1 rounded-2xl border border-border bg-card px-4 py-3">
+                      <span className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <span className="min-w-0">
+                          <span className="block text-sm font-bold text-foreground">{event.title}</span>
+                          <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{event.description}</span>
+                        </span>
+                        <span className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            {event.badge}
+                          </span>
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            {formatClinicalDate(event.dateValue, event.timeValue)}
+                          </span>
+                        </span>
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
 
 function PerfilTab({
   patient,
