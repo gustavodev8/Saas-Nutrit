@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Loader2,
   X, User,
@@ -16,7 +16,7 @@ import {
   type Booking, type ConsultationRecord, type RecordFile, type Patient,
   type BookingPaymentStatus
 } from "@/lib/supabase";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useContent } from "@/contexts/ContentContext";
 import { toast } from "@/hooks/use-toast";
 import { calcBMI, normalizePersonName } from "./agendamentos/bookingDateUtils";
@@ -52,6 +52,8 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 const AdminAgendamentos = () => {
   const { content } = useContent();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const handledNewBookingQueryRef = useRef<string | null>(null);
   const planOptions    = content.loja.plans.map(p => p.name);
   const onlinePlanName = planOptions[0];
   const presencialPlanName = planOptions[1];
@@ -196,6 +198,7 @@ const AdminAgendamentos = () => {
   const [manualTime, setManualTime]       = useState("");
   const [newSessions, setNewSessions]     = useState(1);
   const [newNotes, setNewNotes]           = useState("");
+  const [newBookingOrigin, setNewBookingOrigin] = useState<"manual" | "central-return">("manual");
   const [savingNew, setSavingNew]         = useState(false);
 
   // Availability calendar for manual modal
@@ -277,10 +280,61 @@ const AdminAgendamentos = () => {
     setNewPaymentStatus("pending");
     setManualDate(""); setManualTime("");
     setNewSessions(1); setNewNotes("");
+    setNewBookingOrigin("manual");
     setModalCalYear(new Date().getFullYear());
     setModalCalMonth(new Date().getMonth());
     setNewModal(true);
   };
+
+  useEffect(() => {
+    const intent = searchParams.get("new");
+    const patientId = searchParams.get("patientId");
+    if (intent !== "return" || !patientId || patients.length === 0) return;
+
+    const clearReturnShortcutParams = () => {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("new");
+      nextParams.delete("patientId");
+      setSearchParams(nextParams, { replace: true });
+    };
+
+    const queryKey = `${intent}:${patientId}`;
+    if (handledNewBookingQueryRef.current === queryKey) return;
+
+    const patient = patients.find((item) => item.id === Number(patientId));
+    if (!patient) {
+      handledNewBookingQueryRef.current = queryKey;
+      toast({
+        title: "Paciente não encontrado para pré-preenchimento.",
+        description: "A agenda foi aberta normalmente para criação manual.",
+      });
+      clearReturnShortcutParams();
+      return;
+    }
+
+    handledNewBookingQueryRef.current = queryKey;
+    setNewName(patient.name);
+    setNewEmail(patient.email || "");
+    setNewPhone(patient.phone || "");
+    setSelectedPatientId(patient.id ? String(patient.id) : "");
+    setIsManualEntry(false);
+    setPatientSearch(patient.name);
+    setIgnoredExactPatientName("");
+    setNewPlan("");
+    setNewCustomPlan("");
+    setNewType("online");
+    setManualCity("Alagoinhas");
+    setNewPaymentStatus("pending");
+    setManualDate("");
+    setManualTime("");
+    setNewSessions(1);
+    setNewNotes("Retorno agendado pela Central Clínica.");
+    setNewBookingOrigin("central-return");
+    setModalCalYear(new Date().getFullYear());
+    setModalCalMonth(new Date().getMonth());
+    setNewModal(true);
+    clearReturnShortcutParams();
+  }, [patients, searchParams, setSearchParams]);
 
   const handleCreateManual = async () => {
     if (!newName.trim()) { toast({ title: "Informe o nome do paciente.", variant: "destructive" }); return; }
@@ -300,6 +354,10 @@ const AdminAgendamentos = () => {
     setSavingNew(true);
     const groupId = crypto.randomUUID();
     const total   = Math.max(1, Math.min(20, newSessions));
+    const selectedPatient = !isManualEntry && selectedPatientId
+      ? patients.find(patient => patient.id === Number(selectedPatientId))
+      : null;
+    const selectedPatientCpf = selectedPatient?.cpf?.replace(/\D/g, "");
 
     const b: Booking = {
       booking_group_id: groupId,
@@ -308,6 +366,7 @@ const AdminAgendamentos = () => {
       client_name:      newName.trim(),
       client_email:     newEmail.trim(),
       client_phone:     newPhone.trim(),
+      client_cpf:       selectedPatientCpf?.length === 11 ? selectedPatient?.cpf : undefined,
       patient_id:       !isManualEntry && selectedPatientId ? Number(selectedPatientId) : undefined,
       plan_name:        planName,
       plan_index:       0,
@@ -940,6 +999,7 @@ const AdminAgendamentos = () => {
         saving={savingNew}
         onClose={() => setNewModal(false)}
         onCreate={handleCreateManual}
+        origin={newBookingOrigin}
         isManualEntry={isManualEntry}
         onToggleManualEntry={() => {
           const nextManual = !isManualEntry;

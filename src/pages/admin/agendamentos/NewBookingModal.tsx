@@ -15,6 +15,7 @@ interface NewBookingModalProps {
   saving: boolean;
   onClose: () => void;
   onCreate: () => void;
+  origin: "manual" | "central-return";
 
   isManualEntry: boolean;
   onToggleManualEntry: () => void;
@@ -72,6 +73,7 @@ export const NewBookingModal = ({
   saving,
   onClose,
   onCreate,
+  origin,
   isManualEntry,
   onToggleManualEntry,
   patientSearch,
@@ -124,6 +126,7 @@ export const NewBookingModal = ({
   const isPresencial = newPlan === presencialPlanName;
   const isAutoType = isOnline || isPresencial;
   const isProtocol = newPlan !== "" && !isAutoType;
+  const isCentralReturn = origin === "central-return";
 
   const changeMonth = (direction: -1 | 1) => {
     const d = new Date(modalCalYear, modalCalMonth + direction, 1);
@@ -201,8 +204,10 @@ export const NewBookingModal = ({
               <CalendarPlus className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground">Nova consulta</p>
-              <p className="text-xs text-muted-foreground">Criação manual pelo admin</p>
+              <p className="text-sm font-semibold text-foreground">{isCentralReturn ? "Agendar retorno" : "Nova consulta"}</p>
+              <p className="text-xs text-muted-foreground">
+                {isCentralReturn ? "Paciente pré-preenchido pela Central Clínica" : "Criação manual pelo admin"}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground">

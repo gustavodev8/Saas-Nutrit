@@ -857,7 +857,7 @@ function ClinicalCentralTab({
           id: "booking",
           title: "Agendar retorno",
           description: "Nenhuma consulta futura encontrada.",
-          route: "/admin/agendamentos",
+          route: patient.id ? `/admin/agendamentos?new=return&patientId=${patient.id}` : "/admin/agendamentos",
           icon: CalendarCheck,
           priority: 10,
         }
