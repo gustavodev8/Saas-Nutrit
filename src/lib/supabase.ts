@@ -1411,15 +1411,29 @@ export async function fetchBookings(): Promise<Booking[]> {
 
 export async function fetchBookingsForDate(date: string, type: string, excludeGroupId?: string): Promise<Booking[]> {
   const { data, error } = await supabase
-    .from('bookings')
-    .select('appointment_time, status, created_at, booking_group_id')
-    .eq('appointment_date', date)
-    .eq('type', type)
-    .neq('status', 'cancelled');
+    .rpc('public_unavailable_booking_slots', {
+      p_date: date,
+      p_type: type,
+      p_exclude_group_id: excludeGroupId ?? null,
+    });
   if (error) { console.error("fetchBookingsForDate error:", error); return []; }
   return (data || [])
     .filter(b => !isPendingBookingExpired(b))
-    .filter(b => !excludeGroupId || b.booking_group_id !== excludeGroupId);
+    .map(b => ({
+      booking_group_id: b.booking_group_id,
+      session_number: 1,
+      total_sessions: 1,
+      client_name: "",
+      client_email: "",
+      client_phone: "",
+      plan_name: "",
+      plan_index: 0,
+      appointment_date: date,
+      appointment_time: b.appointment_time,
+      type: type as Booking["type"],
+      status: b.status as BookingStatus,
+      created_at: b.created_at,
+    }));
 }
 
 export async function insertBooking(booking: Booking): Promise<boolean> {
@@ -1551,17 +1565,6 @@ export async function fetchConsultationRecords(booking_group_id: string): Promis
     .order('created_at', { ascending: false });
   if (error) return [];
   return data || [];
-}
-
-export async function confirmBookingsByGroupId(
-  bookingGroupId: string,
-  paymentMethod: BookingPaymentMethod = "pix"
-): Promise<boolean> {
-  const { error } = await supabase
-    .from('bookings')
-    .update({ status: 'confirmed', payment_status: 'paid', payment_method: paymentMethod })
-    .eq('booking_group_id', bookingGroupId);
-  return !error;
 }
 
 // ─── Blog ──────────────────────────────────────────────────────────────────────────────??

@@ -13,7 +13,6 @@ import {
   fetchAvailabilitySlots,
   fetchBookingsForDate,
   insertBooking,
-  confirmBookingsByGroupId,
   findPatientByCPF,
   type Booking,
   type BookingPaymentMethod,
@@ -345,8 +344,9 @@ const BookingPage = () => {
               });
               const data = await res.json();
               if (data.status === "approved") {
-                const saved = await saveBookings("confirmed", "paid", "card");
-                if (!saved) toast({ title: "Pagamento aprovado, mas erro ao salvar agendamento. Entre em contato.", variant: "destructive" });
+                if (data.booking_confirmed === false) {
+                  toast({ title: "Pagamento aprovado, mas erro ao confirmar agendamento. Entre em contato.", variant: "destructive" });
+                }
                 setStage("approved");
               } else {
                 // Traduz status_detail do MP para mensagem amigável
@@ -497,7 +497,9 @@ const BookingPage = () => {
         const data = await res.json();
         if (data.status === "approved") {
           clearInterval(pollingRef.current!);
-          await confirmBookingsByGroupId(bookingGroupId, "pix");
+          if (data.booking_confirmed === false) {
+            toast({ title: "Pagamento aprovado, mas erro ao confirmar agendamento. Entre em contato.", variant: "destructive" });
+          }
           if (isMounted) setStage("approved");
         }
       } catch {

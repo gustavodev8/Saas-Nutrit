@@ -3,6 +3,7 @@ import {
   deleteBookingGroup,
   updateBookingPaymentStatus,
   updateBookingStatus,
+  supabase,
   type Booking,
   type BookingPaymentMethod,
   type BookingPaymentStatus,
@@ -99,9 +100,19 @@ export const useBookingStatusActions = ({
     }
     setRescheduling(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        throw new Error("Sessão expirada. Faça login novamente para reagendar.");
+      }
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/reschedule-booking`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_ANON_KEY}` },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${accessToken}`,
+          "apikey": SUPABASE_ANON_KEY,
+        },
         body: JSON.stringify({
           booking_id: reschedule.id,
           new_date: newDate,

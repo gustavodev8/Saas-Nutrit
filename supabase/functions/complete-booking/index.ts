@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { jsonResponse, requireAuthenticatedAdmin } from "../_shared/adminAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("SITE_URL") || "*",
@@ -10,24 +11,22 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    const auth = await requireAuthenticatedAdmin(req, corsHeaders);
+    if (auth instanceof Response) return auth;
+
     const { booking_id } = await req.json() as { booking_id: number };
 
     if (!booking_id) {
-      return new Response(JSON.stringify({ error: "booking_id obrigatório" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "booking_id obrigatório" }, 400, corsHeaders);
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    const res = await fetch(`${supabaseUrl}/rest/v1/bookings?id=eq.${booking_id}`, {
+    const res = await fetch(`${auth.supabaseUrl}/rest/v1/bookings?id=eq.${encodeURIComponent(String(booking_id))}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "apikey": serviceKey,
-        "Authorization": `Bearer ${serviceKey}`,
-        "Prefer": "return=minimal",
+        apikey: auth.serviceKey,
+        Authorization: `Bearer ${auth.serviceKey}`,
+        Prefer: "return=minimal",
       },
       body: JSON.stringify({ status: "completed", completed_at: new Date().toISOString() }),
     });
@@ -37,14 +36,9 @@ serve(async (req) => {
       throw new Error(`DB update failed: ${err}`);
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-
+    return jsonResponse({ success: true }, 200, corsHeaders);
   } catch (e) {
     console.error("complete-booking error:", e);
-    return new Response(JSON.stringify({ error: String(e) }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: String(e) }, 500, corsHeaders);
   }
 });

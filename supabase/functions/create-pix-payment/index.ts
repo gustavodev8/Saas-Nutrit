@@ -49,12 +49,14 @@ serve(async (req) => {
       },
     };
 
+    const idempotencyKey = `product-${productIndex}-${customerEmail}-${Number(priceAmount).toFixed(2)}-${cpfHash}`;
+
     const res = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
         "Content-Type": "application/json",
-        "X-Idempotency-Key": `${productIndex}-${customerEmail}-${Date.now()}`,
+        "X-Idempotency-Key": idempotencyKey,
       },
       body: JSON.stringify(paymentBody),
     });

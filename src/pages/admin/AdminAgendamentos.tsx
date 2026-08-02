@@ -12,6 +12,7 @@ import {
   insertBooking, insertConsultationRecord, uploadRecordFile,
   fetchAvailabilitySlots, fetchBookingsForDate, updateBookingGroup,
   fetchPatients,
+  supabase,
   type Booking, type ConsultationRecord, type RecordFile, type Patient,
   type BookingPaymentStatus
 } from "@/lib/supabase";
@@ -581,12 +582,19 @@ const AdminAgendamentos = () => {
         return;
       }
 
-      // 2. Marca sessão como concluída via Edge Function (usa service role key, bypassa RLS)
+      // 2. Marca sessão como concluída via Edge Function (service role só após validar sessão)
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        toast({ title: "Sessão expirada", description: "Faça login novamente para concluir a consulta.", variant: "destructive" });
+        return;
+      }
+
       const completeRes = await fetch(`${SUPABASE_URL}/functions/v1/complete-booking`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          "Authorization": `Bearer ${accessToken}`,
           "apikey": SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({ booking_id: completing.id }),
