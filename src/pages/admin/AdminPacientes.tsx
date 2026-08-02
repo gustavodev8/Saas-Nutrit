@@ -1,7 +1,7 @@
 import {
   Users, Plus, Search, Trash2, ChevronRight, UserCircle2, Loader2, MapPin,
-  TrendingUp, CalendarDays, BarChart2, Building2, AlertCircle, SlidersHorizontal, X,
-  ChevronLeft, AlertTriangle,
+  TrendingUp, CalendarDays, AlertCircle, SlidersHorizontal, X,
+  ChevronLeft, AlertTriangle, ClipboardList, Utensils,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,13 +13,21 @@ import {
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
-import { fetchPatients, deletePatient, upsertPatient, type Patient } from "@/lib/supabase";
+import {
+  fetchPatientOperationalIndicators,
+  fetchPatients,
+  deletePatient,
+  upsertPatient,
+  type Patient,
+  type PatientOperationalIndicators,
+} from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type GenderFilter = "all" | "M" | "F" | "outro";
 type SortKey      = "recent" | "oldest" | "name" | "age_asc" | "age_desc";
+type ActionFilter = "all" | "new_this_month" | "incomplete" | "no_next_booking" | "no_active_plan" | "pending_exams";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -55,6 +63,12 @@ const emptyForm: NewPatientForm = {
   name: "", email: "", phone: "", city: "", birth_date: "", gender: "", occupation: "",
 };
 
+const emptyOperationalIndicators: PatientOperationalIndicators = {
+  withoutNextBookingIds: [],
+  withoutActiveMealPlanIds: [],
+  pendingExamRequestPatientIds: [],
+};
+
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
 interface StatCardProps {
@@ -64,15 +78,20 @@ interface StatCardProps {
   sub?: string;
   accent?: boolean;
   warn?: boolean;
+  active?: boolean;
+  onClick?: () => void;
 }
 
-function StatCard({ icon, label, value, sub, accent, warn }: StatCardProps) {
-  return (
-    <div className={cn(
-      "flex flex-col gap-3 rounded-2xl border bg-card px-5 py-5 shadow-sm transition-all hover:shadow-md",
-      accent && "border-primary/40 bg-primary/[0.04]",
-      warn   && "border-amber-400/40 bg-amber-50/60 dark:bg-amber-950/20"
-    )}>
+function StatCard({ icon, label, value, sub, accent, warn, active, onClick }: StatCardProps) {
+  const cardClassName = cn(
+    "flex flex-col gap-3 rounded-2xl border bg-card px-5 py-5 text-left shadow-sm transition-all hover:shadow-md",
+    onClick && "cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20",
+    accent && "border-primary/40 bg-primary/[0.04]",
+    warn   && "border-amber-400/40 bg-amber-50/60 dark:bg-amber-950/20",
+    active && "border-primary bg-primary/[0.07] ring-1 ring-primary/20"
+  );
+  const content = (
+    <>
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">{label}</span>
         <span className={cn(
@@ -86,6 +105,20 @@ function StatCard({ icon, label, value, sub, accent, warn }: StatCardProps) {
         <p className={cn("text-2xl font-black tabular-nums leading-none", accent ? "text-primary" : "text-foreground")}>{value}</p>
         {sub && <p className="text-[11px] text-muted-foreground mt-1.5 font-medium">{sub}</p>}
       </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={cardClassName}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={cardClassName}>
+      {content}
     </div>
   );
 }
@@ -99,6 +132,7 @@ export default function AdminPacientes() {
   const [loading,       setLoading]       = useState(true);
   const [search,        setSearch]        = useState("");
   const [gender,        setGender]        = useState<GenderFilter>("all");
+  const [actionFilter,  setActionFilter]  = useState<ActionFilter>("all");
   const [sort,          setSort]          = useState<SortKey>("recent");
   const [showModal,     setShowModal]     = useState(false);
   const [form,          setForm]          = useState<NewPatientForm>(emptyForm);
@@ -107,6 +141,7 @@ export default function AdminPacientes() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [showAdvanced,  setShowAdvanced]  = useState(false);
   const [page,          setPage]          = useState(1);
+  const [operationalIndicators, setOperationalIndicators] = useState<PatientOperationalIndicators>(emptyOperationalIndicators);
 
   // Advanced filters
   const [cityFilter,  setCityFilter]  = useState("");
@@ -117,7 +152,11 @@ export default function AdminPacientes() {
 
   const loadPatients = async () => {
     setLoading(true);
-    try { setPatients(await fetchPatients()); }
+    try {
+      const loadedPatients = await fetchPatients();
+      setPatients(loadedPatients);
+      setOperationalIndicators(await fetchPatientOperationalIndicators(loadedPatients));
+    }
     catch { toast.error("Erro ao carregar pacientes."); }
     finally { setLoading(false); }
   };
@@ -135,33 +174,24 @@ export default function AdminPacientes() {
     const newThisMonth = patients.filter((p) => p.created_at?.slice(0, 7) === thisMonth).length;
     const newLastMonth = patients.filter((p) => p.created_at?.slice(0, 7) === lastMonth).length;
 
-    const ages = patients
-      .filter((p) => p.birth_date)
-      .map((p) => calcAge(p.birth_date!));
-    const avgAge = ages.length
-      ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length)
-      : null;
-
-    const uniqueCities = new Set(
-      patients.filter((p) => p.city?.trim()).map((p) => p.city!.trim().toLowerCase())
-    ).size;
-
-    const incomplete = patients.filter((p) => !p.email || !p.birth_date).length;
-
-    const female = patients.filter((p) => p.gender === "F").length;
-    const male   = patients.filter((p) => p.gender === "M").length;
-    const femaleRatio = patients.length ? Math.round((female / patients.length) * 100) : 0;
+    const incomplete = patients.filter((p) => !p.email || !p.phone || !p.birth_date || !p.cpf).length;
 
     let monthDelta = "";
     if (newLastMonth > 0) {
       const diff = newThisMonth - newLastMonth;
       monthDelta = diff >= 0 ? `+${diff} vs mês anterior` : `${diff} vs mês anterior`;
     } else if (newThisMonth > 0) {
-      monthDelta = "novo(s) cadastro(s)";
+      monthDelta = "cadastros recentes";
     }
 
-    return { newThisMonth, monthDelta, avgAge, uniqueCities, incomplete, femaleRatio, female, male };
+    return { thisMonth, newThisMonth, monthDelta, incomplete };
   }, [patients]);
+
+  const operationalSets = useMemo(() => ({
+    noNextBooking: new Set(operationalIndicators.withoutNextBookingIds),
+    noActivePlan: new Set(operationalIndicators.withoutActiveMealPlanIds),
+    pendingExams: new Set(operationalIndicators.pendingExamRequestPatientIds),
+  }), [operationalIndicators]);
 
   // ── Unique cities list for dropdown ─────────────────────────────────────────
   const cityOptions = useMemo(() => {
@@ -193,6 +223,11 @@ export default function AdminPacientes() {
     let list = patients.filter((p) => {
       if (q && !p.name?.toLowerCase().includes(q) && !p.email?.toLowerCase().includes(q)) return false;
       if (gender !== "all" && p.gender !== gender) return false;
+      if (actionFilter === "new_this_month" && p.created_at?.slice(0, 7) !== stats.thisMonth) return false;
+      if (actionFilter === "incomplete" && p.email && p.phone && p.birth_date && p.cpf) return false;
+      if (actionFilter === "no_next_booking" && (!p.id || !operationalSets.noNextBooking.has(p.id))) return false;
+      if (actionFilter === "no_active_plan" && (!p.id || !operationalSets.noActivePlan.has(p.id))) return false;
+      if (actionFilter === "pending_exams" && (!p.id || !operationalSets.pendingExams.has(p.id))) return false;
       if (cityFilter && p.city?.trim().toLowerCase() !== cityFilter.trim().toLowerCase()) return false;
       if (ageMinN !== null || ageMaxN !== null) {
         if (!p.birth_date) return false;
@@ -220,22 +255,22 @@ export default function AdminPacientes() {
     });
 
     return list;
-  }, [patients, search, gender, cityFilter, ageMin, ageMax, dateFrom, dateTo, sort]);
+  }, [patients, search, gender, actionFilter, stats.thisMonth, operationalSets, cityFilter, ageMin, ageMax, dateFrom, dateTo, sort]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated  = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   // Reset to page 1 whenever filters change
-  useEffect(() => { setPage(1); }, [search, gender, cityFilter, ageMin, ageMax, dateFrom, dateTo, sort]);
+  useEffect(() => { setPage(1); }, [search, gender, actionFilter, cityFilter, ageMin, ageMax, dateFrom, dateTo, sort]);
 
   const hasAdvancedFilter = cityFilter !== "" || ageMin !== "" || ageMax !== "" || dateFrom !== "" || dateTo !== "";
-  const hasFilter         = gender !== "all" || search.trim() !== "" || hasAdvancedFilter;
+  const hasFilter         = gender !== "all" || actionFilter !== "all" || search.trim() !== "" || hasAdvancedFilter;
 
   const clearAdvanced = () => {
     setCityFilter(""); setAgeMin(""); setAgeMax(""); setDateFrom(""); setDateTo("");
   };
   const clearAll = () => {
-    setSearch(""); setGender("all"); clearAdvanced();
+    setSearch(""); setGender("all"); setActionFilter("all"); clearAdvanced();
   };
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -305,39 +340,54 @@ export default function AdminPacientes() {
           icon={<Users className="w-4 h-4" />}
           label="Total de pacientes"
           value={patients.length}
-          sub={patients.length === 1 ? "paciente cadastrado" : "pacientes cadastrados"}
+          sub="ver toda a base"
           accent
+          active={actionFilter === "all"}
+          onClick={clearAll}
         />
         <StatCard
           icon={<TrendingUp className="w-4 h-4" />}
           label="Novos este mês"
           value={stats.newThisMonth}
-          sub={stats.monthDelta || "nenhum novo cadastro"}
+          sub={stats.monthDelta || "cadastros recentes"}
+          active={actionFilter === "new_this_month"}
+          onClick={() => setActionFilter(actionFilter === "new_this_month" ? "all" : "new_this_month")}
         />
         <StatCard
           icon={<CalendarDays className="w-4 h-4" />}
-          label="Média de idade"
-          value={stats.avgAge !== null ? `${stats.avgAge} anos` : "—"}
-          sub={stats.avgAge !== null ? "dos pacientes com data de nascimento" : "sem dados suficientes"}
+          label="Sem próxima consulta"
+          value={operationalIndicators.withoutNextBookingIds.length}
+          sub="agendar retorno"
+          warn={operationalIndicators.withoutNextBookingIds.length > 0}
+          active={actionFilter === "no_next_booking"}
+          onClick={() => setActionFilter(actionFilter === "no_next_booking" ? "all" : "no_next_booking")}
         />
         <StatCard
-          icon={<Building2 className="w-4 h-4" />}
-          label="Cidades atendidas"
-          value={stats.uniqueCities}
-          sub={stats.uniqueCities === 1 ? "cidade registrada" : "cidades diferentes"}
+          icon={<Utensils className="w-4 h-4" />}
+          label="Sem plano ativo"
+          value={operationalIndicators.withoutActiveMealPlanIds.length}
+          sub="criar ou revisar conduta"
+          warn={operationalIndicators.withoutActiveMealPlanIds.length > 0}
+          active={actionFilter === "no_active_plan"}
+          onClick={() => setActionFilter(actionFilter === "no_active_plan" ? "all" : "no_active_plan")}
         />
         <StatCard
-          icon={<BarChart2 className="w-4 h-4" />}
-          label="Distribuição feminino"
-          value={patients.length ? `${stats.femaleRatio}% F` : "—"}
-          sub={patients.length ? `${stats.female} fem. · ${stats.male} masc.` : "sem dados"}
+          icon={<ClipboardList className="w-4 h-4" />}
+          label="Exames pendentes"
+          value={operationalIndicators.pendingExamRequestPatientIds.length}
+          sub="lançar resultados"
+          warn={operationalIndicators.pendingExamRequestPatientIds.length > 0}
+          active={actionFilter === "pending_exams"}
+          onClick={() => setActionFilter(actionFilter === "pending_exams" ? "all" : "pending_exams")}
         />
         <StatCard
           icon={<AlertCircle className="w-4 h-4" />}
           label="Perfis incompletos"
           value={stats.incomplete}
-          sub={stats.incomplete > 0 ? "sem e-mail ou data de nascimento" : "todos completos"}
+          sub={stats.incomplete > 0 ? "completar dados essenciais" : "todos completos"}
           warn={stats.incomplete > 0}
+          active={actionFilter === "incomplete"}
+          onClick={() => setActionFilter(actionFilter === "incomplete" ? "all" : "incomplete")}
         />
       </div>
 

@@ -781,6 +781,99 @@ export async function fetchPatients(): Promise<Patient[]> {
   return data ?? [];
 }
 
+export interface PatientOperationalIndicators {
+  withoutNextBookingIds: number[];
+  withoutActiveMealPlanIds: number[];
+  pendingExamRequestPatientIds: number[];
+}
+
+const normalizeIndicatorText = (value?: string | null) => value?.trim().toLowerCase() ?? "";
+const onlyIndicatorDigits = (value?: string | null) => value?.replace(/\D/g, "") ?? "";
+
+export async function fetchPatientOperationalIndicators(
+  patients: Pick<Patient, "id" | "email" | "phone" | "cpf">[],
+): Promise<PatientOperationalIndicators> {
+  const patientIds = patients
+    .map((patient) => patient.id)
+    .filter((id): id is number => typeof id === "number");
+
+  if (patientIds.length === 0) {
+    return {
+      withoutNextBookingIds: [],
+      withoutActiveMealPlanIds: [],
+      pendingExamRequestPatientIds: [],
+    };
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+  const byEmail = new Map<string, number>();
+  const byPhone = new Map<string, number>();
+  const byCpf = new Map<string, number>();
+
+  patients.forEach((patient) => {
+    if (!patient.id) return;
+    const email = normalizeIndicatorText(patient.email);
+    const phone = onlyIndicatorDigits(patient.phone);
+    const cpf = onlyIndicatorDigits(patient.cpf);
+    if (email) byEmail.set(email, patient.id);
+    if (phone) byPhone.set(phone, patient.id);
+    if (cpf) byCpf.set(cpf, patient.id);
+  });
+
+  const [bookingsResult, mealPlansResult, examRequestsResult] = await Promise.all([
+    supabaseAdmin
+      .from("bookings")
+      .select("patient_id, client_email, client_phone, client_cpf, status, created_at, appointment_date")
+      .gte("appointment_date", today)
+      .in("status", ["pending", "confirmed"]),
+    supabaseAdmin
+      .from("meal_plans")
+      .select("patient_id, start_date, end_date")
+      .in("patient_id", patientIds),
+    supabaseAdmin
+      .from("patient_exam_requests")
+      .select("patient_id, status")
+      .in("patient_id", patientIds)
+      .eq("status", "pending"),
+  ]);
+
+  if (bookingsResult.error) console.error("[Supabase] fetchPatientOperationalIndicators bookings:", bookingsResult.error.message);
+  if (mealPlansResult.error) console.error("[Supabase] fetchPatientOperationalIndicators meal plans:", mealPlansResult.error.message);
+  if (examRequestsResult.error) console.error("[Supabase] fetchPatientOperationalIndicators exams:", examRequestsResult.error.message);
+
+  const withNextBooking = new Set<number>();
+  (bookingsResult.data ?? []).forEach((booking) => {
+    if (isPendingBookingExpired(booking)) return;
+    const directId = typeof booking.patient_id === "number" ? booking.patient_id : null;
+    const fallbackId =
+      byEmail.get(normalizeIndicatorText(booking.client_email)) ??
+      byPhone.get(onlyIndicatorDigits(booking.client_phone)) ??
+      byCpf.get(onlyIndicatorDigits(booking.client_cpf));
+    const patientId = directId ?? fallbackId;
+    if (patientId) withNextBooking.add(patientId);
+  });
+
+  const withActiveMealPlan = new Set<number>();
+  (mealPlansResult.data ?? []).forEach((plan) => {
+    if (typeof plan.patient_id !== "number") return;
+    const startsOk = !plan.start_date || plan.start_date <= today;
+    const endsOk = !plan.end_date || plan.end_date >= today;
+    if (startsOk && endsOk) withActiveMealPlan.add(plan.patient_id);
+  });
+
+  const pendingExamRequestPatientIds = Array.from(new Set(
+    (examRequestsResult.data ?? [])
+      .map((request) => request.patient_id)
+      .filter((id): id is number => typeof id === "number"),
+  ));
+
+  return {
+    withoutNextBookingIds: patientIds.filter((id) => !withNextBooking.has(id)),
+    withoutActiveMealPlanIds: patientIds.filter((id) => !withActiveMealPlan.has(id)),
+    pendingExamRequestPatientIds,
+  };
+}
+
 export async function fetchPatient(id: number | string): Promise<Patient | null> {
   const { data, error } = await supabaseAdmin
     .from("patients")
