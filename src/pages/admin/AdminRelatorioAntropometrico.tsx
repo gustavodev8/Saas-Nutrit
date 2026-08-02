@@ -64,25 +64,41 @@ const bmiLabel = (bmi: number) => {
 
 // ─── renderDelta ──────────────────────────────────────────────────────────────
 
-export function renderDelta(
+const deltaThreshold = (decimals: number) => Math.pow(10, -decimals) / 2;
+
+function renderDelta(
   current?: number | null,
   previous?: number | null,
   decimals = 1
 ): React.ReactNode {
   if (current == null || previous == null) return null;
   const diff = current - previous;
-  if (Math.abs(diff) < 0.005) return null;
+  if (Math.abs(diff) < deltaThreshold(decimals)) return null;
   const abs = Math.abs(diff).toFixed(decimals);
-  return diff > 0 ? (
-    <span className="ml-1.5 text-[11px] font-bold text-green-600 tabular-nums print:text-[8px]">
-      (+{abs})
-    </span>
-  ) : (
-    <span className="ml-1.5 text-[11px] font-bold text-red-500 tabular-nums print:text-[8px]">
-      (−{abs})
+  const sign = diff > 0 ? "+" : "−";
+
+  return (
+    <span
+      className="ml-1.5 text-[11px] font-bold text-slate-600 tabular-nums print:text-[8px] print:text-gray-700"
+      title="Variação em relação à avaliação anterior. A leitura clínica depende do objetivo do paciente."
+    >
+      ({sign}
+      {abs})
     </span>
   );
 }
+
+const formatDeltaText = (
+  current?: number | null,
+  previous?: number | null,
+  decimals = 1
+) => {
+  if (current == null || previous == null) return null;
+  const diff = current - previous;
+  if (Math.abs(diff) < deltaThreshold(decimals)) return null;
+  const sign = diff > 0 ? "+" : "−";
+  return `${sign}${Math.abs(diff).toFixed(decimals)}`;
+};
 
 // ─── Table sub-components ─────────────────────────────────────────────────────
 
@@ -104,10 +120,11 @@ interface MetricRowProps {
   values: (number | null | undefined)[];
   unit?: string;
   decimals?: number;
+  showDelta?: boolean;
   suffix?: (val: number, idx: number) => React.ReactNode;
 }
 
-function MetricRow({ label, values, unit = "", decimals = 1, suffix }: MetricRowProps) {
+function MetricRow({ label, values, unit = "", decimals = 1, showDelta = true, suffix }: MetricRowProps) {
   if (values.every((v) => v == null)) return null;
   return (
     <tr className="border-b border-border/30 last:border-0 hover:bg-muted/10 transition-colors print:hover:bg-transparent">
@@ -129,7 +146,7 @@ function MetricRow({ label, values, unit = "", decimals = 1, suffix }: MetricRow
                     {" "}{unit}
                   </span>
                 )}
-                {i > 0 && renderDelta(val, prev as number, decimals)}
+                {showDelta && i > 0 && renderDelta(val, prev as number, decimals)}
                 {suffix?.(val, i)}
               </>
             ) : (
@@ -162,6 +179,9 @@ function BilateralRow({
       {rights.map((r, i) => {
         const l = lefts[i];
         const prevR = i > 0 ? rights[i - 1] : undefined;
+        const prevL = i > 0 ? lefts[i - 1] : undefined;
+        const deltaR = i > 0 ? formatDeltaText(r, prevR, 1) : null;
+        const deltaL = i > 0 ? formatDeltaText(l, prevL, 1) : null;
         return (
           <td
             key={i}
@@ -177,7 +197,11 @@ function BilateralRow({
                   {l != null ? l.toFixed(1) : "—"}
                 </span>
                 <span className="text-xs text-muted-foreground ml-0.5 print:text-[8px]"> {unit}</span>
-                {i > 0 && r != null && renderDelta(r, prevR as number)}
+                {(deltaR || deltaL) && (
+                  <span className="mt-1 block text-[10px] font-semibold text-muted-foreground/80 print:text-[7px]">
+                    Δ D {deltaR ?? "—"} · E {deltaL ?? "—"}
+                  </span>
+                )}
               </>
             ) : (
               <span className="text-muted-foreground/30">—</span>
@@ -209,6 +233,104 @@ function StringRow({ label, values }: { label: string; values: (string | null)[]
         </td>
       ))}
     </tr>
+  );
+}
+
+interface SummaryItem {
+  label: string;
+  current?: number | null;
+  previous?: number | null;
+  unit?: string;
+  decimals?: number;
+  helper?: string;
+}
+
+function EvolutionSummary({
+  items,
+  startDate,
+  endDate,
+}: {
+  items: SummaryItem[];
+  startDate?: string;
+  endDate?: string;
+}) {
+  const visibleItems = items.filter((item) => item.current != null || item.previous != null);
+  if (visibleItems.length === 0) return null;
+
+  return (
+    <section className="rounded border border-border bg-card p-5 print:p-3">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3 print:mb-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-primary print:text-[7px]">
+            Resumo evolutivo
+          </p>
+          <h2 className="mt-1 text-base font-bold text-foreground print:text-[11px]">
+            Comparativo clínico das avaliações selecionadas
+          </h2>
+        </div>
+        <p className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground print:text-[8px]">
+          {formatDateShort(startDate)} → {formatDateShort(endDate)}
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 print:grid-cols-3 print:gap-2">
+        {visibleItems.map((item) => {
+          const decimals = item.decimals ?? 1;
+          const delta = formatDeltaText(item.current, item.previous, decimals);
+          return (
+            <article
+              key={item.label}
+              className="rounded-lg border border-border/70 bg-background px-4 py-3 print:px-2 print:py-1.5"
+            >
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/80 print:text-[7px]">
+                {item.label}
+              </p>
+              <div className="mt-2 flex items-baseline gap-1.5 print:mt-1">
+                {item.current != null ? (
+                  <>
+                    <span className="text-xl font-black tabular-nums text-foreground print:text-[12px]">
+                      {item.current.toFixed(decimals)}
+                    </span>
+                    {item.unit && (
+                      <span className="text-xs font-semibold text-muted-foreground print:text-[7px]">
+                        {item.unit}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-xl font-black text-muted-foreground/30 print:text-[12px]">
+                    —
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground print:mt-1 print:text-[7px]">
+                {delta ? (
+                  <span className="font-bold text-slate-600">Δ {delta}</span>
+                ) : (
+                  <span>sem variação exibida</span>
+                )}
+                {item.helper && (
+                  <span className="block text-muted-foreground/70">{item.helper}</span>
+                )}
+              </p>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function DeltaGuide({ colsCount }: { colsCount: number }) {
+  if (colsCount <= 1) return null;
+
+  return (
+    <div className="rounded border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground print:px-3 print:py-2 print:text-[8px]">
+      <span className="font-semibold text-foreground">Como ler as variações:</span>{" "}
+      valores entre parênteses comparam cada coluna com a avaliação anterior. O delta é neutro:
+      aumento ou redução não significa melhora automática. Em medidas bilaterais, D e E são
+      calculados separadamente.
+    </div>
   );
 }
 
@@ -251,9 +373,9 @@ function DateSelector({
           <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-bold">
             {selectedIds.length} de {measurements.length}
           </span>
-          {selectedIds.length > PRINT_MAX && (
-            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold border border-amber-200">
-              PDF: recomendado até {PRINT_MAX} colunas
+          {selectedIds.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold border border-emerald-100">
+              PDF otimizado até {PRINT_MAX}
             </span>
           )}
         </div>
@@ -283,7 +405,7 @@ function DateSelector({
               onClick={onSelectAll}
               className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-muted"
             >
-              Todas
+              Últimas {PRINT_MAX}
             </button>
           </div>
           <div className="flex flex-wrap gap-2 mb-3">
@@ -357,12 +479,21 @@ export default function AdminRelatorioAntropometrico() {
 
   // ── Selection handlers ──────────────────────────────────────────────────────
   const toggleId = (mid: number) =>
-    setSelectedIds((prev) =>
-      prev.includes(mid) ? prev.filter((x) => x !== mid) : [...prev, mid]
-    );
+    setSelectedIds((prev) => {
+      if (prev.includes(mid)) return prev.filter((x) => x !== mid);
+      if (prev.length >= PRINT_MAX) {
+        toast.warning(`Selecione no máximo ${PRINT_MAX} avaliações para manter o PDF legível.`);
+        return prev;
+      }
+      return [...prev, mid];
+    });
 
-  const selectAll = () =>
-    setSelectedIds(measurements.map((m) => m.id!).filter(Boolean));
+  const selectAll = () => {
+    if (measurements.length > PRINT_MAX) {
+      toast.info(`Selecionei as ${PRINT_MAX} avaliações mais recentes para preservar a leitura do PDF.`);
+    }
+    setSelectedIds(measurements.slice(0, PRINT_MAX).map((m) => m.id!).filter(Boolean));
+  };
 
   const selectLatestTwo = () =>
     setSelectedIds(measurements.slice(0, 2).map((m) => m.id!).filter(Boolean));
@@ -428,7 +559,7 @@ export default function AdminRelatorioAntropometrico() {
         ? parseFloat((m.weight * (m.body_fat / 100)).toFixed(1))
         : null,
     arm:
-      m.arm_relax_r && m.sf_triceps
+      m.arm_relax_r != null && m.sf_triceps != null
         ? calcArmAnthropometry(m.arm_relax_r, m.sf_triceps, gender)
         : null,
   }));
@@ -437,17 +568,63 @@ export default function AdminRelatorioAntropometrico() {
     if (!m.sf_protocol) return null;
     const info = PROTOCOLS.find((p) => p.id === m.sf_protocol);
     if (!info) return null;
+    if (info.skinfolds.some((k) => getSkinfoldValue(m, k) == null)) return null;
     const sum = info.skinfolds.reduce((acc, k) => acc + (getSkinfoldValue(m, k) ?? 0), 0);
     return sum > 0 ? sum : null;
   });
 
   const hasArmData = derived.some((d) => d.arm != null);
   const hasTronco  = cols.some((m) => [m.neck, m.shoulder, m.chest, m.waist, m.abdomen, m.hip].some((v) => v != null));
-  const hasSup     = cols.some((m) => [m.arm_relax_r, m.arm_relax_l, m.arm_contract_r, m.arm_contract_l, m.forearm_r, m.wrist_r].some((v) => v != null));
-  const hasInf     = cols.some((m) => [m.thigh_prox_r, m.thigh_r, m.calf_r].some((v) => v != null));
+  const hasSup     = cols.some((m) => [m.arm_relax_r, m.arm_relax_l, m.arm_contract_r, m.arm_contract_l, m.forearm_r, m.forearm_l, m.wrist_r, m.wrist_l].some((v) => v != null));
+  const hasInf     = cols.some((m) => [m.thigh_prox_r, m.thigh_prox_l, m.thigh_r, m.thigh_l, m.calf_r, m.calf_l].some((v) => v != null));
   const hasDobras  = cols.some((m) => ALL_SF_KEYS.some((k) => getSkinfoldValue(m, k) != null));
 
   const mostRecent = cols[cols.length - 1];
+  const oldest = cols[0];
+  const summaryItems: SummaryItem[] = [
+    {
+      label: "Peso",
+      current: mostRecent?.weight ?? null,
+      previous: oldest?.weight ?? null,
+      unit: "kg",
+      decimals: 1,
+    },
+    {
+      label: "Gordura",
+      current: mostRecent?.body_fat ?? null,
+      previous: oldest?.body_fat ?? null,
+      unit: "%",
+      decimals: 1,
+    },
+    {
+      label: "Massa magra",
+      current: mostRecent?.lean_mass ?? null,
+      previous: oldest?.lean_mass ?? null,
+      unit: "kg",
+      decimals: 1,
+    },
+    {
+      label: "Cintura",
+      current: mostRecent?.waist ?? null,
+      previous: oldest?.waist ?? null,
+      unit: "cm",
+      decimals: 1,
+    },
+    {
+      label: "IMC",
+      current: derived[derived.length - 1]?.bmi ?? null,
+      previous: derived[0]?.bmi ?? null,
+      unit: "kg/m²",
+      decimals: 1,
+    },
+    {
+      label: "Visceral",
+      current: mostRecent?.visceral_fat ?? null,
+      previous: oldest?.visceral_fat ?? null,
+      decimals: 0,
+      helper: "escala do aparelho",
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-background p-6 space-y-5 print:min-h-0 print:p-0 print:space-y-3">
@@ -541,6 +718,17 @@ export default function AdminRelatorioAntropometrico() {
         onClear={clearAll}
       />
 
+      {cols.length > 0 && (
+        <>
+          <EvolutionSummary
+            items={summaryItems}
+            startDate={oldest?.assessment_date}
+            endDate={mostRecent?.assessment_date}
+          />
+          <DeltaGuide colsCount={cols.length} />
+        </>
+      )}
+
       {/* ── Empty state when nothing is selected ──────────────────────────── */}
       {cols.length === 0 && (
         <div className="flex flex-col items-center justify-center py-14 gap-2 border border-border rounded bg-card text-muted-foreground print:hidden">
@@ -600,6 +788,7 @@ export default function AdminRelatorioAntropometrico() {
                   values={cols.map((m) => m.height ?? null)}
                   unit="cm"
                   decimals={0}
+                  showDelta={false}
                 />
                 <MetricRow
                   label="IMC"
@@ -783,23 +972,6 @@ export default function AdminRelatorioAntropometrico() {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* ── Legend ───────────────────────────────────────────────────────── */}
-      {cols.length > 0 && (
-        <div className="flex flex-wrap items-center gap-5 text-xs text-muted-foreground print:text-[8px]">
-          <span className="flex items-center gap-1.5">
-            <span className="font-bold text-green-600">(+X)</span>
-            Aumento em relação à coluna anterior
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="font-bold text-red-500">(−X)</span>
-            Redução em relação à coluna anterior
-          </span>
-          <span className="text-muted-foreground/60">
-            Bilateral: delta pelo lado D · AMBc: Heymsfield (1982) · Adequação: Frisancho (1990)
-          </span>
         </div>
       )}
 
