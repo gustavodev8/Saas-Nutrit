@@ -1764,8 +1764,7 @@ function ReportTab({
                 {draft.title || 'Novo relatório'}
               </h2>
               <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-                Registre evolução, adesão ao plano, intercorrências, conduta e observações clínicas importantes.
-                Cada relatório fica salvo como um documento separado por data.
+                Documento clínico para evolução, conduta e próximos passos do paciente.
               </p>
               <div className="flex flex-wrap gap-2">
                 <span className="rounded-md border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
@@ -1788,12 +1787,12 @@ function ReportTab({
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
-                  variant="outline"
-                  className="h-9 rounded-lg gap-2 border-border/70 bg-background px-3 text-sm font-medium shadow-none hover:bg-muted/40"
-                  onClick={duplicateCurrentReport}
+                  className="h-9 rounded-lg gap-2 bg-primary/90 px-4 text-sm font-medium shadow-none hover:bg-primary"
+                  onClick={handleSave}
+                  disabled={saving}
                 >
-                  <Copy size={14} />
-                  Duplicar
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Salvar
                 </Button>
                 <Button
                   type="button"
@@ -1808,6 +1807,15 @@ function ReportTab({
                   type="button"
                   variant="outline"
                   className="h-9 rounded-lg gap-2 border-border/70 bg-background px-3 text-sm font-medium shadow-none hover:bg-muted/40"
+                  onClick={duplicateCurrentReport}
+                >
+                  <Copy size={14} />
+                  Duplicar
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 rounded-lg gap-2 border-border/70 bg-background px-3 text-sm font-medium shadow-none hover:bg-muted/40"
                   onClick={handleDownloadPdf}
                 >
                   <Download size={14} />
@@ -1815,7 +1823,7 @@ function ReportTab({
                 </Button>
                 <Button
                   type="button"
-                  className="h-9 rounded-lg gap-2 bg-primary/90 px-4 text-sm font-medium shadow-none hover:bg-primary"
+                  className="h-9 rounded-lg gap-2 bg-primary/10 px-4 text-sm font-medium text-primary shadow-none hover:bg-primary/15"
                   onClick={() => {
                     if (!ensureReportReady("enviar")) return;
                     setShowEmail(true);
@@ -1990,6 +1998,15 @@ function ReportTab({
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                 Crie o primeiro documento para registrar a evolução do paciente.
               </p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <Button type="button" size="sm" className="h-8 rounded-lg gap-2" onClick={createNewReport}>
+                  <Plus size={13} />
+                  Criar primeiro relatório
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-8 rounded-lg" onClick={() => appendSnippet(REPORT_FULL_TEMPLATE)}>
+                  Inserir estrutura padrão
+                </Button>
+              </div>
             </div>
           ) : filteredReports.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-muted/20 p-5 text-center">

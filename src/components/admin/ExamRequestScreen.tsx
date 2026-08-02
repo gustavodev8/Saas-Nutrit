@@ -212,12 +212,25 @@ export function ExamRequestScreen({ patientId, onCreated, onCancel }: Props) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-foreground">Nova solicitação de exames</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Escolha um protocolo pronto ou monte o pedido manualmente pela busca.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onCancel}>
+          Cancelar
+        </Button>
+      </div>
 
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
+        <div className="space-y-5">
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-            Adicionar protocolo
+            Escolher protocolo pronto
           </Label>
           <Link
             to="/admin/biblioteca"
@@ -257,7 +270,7 @@ export function ExamRequestScreen({ patientId, onCreated, onCancel }: Props) {
 
       <div className="space-y-1.5">
         <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-          Adicionar exame individual
+          Buscar exame individual
         </Label>
         <div className="relative" ref={dropRef}>
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
@@ -296,6 +309,26 @@ export function ExamRequestScreen({ patientId, onCreated, onCancel }: Props) {
           )}
         </div>
       </div>
+
+        </div>
+
+        <div className="lg:sticky lg:top-4 lg:self-start">
+          <div className="space-y-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Pedido atual</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {cart.length === 0
+                    ? "Nenhum exame selecionado"
+                    : `${cart.length} ${cart.length === 1 ? "exame selecionado" : "exames selecionados"}`}
+                </p>
+              </div>
+              {selectedProtocolName && (
+                <span className="rounded-full border border-primary/20 bg-primary/8 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                  {selectedProtocolName}
+                </span>
+              )}
+            </div>
 
       {cart.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 rounded-lg border-2 border-dashed border-border/50 text-muted-foreground">
@@ -382,10 +415,7 @@ export function ExamRequestScreen({ patientId, onCreated, onCancel }: Props) {
       </div>
 
       <div className="flex items-center justify-between pt-1 border-t border-border/40">
-        <Button variant="outline" size="sm" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -394,7 +424,7 @@ export function ExamRequestScreen({ patientId, onCreated, onCancel }: Props) {
             className="gap-1.5"
           >
             <Printer size={13} />
-            Imprimir PDF
+            Gerar PDF
           </Button>
           <Button
             variant="outline"
@@ -414,8 +444,11 @@ export function ExamRequestScreen({ patientId, onCreated, onCancel }: Props) {
             className="gap-1.5"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
-            {saving ? "Salvando..." : `Salvar Pedido (${cart.length})`}
+            {saving ? "Salvando..." : `Salvar pedido (${cart.length})`}
           </Button>
+        </div>
+      </div>
+          </div>
         </div>
       </div>
     </div>

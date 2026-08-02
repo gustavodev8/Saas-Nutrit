@@ -3,6 +3,7 @@ import {
   Plus, Loader2, FlaskConical, AlertTriangle, CheckCircle2,
   Trash2, ChevronDown, ChevronUp, FileText, ClipboardList, Printer, Mail,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,9 @@ import { examRequestPdfFilename, generateExamRequestPdf } from "@/lib/generateEx
 
 const requestStatusLabel = (status: PatientExamRequest["status"]) =>
   status === "completed" ? "Concluído" : "Pendente";
+
+const countLabel = (count: number, singular: string, plural: string) =>
+  `${count} ${count === 1 ? singular : plural}`;
 
 // Types
 
@@ -155,16 +159,12 @@ function RequestCard({
         <FlaskConical size={15} className="text-primary shrink-0" />
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-start justify-between gap-3">
             <p className="text-sm font-semibold text-foreground">
               {request.protocol?.name ?? "Seleção manual"}
-              {" "}
-              <span className="text-muted-foreground font-normal text-xs">
-                #{request.id} · {fmtDate(request.created_at ?? "")}
-              </span>
             </p>
             <span className={cn(
-              "text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border",
+              "shrink-0 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border",
               request.status === "completed"
                 ? "bg-green-50 text-green-700 border-green-200"
                 : "bg-amber-50 text-amber-700 border-amber-200",
@@ -172,13 +172,25 @@ function RequestCard({
               {requestStatusLabel(request.status)}
             </span>
           </div>
-          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-xs text-muted-foreground">
-              {request.items?.length ?? 0} exame(s) · {filled.length} resultado(s)
+              #{request.id}
+            </span>
+            <span className="text-xs text-muted-foreground">·</span>
+            <span className="text-xs text-muted-foreground">
+              {fmtDate(request.created_at ?? "")}
+            </span>
+            <span className="text-xs text-muted-foreground">·</span>
+            <span className="text-xs text-muted-foreground">
+              {countLabel(request.items?.length ?? 0, "exame", "exames")}
+            </span>
+            <span className="text-xs text-muted-foreground">·</span>
+            <span className="text-xs text-muted-foreground">
+              {countLabel(filled.length, "resultado", "resultados")}
             </span>
             {counts.critico > 0 && (
               <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600">
-                <AlertTriangle size={11} /> {counts.critico} crítico(s)
+                <AlertTriangle size={11} /> {countLabel(counts.critico, "crítico", "críticos")}
               </span>
             )}
             {counts.fora_alvo > 0 && counts.critico === 0 && (
@@ -195,13 +207,6 @@ function RequestCard({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); handleDelete(); }}
-            className="text-muted-foreground/30 hover:text-destructive transition-colors p-1"
-          >
-            <Trash2 size={14} />
-          </button>
           {open
             ? <ChevronUp  size={16} className="text-muted-foreground" />
             : <ChevronDown size={16} className="text-muted-foreground" />
@@ -262,26 +267,37 @@ function RequestCard({
           )}
 
           {/* Action */}
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button size="sm" onClick={handlePrint} className="gap-1.5" variant="outline">
-              <Printer size={13} />
-              Imprimir solicitação
-            </Button>
+          <div className="flex flex-col gap-2 border-t border-border/50 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <Button
               size="sm"
-              onClick={handleSendEmail}
-              disabled={sendingEmail || !patient.email}
-              title={patient.email ? `Enviar para ${patient.email}` : "Cadastre um e-mail no perfil do paciente"}
-              className="gap-1.5"
-              variant="outline"
+              onClick={handleDelete}
+              className="gap-1.5 text-destructive hover:text-destructive"
+              variant="ghost"
             >
-              {sendingEmail ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
-              {sendingEmail ? "Enviando..." : "Enviar por e-mail"}
+              <Trash2 size={13} />
+              Excluir pedido
             </Button>
-            <Button size="sm" onClick={onOpenResults} className="gap-1.5" variant="outline">
-              <ClipboardList size={13} />
-              {filled.length > 0 ? "Ver / editar laudos" : "Lançar resultados"}
-            </Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button size="sm" onClick={handlePrint} className="gap-1.5" variant="outline">
+                <Printer size={13} />
+                Imprimir solicitação
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSendEmail}
+                disabled={sendingEmail || !patient.email}
+                title={patient.email ? `Enviar para ${patient.email}` : "Cadastre um e-mail no perfil do paciente"}
+                className="gap-1.5"
+                variant="outline"
+              >
+                {sendingEmail ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+                {sendingEmail ? "Enviando..." : "Enviar por e-mail"}
+              </Button>
+              <Button size="sm" onClick={onOpenResults} className="gap-1.5" variant="outline">
+                <ClipboardList size={13} />
+                {filled.length > 0 ? "Ver / editar laudos" : "Lançar resultados"}
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -355,20 +371,20 @@ export function ExamProtocolsTab({ patientId, gender, patient }: Props) {
     <div className="space-y-4">
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center justify-between gap-3 flex-wrap rounded-2xl border border-border bg-card p-4 shadow-sm">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Protocolos de Exames</h2>
+          <h2 className="text-base font-semibold text-foreground">Exames do paciente</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {requests.length} pedido(s) registrado(s)
+            {countLabel(requests.filter((request) => request.status !== "completed").length, "pedido pendente", "pedidos pendentes")} · {countLabel(requests.length, "pedido registrado", "pedidos registrados")}
             {totalCritical > 0 && (
               <span className="ml-2 text-red-600 font-semibold">
-                · {totalCritical} resultado(s) crítico(s)
+                · {countLabel(totalCritical, "resultado crítico", "resultados críticos")}
               </span>
             )}
           </p>
         </div>
         <Button size="sm" onClick={() => setView({ kind: "new-request" })} className="gap-1.5 shrink-0">
-          <Plus size={13} /> Nova Solicitação
+          <Plus size={13} /> Nova solicitação
         </Button>
       </div>
 
@@ -387,11 +403,21 @@ export function ExamProtocolsTab({ patientId, gender, patient }: Props) {
 
       {/* Request list */}
       {requests.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-14 gap-3 border border-border rounded-xl bg-card text-muted-foreground">
+        <div className="flex flex-col items-center justify-center py-14 gap-3 border border-dashed border-border rounded-xl bg-card text-muted-foreground">
           <FileText size={28} className="opacity-30" />
           <div className="text-center">
-            <p className="text-sm font-medium">Nenhum pedido registrado.</p>
-            <p className="text-xs mt-0.5">Clique em "Nova Solicitação" para gerar o primeiro pedido.</p>
+            <p className="text-sm font-semibold text-foreground">Nenhuma solicitação de exames</p>
+            <p className="text-xs mt-1 max-w-sm">
+              Crie um pedido a partir de um protocolo pronto ou selecione exames manualmente.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button size="sm" onClick={() => setView({ kind: "new-request" })} className="gap-1.5">
+              <Plus size={13} /> Nova solicitação
+            </Button>
+            <Button size="sm" variant="outline" asChild>
+              <Link to="/admin/biblioteca">Editar protocolos prontos</Link>
+            </Button>
           </div>
         </div>
       ) : (
