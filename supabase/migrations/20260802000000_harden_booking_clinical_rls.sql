@@ -65,7 +65,10 @@ BEGIN
         FROM pg_policies p
         WHERE p.schemaname = 'public'
           AND p.tablename = table_name
-          AND 'anon' = ANY (p.roles)
+          AND (
+            'anon' = ANY (p.roles)
+            OR 'public' = ANY (p.roles)
+          )
       LOOP
         EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', policy_name, table_name);
       END LOOP;
@@ -88,6 +91,10 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'availability_slots') THEN
     ALTER TABLE availability_slots ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "Anyone can manage availability" ON availability_slots;
+    DROP POLICY IF EXISTS "Anyone can read availability" ON availability_slots;
+    DROP POLICY IF EXISTS "anon_read_slots" ON availability_slots;
+    DROP POLICY IF EXISTS "service_write_slots" ON availability_slots;
     DROP POLICY IF EXISTS "public_read_slots" ON availability_slots;
     DROP POLICY IF EXISTS "anon_write_slots" ON availability_slots;
     DROP POLICY IF EXISTS "authenticated_manage_slots" ON availability_slots;
@@ -122,6 +129,14 @@ END $$;
 -- ---------------------------------------------------------------------
 ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Anon full access bookings" ON bookings;
+DROP POLICY IF EXISTS "Anyone can read bookings" ON bookings;
+DROP POLICY IF EXISTS "allow_update_bookings" ON bookings;
+DROP POLICY IF EXISTS "anon_insert_bookings" ON bookings;
+DROP POLICY IF EXISTS "anon_read_bookings" ON bookings;
+DROP POLICY IF EXISTS "Authenticated can manage bookings" ON bookings;
+DROP POLICY IF EXISTS "Service role can manage bookings" ON bookings;
+DROP POLICY IF EXISTS "service_write_bookings" ON bookings;
 DROP POLICY IF EXISTS "public_read_bookings" ON bookings;
 DROP POLICY IF EXISTS "anon_update_bookings" ON bookings;
 DROP POLICY IF EXISTS "public_insert_bookings" ON bookings;
@@ -203,7 +218,7 @@ CREATE OR REPLACE FUNCTION public.public_unavailable_booking_slots(
   p_exclude_group_id text DEFAULT NULL
 )
 RETURNS TABLE (
-  appointment_time time,
+  appointment_time text,
   status text,
   created_at timestamptz,
   booking_group_id text
