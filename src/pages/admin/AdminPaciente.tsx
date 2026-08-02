@@ -202,10 +202,10 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: "perfil",       label: "Perfil",               icon: <User size={16} /> },
   { key: "anamnese",     label: "Anamnese",              icon: <ClipboardList size={16} /> },
   { key: "relatorio",    label: "Relatório",            icon: <FileText size={16} /> },
-  { key: "antropometria",label: "Antropometria",         icon: <Activity size={16} /> },
-  { key: "planos",       label: "Planos Alimentares",    icon: <BookOpen size={16} /> },
-  { key: "protocolos",   label: "Protocolos de Exames",  icon: <ClipboardList size={16} /> },
-  { key: "prescricao",   label: "Prescrição Magistral",  icon: <BookOpen size={16} /> },
+  { key: "antropometria",label: "Medidas",               icon: <Activity size={16} /> },
+  { key: "planos",       label: "Planos",                icon: <BookOpen size={16} /> },
+  { key: "protocolos",   label: "Exames",                icon: <ClipboardList size={16} /> },
+  { key: "prescricao",   label: "Prescrição",            icon: <BookOpen size={16} /> },
 ];
 
 // â”€â”€â”€ Shared Textarea â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -490,47 +490,47 @@ export default function AdminPaciente() {
 
   // â”€â”€â”€ RENDER: MAIN PROFILE VIEW (WITH TABS) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
-    <div className="px-4 sm:px-6 py-8 space-y-6">
+    <div className="px-4 sm:px-6 py-5 space-y-4">
       {/* Breadcrumbs & Navigation */}
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+      <div className="rounded-3xl border border-border/60 bg-card/70 px-4 py-4 shadow-sm sm:px-5">
+        <div className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground">
           <Link to="/admin/pacientes" className="hover:text-primary transition-colors">Pacientes</Link>
           <ChevronRight size={12} className="opacity-50" />
-          <span className="text-foreground/70">Prontuário</span>
+          <span className="text-foreground/70">{patient.name || "Prontuário"}</span>
+          <ChevronRight size={12} className="opacity-50" />
+          <span className="text-primary">{TABS.find((tab) => tab.key === activeTab)?.label ?? "Perfil"}</span>
         </div>
         
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-primary/10 text-primary font-bold text-lg sm:text-xl flex items-center justify-center shadow-sm border border-primary/10 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary font-bold text-lg flex items-center justify-center shadow-sm border border-primary/10 shrink-0">
               {patient.name ? initials(patient.name) : <User size={24} />}
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-3">
-                <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-foreground truncate">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground truncate">
                   {patient.name || "Sem nome"}
                 </h1>
-                <div className="hidden sm:block">
-                  {isComplete ? (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-100">
-                      Completo
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-100">
-                      Incompleto
-                    </span>
-                  )}
-                </div>
+                {isComplete ? (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-100">
+                    Cadastro completo
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-100">
+                    Cadastro incompleto
+                  </span>
+                )}
               </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-sm text-muted-foreground font-medium">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground font-medium">
                 {patient.city && (
                   <span className="flex items-center gap-1.5">
-                    <MapPin size={14} className="opacity-60" />
+                    <MapPin size={13} className="opacity-60" />
                     {patient.city}
                   </span>
                 )}
                 {patient.birth_date && (
                   <span className="flex items-center gap-1.5">
-                    <Calendar size={14} className="opacity-60" />
+                    <Calendar size={13} className="opacity-60" />
                     {calcAge(patient.birth_date)} anos
                   </span>
                 )}
@@ -540,9 +540,9 @@ export default function AdminPaciente() {
 
           <div className="flex items-center gap-2">
             <Link to="/admin/pacientes">
-              <Button variant="outline" size="sm" className="rounded-xl h-9">
-                <ArrowLeft size={16} className="mr-2" />
-                Sair
+              <Button variant="outline" size="sm" className="rounded-xl h-9 px-3 text-muted-foreground hover:text-foreground">
+                <ArrowLeft size={15} className="mr-2" />
+                Voltar
               </Button>
             </Link>
           </div>
@@ -550,7 +550,7 @@ export default function AdminPaciente() {
       </div>
 
       {/* Modern Tab Bar */}
-      <div className="bg-card/50 p-1 rounded-2xl border border-border/60 flex flex-wrap gap-1">
+      <div className="bg-card/80 p-1 rounded-2xl border border-border/60 flex flex-nowrap gap-1 overflow-x-auto shadow-sm">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.key;
           return (
@@ -558,7 +558,7 @@ export default function AdminPaciente() {
               key={tab.key}
               onClick={() => setTab(tab.key)}
               className={cn(
-                "flex-1 min-w-[120px] flex items-center justify-center gap-2.5 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all duration-200",
+                "flex-none md:flex-1 min-w-[108px] flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl whitespace-nowrap transition-all duration-200",
                 isActive
                   ? "bg-background text-primary shadow-sm border border-border"
                   : "text-muted-foreground hover:text-foreground hover:bg-background/50"
@@ -701,129 +701,175 @@ function PerfilTab({
     else toast.error("Erro ao remover foto.");
   };
 
+  const trackedFields: (keyof Patient)[] = [
+    "name",
+    "cpf",
+    "email",
+    "phone",
+    "city",
+    "birth_date",
+    "gender",
+    "occupation",
+    "notes",
+  ];
+  const hasChanges = trackedFields.some(
+    (field) => String(form[field] ?? "") !== String(patient[field] ?? "")
+  );
+  const inputClass = "h-9 rounded-xl bg-muted/20 border-border/80 focus-visible:ring-primary/20";
+  const fieldClass = "space-y-1.5";
+  const labelClass = "text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground";
+
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-        {/* Nome */}
-        <div className="space-y-1.5">
-          <Label htmlFor="name">Nome Completo</Label>
-          <Input
-            id="name"
-            value={form.name || ""}
-            onChange={(e) => set("name", e.target.value)}
-          />
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-primary">Perfil clínico</p>
+          <h2 className="mt-1 text-lg font-bold tracking-tight text-foreground">Dados cadastrais do paciente</h2>
+          <p className="text-sm text-muted-foreground">Informações essenciais para identificação, contato e histórico administrativo.</p>
         </div>
-
-        {/* CPF */}
-        <div className="space-y-1.5">
-          <Label htmlFor="cpf">CPF</Label>
-          <Input
-            id="cpf"
-            inputMode="numeric"
-            placeholder="000.000.000-00"
-            value={formatCPF(form.cpf ?? "")}
-            onChange={(e) => {
-              const raw = e.target.value.replace(/\D/g, "").slice(0, 11);
-              set("cpf", raw);
-              if (cpfError) setCpfError(null);
-            }}
-            className={cpfError ? "border-destructive focus-visible:ring-destructive" : ""}
-          />
-          {cpfError && (
-            <p className="text-xs text-destructive font-medium">{cpfError}</p>
-          )}
-        </div>
-
-        {/* Email */}
-        <div className="space-y-1.5">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            type="email"
-            value={form.email || ""}
-            onChange={(e) => set("email", e.target.value)}
-          />
-        </div>
-
-        {/* Telefone */}
-        <div className="space-y-1.5">
-          <Label htmlFor="phone">Telefone</Label>
-          <Input
-            id="phone"
-            value={form.phone || ""}
-            onChange={(e) => set("phone", e.target.value)}
-          />
-        </div>
-
-        {/* Cidade */}
-        <div className="space-y-1.5">
-          <Label htmlFor="city">Cidade</Label>
-          <Input
-            id="city"
-            value={form.city || ""}
-            onChange={(e) => set("city", e.target.value)}
-          />
-        </div>
-
-        {/* Data de nascimento */}
-        <div className="space-y-1.5">
-          <Label htmlFor="birth_date">Data de nascimento</Label>
-          <Input
-            id="birth_date"
-            type="date"
-            value={form.birth_date || ""}
-            onChange={(e) => set("birth_date", e.target.value)}
-          />
-        </div>
-
-        {/* Gênero */}
-        <div className="space-y-1.5">
-          <Label htmlFor="gender">Gênero</Label>
-          <select
-            id="gender"
-            value={form.gender || ""}
-            onChange={(e) => set("gender", e.target.value)}
-            className="w-full h-10 rounded-xl border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">Selecionar...</option>
-            <option value="M">Masculino</option>
-            <option value="F">Feminino</option>
-            <option value="outro">Outro</option>
-          </select>
-        </div>
-
-        {/* Ocupação */}
-        <div className="space-y-1.5">
-          <Label htmlFor="occupation">Ocupação</Label>
-          <Input
-            id="occupation"
-            value={form.occupation || ""}
-            onChange={(e) => set("occupation", e.target.value)}
-          />
-        </div>
-
-        {/* Observações */}
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="notes">Observações Gerais</Label>
-          <Textarea
-            id="notes"
-            minRows={4}
-            value={form.notes || ""}
-            onChange={(e) => set("notes", e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="flex justify-end pt-4">
-        <Button onClick={handleSave} disabled={saving} className="h-11 px-8 rounded-xl font-bold">
-          {saving ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Save size={16} className="mr-2" />}
-          Atualizar Cadastro
+        <Button
+          onClick={handleSave}
+          disabled={saving || !hasChanges}
+          className="h-9 rounded-xl px-4 font-bold shadow-sm"
+        >
+          {saving ? <Loader2 size={15} className="mr-2 animate-spin" /> : <Save size={15} className="mr-2" />}
+          {saving ? "Salvando..." : hasChanges ? "Salvar alterações" : "Tudo salvo"}
         </Button>
       </div>
 
+      <div className="space-y-5">
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-[0.14em] text-primary">Dados pessoais</h3>
+            <p className="text-xs text-muted-foreground">Identificação principal usada no prontuário.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+            <div className={fieldClass}>
+              <Label htmlFor="name" className={labelClass}>Nome completo</Label>
+              <Input
+                id="name"
+                value={form.name || ""}
+                onChange={(e) => set("name", e.target.value)}
+                className={inputClass}
+              />
+            </div>
+
+            <div className={fieldClass}>
+              <Label htmlFor="cpf" className={labelClass}>CPF</Label>
+              <Input
+                id="cpf"
+                inputMode="numeric"
+                placeholder="000.000.000-00"
+                value={formatCPF(form.cpf ?? "")}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, "").slice(0, 11);
+                  set("cpf", raw);
+                  if (cpfError) setCpfError(null);
+                }}
+                className={cn(inputClass, cpfError && "border-destructive focus-visible:ring-destructive/20")}
+              />
+              {cpfError && (
+                <p className="text-xs text-destructive font-medium">{cpfError}</p>
+              )}
+            </div>
+
+            <div className={fieldClass}>
+              <Label htmlFor="birth_date" className={labelClass}>Data de nascimento</Label>
+              <Input
+                id="birth_date"
+                type="date"
+                value={form.birth_date || ""}
+                onChange={(e) => set("birth_date", e.target.value)}
+                className={inputClass}
+              />
+            </div>
+
+            <div className={fieldClass}>
+              <Label htmlFor="gender" className={labelClass}>Gênero</Label>
+              <select
+                id="gender"
+                value={form.gender || ""}
+                onChange={(e) => set("gender", e.target.value)}
+                className={cn("w-full px-3 py-2 text-sm focus:outline-none focus:ring-2", inputClass)}
+              >
+                <option value="">Selecionar...</option>
+                <option value="M">Masculino</option>
+                <option value="F">Feminino</option>
+                <option value="outro">Outro</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3 border-t border-border/50 pt-4">
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-[0.14em] text-primary">Contato</h3>
+            <p className="text-xs text-muted-foreground">Canais para retorno, envio de materiais e confirmações.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+            <div className={fieldClass}>
+              <Label htmlFor="email" className={labelClass}>Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={form.email || ""}
+                onChange={(e) => set("email", e.target.value)}
+                className={inputClass}
+              />
+            </div>
+
+            <div className={fieldClass}>
+              <Label htmlFor="phone" className={labelClass}>Telefone</Label>
+              <Input
+                id="phone"
+                value={form.phone || ""}
+                onChange={(e) => set("phone", e.target.value)}
+                className={inputClass}
+              />
+            </div>
+
+            <div className={fieldClass}>
+              <Label htmlFor="city" className={labelClass}>Cidade</Label>
+              <Input
+                id="city"
+                value={form.city || ""}
+                onChange={(e) => set("city", e.target.value)}
+                className={inputClass}
+              />
+            </div>
+
+            <div className={fieldClass}>
+              <Label htmlFor="occupation" className={labelClass}>Ocupação</Label>
+              <Input
+                id="occupation"
+                value={form.occupation || ""}
+                onChange={(e) => set("occupation", e.target.value)}
+                className={inputClass}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3 border-t border-border/50 pt-4">
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-[0.14em] text-primary">Informações adicionais</h3>
+            <p className="text-xs text-muted-foreground">Observações gerais visíveis no perfil do prontuário.</p>
+          </div>
+          <div className={fieldClass}>
+            <Label htmlFor="notes" className={labelClass}>Observações gerais</Label>
+            <Textarea
+              id="notes"
+              minRows={3}
+              value={form.notes || ""}
+              onChange={(e) => set("notes", e.target.value)}
+              className="min-h-[92px] rounded-xl bg-muted/20 border-border/80 focus-visible:ring-primary/20"
+            />
+          </div>
+        </section>
+      </div>
+
       {/* Photo Management Section */}
-      <div className="space-y-4 pt-8 border-t border-border/60">
+      <div className="space-y-4 pt-5 border-t border-border/60">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-foreground font-bold">
             <Camera size={20} className="text-primary" />
