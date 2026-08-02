@@ -226,6 +226,9 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: "prescricao",   label: "Prescrição",            icon: <BookOpen size={16} /> },
 ];
 
+const isTabKey = (value: string | null): value is TabKey =>
+  TABS.some((tab) => tab.key === value);
+
 // â”€â”€â”€ Shared Textarea â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface TextareaProps
@@ -258,7 +261,8 @@ export default function AdminPaciente() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = (searchParams.get("tab") as TabKey) || "central";
+  const rawTab = searchParams.get("tab");
+  const activeTab: TabKey = isTabKey(rawTab) ? rawTab : "central";
 
   // â”€â”€ ConsultationContext â€” ctxSetAnamnesis passado para AnamnesisForm â”€â”€â”€
   const { setAnamnesis: ctxSetAnamnesis } = useConsultation();
@@ -1069,7 +1073,7 @@ function ClinicalCentralTab({
           {primaryAction ? (
             <button
               type="button"
-              onClick={() => onNavigateTab(primaryAction.tab)}
+              onClick={() => openClinicalTarget(primaryAction)}
               className="flex w-full items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-amber-900 transition-all hover:-translate-y-0.5 hover:shadow-sm lg:max-w-[360px]"
             >
               <span className="flex min-w-0 items-center gap-3">
