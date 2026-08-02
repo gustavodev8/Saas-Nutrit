@@ -282,10 +282,10 @@ export default function AdminPacientes() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-muted/30 p-8">
+    <div className="space-y-5">
 
       {/* ── Page header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 pb-10">
+      <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-4">
           <div className="w-1 self-stretch rounded-full bg-primary mt-0.5" />
           <div>
@@ -293,14 +293,14 @@ export default function AdminPacientes() {
             <p className="text-sm text-muted-foreground mt-1">Registro de prontuários da clínica</p>
           </div>
         </div>
-        <Button onClick={() => setShowModal(true)} className="flex items-center gap-2 h-11 px-5 rounded-xl shrink-0 font-bold shadow-sm">
+        <Button onClick={() => setShowModal(true)} className="flex h-10 shrink-0 items-center gap-2 rounded-xl px-4 font-semibold shadow-sm">
           <Plus className="w-5 h-5" />
           Novo Paciente
         </Button>
       </div>
 
       {/* ── Smart stats grid ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <StatCard
           icon={<Users className="w-4 h-4" />}
           label="Total de pacientes"
@@ -342,7 +342,7 @@ export default function AdminPacientes() {
       </div>
 
       {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row gap-3 w-full mt-8 mb-2">
+      <div className="flex w-full flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
           <Input
