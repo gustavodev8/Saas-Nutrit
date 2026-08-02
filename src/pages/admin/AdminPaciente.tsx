@@ -71,6 +71,7 @@ import {
   deletePatientReport,
   fetchBookings,
   isPendingBookingExpired,
+  fetchConsultationRecords,
   fetchExamRequests,
   fetchPrescriptions,
   type Patient,
@@ -79,6 +80,7 @@ import {
   type PatientPhoto,
   type PatientReport,
   type Booking,
+  type ConsultationRecord,
   type PatientExamRequest,
   type SavedPrescription,
 } from "@/lib/supabase";
@@ -645,18 +647,31 @@ interface ClinicalCentralData {
   examRequests: PatientExamRequest[];
   prescriptions: SavedPrescription[];
   bookings: Booking[];
+  consultationRecords: ConsultationRecord[];
 }
 
 interface ClinicalTimelineEvent {
   id: string;
   dateValue: string;
+  sortValue: number;
   timeValue?: string | null;
   title: string;
   description: string;
   badge: string;
   icon: LucideIcon;
   toneClass: string;
-  actionTab: TabKey;
+  actionTab?: TabKey;
+  route?: string;
+}
+
+interface ClinicalAction {
+  id: string;
+  title: string;
+  description: string;
+  tab?: TabKey;
+  route?: string;
+  icon: LucideIcon;
+  priority: number;
 }
 
 const emptyClinicalData: ClinicalCentralData = {
@@ -666,6 +681,7 @@ const emptyClinicalData: ClinicalCentralData = {
   examRequests: [],
   prescriptions: [],
   bookings: [],
+  consultationRecords: [],
 };
 
 const dateOnly = (value?: string | null) => {
@@ -680,6 +696,22 @@ const dateTimeValue = (date?: string | null, time?: string | null) => {
   const parsed = new Date(iso).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
 };
+
+const instantDateValue = (value?: string | null) => {
+  if (!value) return 0;
+  const parsed = new Date(value.includes("T") ? value : `${value}T12:00:00`).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const digitsOnly = (value?: string | null) => value?.replace(/\D/g, "") ?? "";
+
+const normalizeIdentityText = (value?: string | null) =>
+  (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 
 const formatClinicalDate = (date?: string | null, time?: string | null) => {
   const normalizedDate = dateOnly(date);
@@ -723,6 +755,7 @@ function ClinicalCentralTab({
   patient: Patient;
   onNavigateTab: (tab: TabKey) => void;
 }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ClinicalCentralData>(emptyClinicalData);
 
@@ -731,29 +764,51 @@ function ClinicalCentralTab({
     let active = true;
     setLoading(true);
 
-    Promise.all([
-      fetchMeasurements(patient.id),
-      fetchMealPlans(patient.id),
-      fetchPatientReports(patient.id),
-      fetchExamRequests(patient.id),
-      fetchPrescriptions(patient.id),
-      fetchBookings(),
-    ])
-      .then(([measurements, mealPlans, reports, examRequests, prescriptions, allBookings]) => {
-        if (!active) return;
-        const patientEmail = patient.email?.trim().toLowerCase();
-        const patientPhone = patient.phone?.replace(/\D/g, "");
-        const bookings = allBookings.filter((booking) => {
-          if (booking.patient_id === patient.id) return true;
-          const bookingEmail = booking.client_email?.trim().toLowerCase();
-          const bookingPhone = booking.client_phone?.replace(/\D/g, "");
-          return Boolean(
-            (patientEmail && bookingEmail === patientEmail) ||
-            (patientPhone && bookingPhone === patientPhone)
-          );
-        });
+    const loadCentral = async () => {
+      const [measurements, mealPlans, reports, examRequests, prescriptions, allBookings] = await Promise.all([
+        fetchMeasurements(patient.id),
+        fetchMealPlans(patient.id),
+        fetchPatientReports(patient.id),
+        fetchExamRequests(patient.id),
+        fetchPrescriptions(patient.id),
+        fetchBookings(),
+      ]);
 
-        setData({ measurements, mealPlans, reports, examRequests, prescriptions, bookings });
+      const patientEmail = patient.email?.trim().toLowerCase();
+      const patientCpf = digitsOnly(patient.cpf);
+      const patientPhone = digitsOnly(patient.phone);
+      const patientName = normalizeIdentityText(patient.name);
+      const bookings = allBookings.filter((booking) => {
+        if (booking.patient_id === patient.id) return true;
+        const bookingEmail = booking.client_email?.trim().toLowerCase();
+        const bookingCpf = digitsOnly(booking.client_cpf);
+        const bookingPhone = digitsOnly(booking.client_phone);
+        const bookingName = normalizeIdentityText(booking.client_name);
+        const cpfMatches = patientCpf.length === 11 && bookingCpf.length === 11 && patientCpf === bookingCpf;
+        const emailMatches = Boolean(patientEmail && bookingEmail === patientEmail);
+        const phoneAndNameMatch = Boolean(
+          patientPhone &&
+          bookingPhone &&
+          patientPhone === bookingPhone &&
+          patientName &&
+          bookingName &&
+          patientName === bookingName
+        );
+        return cpfMatches || emailMatches || phoneAndNameMatch;
+      });
+
+      const bookingGroupIds = Array.from(new Set(bookings.map((booking) => booking.booking_group_id).filter(Boolean)));
+      const consultationRecords = (
+        await Promise.all(bookingGroupIds.map((groupId) => fetchConsultationRecords(groupId)))
+      ).flat();
+
+      return { measurements, mealPlans, reports, examRequests, prescriptions, bookings, consultationRecords };
+    };
+
+    loadCentral()
+      .then((centralData) => {
+        if (!active) return;
+        setData(centralData);
       })
       .catch(() => toast.error("Erro ao carregar a central clínica."))
       .finally(() => {
@@ -763,7 +818,7 @@ function ClinicalCentralTab({
     return () => {
       active = false;
     };
-  }, [patient.id, patient.email, patient.phone]);
+  }, [patient.id, patient.name, patient.email, patient.phone, patient.cpf]);
 
   const now = Date.now();
   const today = todayISO();
@@ -774,6 +829,7 @@ function ClinicalCentralTab({
     const endsOk = !plan.end_date || plan.end_date >= today;
     return startsOk && endsOk;
   });
+  const latestPlan = data.mealPlans[0];
   const pendingExamRequests = data.examRequests.filter((request) => request.status !== "completed");
   const upcomingBookings = data.bookings
     .filter((booking) => !["completed", "cancelled", "no_show"].includes(booking.status ?? ""))
@@ -781,15 +837,25 @@ function ClinicalCentralTab({
     .filter((booking) => dateTimeValue(booking.appointment_date, booking.appointment_time) >= now)
     .sort((a, b) => dateTimeValue(a.appointment_date, a.appointment_time) - dateTimeValue(b.appointment_date, b.appointment_time));
   const nextBooking = upcomingBookings[0];
+  const recordSessionKeys = new Set(
+    data.consultationRecords
+      .filter((record) => record.booking_group_id && record.session_number != null)
+      .map((record) => `${record.booking_group_id}-${record.session_number}`)
+  );
+  const timelineBookings = data.bookings.filter((booking) => {
+    const key = `${booking.booking_group_id}-${booking.session_number}`;
+    return !(booking.status === "completed" && recordSessionKeys.has(key));
+  });
 
-  const pendingActions = [
-    !activePlan
+  const pendingActions: ClinicalAction[] = [
+    !nextBooking
       ? {
-          id: "plan",
-          title: "Criar plano alimentar",
-          description: "Paciente sem plano ativo.",
-          tab: "planos" as TabKey,
-          icon: Utensils,
+          id: "booking",
+          title: "Agendar retorno",
+          description: "Nenhuma consulta futura encontrada.",
+          route: "/admin/agendamentos",
+          icon: CalendarCheck,
+          priority: 10,
         }
       : null,
     !latestMeasurement
@@ -799,6 +865,7 @@ function ClinicalCentralTab({
           description: "Sem medidas antropométricas registradas.",
           tab: "antropometria" as TabKey,
           icon: Activity,
+          priority: 20,
         }
       : null,
     pendingExamRequests.length > 0
@@ -808,15 +875,17 @@ function ClinicalCentralTab({
           description: `${pluralLabel(pendingExamRequests.length, "solicitação pendente", "solicitações pendentes")}.`,
           tab: "protocolos" as TabKey,
           icon: FlaskConical,
+          priority: 30,
         }
       : null,
-    !nextBooking
+    !activePlan
       ? {
-          id: "booking",
-          title: "Agendar retorno",
-          description: "Nenhuma consulta futura encontrada.",
-          tab: "perfil" as TabKey,
-          icon: CalendarCheck,
+          id: "plan",
+          title: "Criar plano alimentar",
+          description: "Paciente sem plano ativo.",
+          tab: "planos" as TabKey,
+          icon: Utensils,
+          priority: 40,
         }
       : null,
     !latestReport
@@ -826,25 +895,53 @@ function ClinicalCentralTab({
           description: "Sem relatório clínico no histórico.",
           tab: "relatorio" as TabKey,
           icon: FileText,
+          priority: 50,
         }
       : null,
-  ].filter((item): item is NonNullable<typeof item> => item !== null);
+  ]
+    .filter((item): item is ClinicalAction => item !== null)
+    .sort((a, b) => a.priority - b.priority);
+
+  const openClinicalTarget = (target: { tab?: TabKey; route?: string }) => {
+    if (target.route) {
+      navigate(target.route);
+      return;
+    }
+    if (target.tab) onNavigateTab(target.tab);
+  };
 
   const timeline: ClinicalTimelineEvent[] = [
-    ...data.bookings.map((booking) => ({
+    ...timelineBookings.map((booking) => ({
       id: `booking-${booking.id ?? booking.booking_group_id}-${booking.session_number}`,
       dateValue: booking.appointment_date,
+      sortValue: dateTimeValue(booking.appointment_date, booking.appointment_time),
       timeValue: booking.appointment_time,
       title: booking.session_number > 1 ? `Retorno ${booking.session_number - 1}` : "Consulta inicial",
       description: `${booking.plan_name || "Consulta"} · ${booking.type === "online" ? "Online" : "Presencial"} · ${paymentStatusLabel(booking.payment_status)}`,
       badge: bookingStatusLabel(booking.status),
       icon: CalendarCheck,
       toneClass: booking.status === "completed" ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-blue-700 bg-blue-50 border-blue-100",
-      actionTab: "perfil" as TabKey,
+      route: "/admin/agendamentos",
+    })),
+    ...data.consultationRecords.map((record) => ({
+      id: `record-${record.id ?? record.booking_group_id}-${record.session_number ?? "sem-sessao"}`,
+      dateValue: record.created_at ?? today,
+      sortValue: instantDateValue(record.created_at ?? today),
+      title: record.session_number && record.session_number > 1 ? `Evolução do retorno ${record.session_number - 1}` : "Evolução da consulta",
+      description: [
+        record.weight != null ? `${record.weight} kg` : null,
+        record.next_return_date ? `retorno ${formatClinicalDate(record.next_return_date)}` : null,
+        record.next_steps?.trim() ? record.next_steps.trim() : record.notes?.trim() ? record.notes.trim() : null,
+      ].filter(Boolean).join(" · ") || "Registro clínico da sessão concluída.",
+      badge: "Evolução",
+      icon: ClipboardList,
+      toneClass: "text-teal-700 bg-teal-50 border-teal-100",
+      route: "/admin/agendamentos",
     })),
     ...data.measurements.map((measurement) => ({
       id: `measurement-${measurement.id}`,
       dateValue: measurement.assessment_date,
+      sortValue: dateTimeValue(measurement.assessment_date),
       title: "Avaliação antropométrica",
       description: [
         measurement.weight != null ? `${measurement.weight} kg` : null,
@@ -859,6 +956,7 @@ function ClinicalCentralTab({
     ...data.mealPlans.map((plan) => ({
       id: `plan-${plan.id}`,
       dateValue: plan.start_date ?? plan.created_at ?? today,
+      sortValue: plan.start_date ? dateTimeValue(plan.start_date) : instantDateValue(plan.created_at),
       title: plan.title || "Plano alimentar",
       description: [
         plan.daily_calories ? `${plan.daily_calories} kcal/dia` : null,
@@ -868,11 +966,13 @@ function ClinicalCentralTab({
       badge: "Plano",
       icon: Utensils,
       toneClass: "text-emerald-700 bg-emerald-50 border-emerald-100",
+      route: plan.id && patient.id ? `/admin/pacientes/${patient.id}/plano/${plan.id}` : undefined,
       actionTab: "planos" as TabKey,
     })),
     ...data.examRequests.map((request) => ({
       id: `exam-${request.id}`,
       dateValue: request.created_at ?? today,
+      sortValue: instantDateValue(request.created_at),
       title: request.status === "completed" ? "Resultados de exames lançados" : "Pedido de exames solicitado",
       description: `${pluralLabel(request.items?.length ?? 0, "exame", "exames")} · ${pluralLabel(request.results?.length ?? 0, "resultado registrado", "resultados registrados")}`,
       badge: request.status === "completed" ? "Concluído" : "Pendente",
@@ -883,6 +983,7 @@ function ClinicalCentralTab({
     ...data.reports.map((report) => ({
       id: `report-${report.id}`,
       dateValue: report.report_date,
+      sortValue: dateTimeValue(report.report_date),
       title: report.title || "Relatório clínico",
       description: `${report.report_text.trim().length} caracteres · atualizado ${formatClinicalDate(report.updated_at ?? report.created_at ?? report.report_date)}`,
       badge: "Relatório",
@@ -893,6 +994,7 @@ function ClinicalCentralTab({
     ...data.prescriptions.map((prescription) => ({
       id: `prescription-${prescription.id}`,
       dateValue: prescription.created_at,
+      sortValue: instantDateValue(prescription.created_at),
       title: "Prescrição magistral",
       description: `${pluralLabel(prescription.blocks.length, "bloco", "blocos")} · ${pluralLabel(prescription.blocks.reduce((acc, block) => acc + block.items.length, 0), "ativo", "ativos")}`,
       badge: "Prescrição",
@@ -900,7 +1002,7 @@ function ClinicalCentralTab({
       toneClass: "text-violet-700 bg-violet-50 border-violet-100",
       actionTab: "prescricao" as TabKey,
     })),
-  ].sort((a, b) => dateTimeValue(b.dateValue, b.timeValue) - dateTimeValue(a.dateValue, a.timeValue));
+  ].sort((a, b) => b.sortValue - a.sortValue);
 
   const summaryCards = [
     {
@@ -911,10 +1013,17 @@ function ClinicalCentralTab({
       tab: "perfil" as TabKey,
     },
     {
-      label: "Plano ativo",
-      value: activePlan?.title ?? "Sem plano ativo",
-      detail: activePlan?.daily_calories ? `${activePlan.daily_calories} kcal/dia` : "Conduta alimentar não vinculada",
+      label: activePlan ? "Plano ativo" : "Último plano",
+      value: activePlan?.title ?? latestPlan?.title ?? "Sem plano cadastrado",
+      detail: activePlan?.daily_calories
+        ? `${activePlan.daily_calories} kcal/dia`
+        : latestPlan
+        ? "Fora do período ativo"
+        : "Conduta alimentar não vinculada",
       icon: Utensils,
+      route: (activePlan?.id ?? latestPlan?.id) && patient.id
+        ? `/admin/pacientes/${patient.id}/plano/${activePlan?.id ?? latestPlan?.id}`
+        : undefined,
       tab: "planos" as TabKey,
     },
     {
@@ -993,7 +1102,7 @@ function ClinicalCentralTab({
             <button
               key={card.label}
               type="button"
-              onClick={() => onNavigateTab(card.tab)}
+              onClick={() => openClinicalTarget(card)}
               className="rounded-2xl border border-border bg-background px-3 py-3 text-left transition-all hover:border-primary/30 hover:bg-muted/30"
             >
               <div className="flex items-start gap-3">
@@ -1037,7 +1146,7 @@ function ClinicalCentralTab({
                   <button
                     key={action.id}
                     type="button"
-                    onClick={() => onNavigateTab(action.tab)}
+                    onClick={() => openClinicalTarget(action)}
                     className="w-full rounded-2xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5"
                   >
                     <div className="flex items-start gap-3">
@@ -1079,7 +1188,7 @@ function ClinicalCentralTab({
                   <button
                     key={event.id}
                     type="button"
-                    onClick={() => onNavigateTab(event.actionTab)}
+                    onClick={() => openClinicalTarget(event)}
                     className="relative flex w-full gap-3 rounded-2xl p-1.5 text-left transition-colors hover:bg-muted/40"
                   >
                     <span className={cn("relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border", event.toneClass)}>
