@@ -5,6 +5,7 @@ import { Loader2, ShoppingBag, User, Mail, Package, Calendar, FileText } from "l
 import { useContent } from "@/contexts/ContentContext";
 import { jsPDF } from "jspdf";
 import { toast } from "sonner";
+import { getOperationalErrorMessage, recordOperationalEvent } from "@/lib/operationalLogs";
 
 interface PaymentLog {
   id: number;
@@ -33,7 +34,15 @@ const AdminPagamentos = () => {
         .order("created_at", { ascending: false });
 
       if (error) {
-        setError("Erro ao carregar logs: " + error.message);
+        const message = "Erro ao carregar logs: " + error.message;
+        recordOperationalEvent({
+          area: "payment",
+          status: "error",
+          action: "Falha ao carregar pagamentos",
+          message: error.message,
+          context: { table: "payment_logs" },
+        });
+        setError(getOperationalErrorMessage("payment", message));
       } else {
         setLogs(data || []);
       }
@@ -183,10 +192,34 @@ const AdminPagamentos = () => {
       doc.text("ASSINATURA DO EMITENTE", sigLineX + sigLineW / 2, y + 4.5, { align: "center" });
 
       doc.save(`recibo-${log.payment_id}.pdf`);
+      recordOperationalEvent({
+        area: "pdf",
+        status: "success",
+        action: "Recibo gerado",
+        message: "PDF de recibo gerado pelo admin.",
+        context: {
+          paymentId: log.payment_id,
+          product: log.product_name,
+          amount: log.amount,
+          customer: log.customer_name,
+        },
+      });
       toast.success("Recibo gerado com sucesso!");
     } catch (e) {
       console.error(e);
-      toast.error("Erro ao gerar recibo em PDF.");
+      const message = e instanceof Error ? e.message : "Erro desconhecido";
+      recordOperationalEvent({
+        area: "pdf",
+        status: "error",
+        action: "Falha ao gerar recibo",
+        message,
+        context: {
+          paymentId: log.payment_id,
+          product: log.product_name,
+          amount: log.amount,
+        },
+      });
+      toast.error(getOperationalErrorMessage("pdf", "Erro ao gerar recibo em PDF."));
     }
   };
 

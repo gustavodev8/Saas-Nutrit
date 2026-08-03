@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Booking } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
+import { getOperationalErrorMessage, recordOperationalEvent } from "@/lib/operationalLogs";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -43,7 +44,18 @@ export const useSendMaterial = () => {
     const current = sendFiles.reduce((acc, file) => acc + file.size, 0);
     const incoming = picked.reduce((acc, file) => acc + file.size, 0);
     if (current + incoming > MAX_ATTACH_BYTES) {
-      toast({ title: "Tamanho total ultrapassa 10 MB", variant: "destructive" });
+      recordOperationalEvent({
+        area: "email",
+        status: "warning",
+        action: "Anexos recusados",
+        message: "O envio de material foi bloqueado por ultrapassar 10 MB.",
+        context: { currentBytes: current, incomingBytes: incoming, files: picked.length },
+      });
+      toast({
+        title: "Anexos acima de 10 MB",
+        description: "Reduza o tamanho dos arquivos ou envie em mais de uma mensagem. O evento foi registrado em Operacao.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -89,12 +101,35 @@ export const useSendMaterial = () => {
         throw new Error(msg);
       }
 
+      recordOperationalEvent({
+        area: "email",
+        status: "success",
+        action: "Material enviado",
+        message: "Email com material enviado ao paciente.",
+        context: {
+          email: sendTarget.client_email,
+          patient: sendTarget.client_name,
+          attachments: sendFiles.length,
+        },
+      });
       toast({ title: "Email enviado!", description: `Para ${sendTarget.client_email}` });
       setSendTarget(null);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      recordOperationalEvent({
+        area: "email",
+        status: "error",
+        action: "Falha ao enviar material",
+        message,
+        context: {
+          email: sendTarget.client_email,
+          patient: sendTarget.client_name,
+          attachments: sendFiles.length,
+        },
+      });
       toast({
         title: "Erro ao enviar email",
-        description: error instanceof Error ? error.message : "Tente novamente",
+        description: getOperationalErrorMessage("email", message),
         variant: "destructive",
       });
     } finally {

@@ -20,23 +20,9 @@ import {
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useContent } from "@/contexts/ContentContext";
 import { fetchBookings, fetchPatients, type Booking, type Patient } from "@/lib/supabase";
+import { buildAdminDashboardData, formatShortDate } from "@/lib/adminDashboardUtils";
 import { cn } from "@/lib/utils";
-
-const todayIso = () => new Date().toISOString().slice(0, 10);
-
-const formatDate = (value: string) =>
-  new Date(`${value}T12:00:00`).toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "short",
-  });
-
-const isActiveBooking = (booking: Booking) =>
-  booking.status !== "cancelled" && booking.status !== "no_show";
-
-const parseBookingDateTime = (booking: Booking) =>
-  new Date(`${booking.appointment_date}T${booking.appointment_time || "00:00"}`);
 
 interface SummaryCardProps {
   icon: React.ElementType;
@@ -102,7 +88,6 @@ const QuickAction = ({ icon: Icon, label, description, to }: QuickActionProps) =
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
-  const { content } = useContent();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,41 +110,7 @@ const AdminDashboard = () => {
     };
   }, []);
 
-  const dashboard = useMemo(() => {
-    const today = todayIso();
-    const now = new Date();
-    const thisMonth = today.slice(0, 7);
-
-    const activeBookings = bookings.filter(isActiveBooking);
-    const todayBookings = activeBookings
-      .filter((booking) => booking.appointment_date === today)
-      .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
-
-    const upcomingBookings = activeBookings
-      .filter((booking) => parseBookingDateTime(booking) >= now)
-      .sort((a, b) => parseBookingDateTime(a).getTime() - parseBookingDateTime(b).getTime());
-
-    const pendingPayments = activeBookings.filter(
-      (booking) => booking.payment_status === "pending" && booking.status !== "completed",
-    );
-
-    const completedThisMonth = activeBookings.filter(
-      (booking) =>
-        booking.status === "completed" && booking.appointment_date.slice(0, 7) === thisMonth,
-    );
-
-    const recentPatients = [...patients]
-      .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
-      .slice(0, 5);
-
-    return {
-      todayBookings,
-      nextBookings: upcomingBookings.slice(0, 5),
-      pendingPayments,
-      completedThisMonth,
-      recentPatients,
-    };
-  }, [bookings, patients]);
+  const dashboard = useMemo(() => buildAdminDashboardData(bookings, patients), [bookings, patients]);
 
   return (
     <div className="space-y-5">
@@ -248,8 +199,16 @@ const AdminDashboard = () => {
                   <CalendarCheck className="mx-auto h-8 w-8 text-muted-foreground/50" />
                   <p className="mt-3 text-sm font-medium text-foreground">Nenhum atendimento futuro</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Use a agenda para criar consultas ou retornos.
+                    Crie uma consulta inicial ou retorno para manter a rotina clínica em movimento.
                   </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 rounded-xl"
+                    onClick={() => navigate("/admin/agendamentos")}
+                  >
+                    Abrir agenda
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -268,7 +227,7 @@ const AdminDashboard = () => {
                           {booking.client_name}
                         </span>
                         <span className="block text-xs text-muted-foreground">
-                          {formatDate(booking.appointment_date)} às {booking.appointment_time} ·{" "}
+                          {formatShortDate(booking.appointment_date)} às {booking.appointment_time} ·{" "}
                           {booking.type === "online" ? "online" : "presencial"}
                         </span>
                       </span>
@@ -328,6 +287,14 @@ const AdminDashboard = () => {
                   <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-6 text-center">
                     <AlertCircle className="mx-auto h-6 w-6 text-muted-foreground/50" />
                     <p className="mt-2 text-sm font-medium text-foreground">Nenhum paciente cadastrado</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4 rounded-xl"
+                      onClick={() => navigate("/admin/pacientes")}
+                    >
+                      Cadastrar paciente
+                    </Button>
                   </div>
                 ) : (
                   <div className="space-y-2">

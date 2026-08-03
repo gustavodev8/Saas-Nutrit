@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useContent } from "@/contexts/ContentContext";
 import { toast } from "@/hooks/use-toast";
 import { doesDiscountApply, formatCurrency, getDiscountedAmount, getDiscountPercentageForTarget } from "@/lib/discountUtils";
+import { recordOperationalEvent } from "@/lib/operationalLogs";
 
 function useDiscount() {
   const { content } = useContent();
@@ -206,10 +207,26 @@ const ProdutoPage = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cpf: cpfValue, email: emailValue }),
       });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        recordOperationalEvent({
+          area: "payment",
+          status: "warning",
+          action: "Elegibilidade nao verificada",
+          message: `check-cpf-eligible retornou HTTP ${res.status}.`,
+          context: { email: emailValue },
+        });
+        return false;
+      }
       const data = await res.json();
       return data.eligible === true;
-    } catch {
+    } catch (error) {
+      recordOperationalEvent({
+        area: "payment",
+        status: "warning",
+        action: "Elegibilidade falhou",
+        message: error instanceof Error ? error.message : "Falha ao consultar elegibilidade.",
+        context: { email: emailValue },
+      });
       return false;
     }
   };
@@ -230,6 +247,13 @@ const ProdutoPage = () => {
           // second purchase will correctly return eligible=false.
           const eligible = await checkEligibility(cpf, email);
           setFreeEligible(eligible);
+          recordOperationalEvent({
+            area: "payment",
+            status: "success",
+            action: "Pix de produto aprovado",
+            message: "Pagamento do produto digital confirmado no polling.",
+            context: { paymentId, email, product: produto.name },
+          });
           setStage("approved");
         }
       } catch (_) { /* keep polling */ }
@@ -285,10 +309,24 @@ const ProdutoPage = () => {
       }
 
       setPixData({ payment_id: data.payment_id, qr_code: data.qr_code, qr_code_base64: data.qr_code_base64 });
+      recordOperationalEvent({
+        area: "payment",
+        status: "success",
+        action: "Pix de produto gerado",
+        message: "QR Code Pix gerado para produto digital.",
+        context: { paymentId: data.payment_id, email, product: produto.name, amount: finalAmount },
+      });
       setStage("pix");
       startPolling(data.payment_id);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro inesperado.";
+      recordOperationalEvent({
+        area: "payment",
+        status: "error",
+        action: "Falha ao gerar Pix de produto",
+        message: msg,
+        context: { email, product: produto.name, amount: finalAmount },
+      });
       setErrorMsg(msg);
       setStage("error");
       toast({ title: "Erro", description: msg, variant: "destructive" });

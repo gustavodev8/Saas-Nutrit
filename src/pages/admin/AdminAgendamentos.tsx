@@ -19,6 +19,7 @@ import {
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useContent } from "@/contexts/ContentContext";
 import { toast } from "@/hooks/use-toast";
+import { getOperationalErrorMessage, recordOperationalEvent } from "@/lib/operationalLogs";
 import { calcBMI, normalizePersonName } from "./agendamentos/bookingDateUtils";
 import {
   getBookingGroupStatus,
@@ -387,11 +388,40 @@ const AdminAgendamentos = () => {
     setSavingNew(false);
 
     if (ok) {
+      recordOperationalEvent({
+        area: "booking",
+        status: "success",
+        action: "Consulta manual criada",
+        message: "Agendamento criado manualmente pelo admin.",
+        context: {
+          groupId,
+          patient: b.client_name,
+          date: b.appointment_date,
+          time: b.appointment_time,
+          paymentStatus: b.payment_status,
+        },
+      });
       toast({ title: "Consulta criada!" });
       setNewModal(false);
       load();
     } else {
-      toast({ title: "Erro ao criar consulta.", variant: "destructive" });
+      recordOperationalEvent({
+        area: "booking",
+        status: "error",
+        action: "Falha ao criar consulta manual",
+        message: "O insert do agendamento retornou falso.",
+        context: {
+          groupId,
+          patient: b.client_name,
+          date: b.appointment_date,
+          time: b.appointment_time,
+        },
+      });
+      toast({
+        title: "Erro ao criar consulta.",
+        description: getOperationalErrorMessage("booking", "O agendamento nao foi salvo."),
+        variant: "destructive",
+      });
     }
   };
 
@@ -467,11 +497,27 @@ const AdminAgendamentos = () => {
 
   const load = async () => {
     setLoading(true);
-    const raw      = await fetchBookings();
-    const active   = await autoExpirePendingBookings(raw);
-    const updated  = await autoCompleteBookings(active);
-    setBookings(updated);
-    setLoading(false);
+    try {
+      const raw      = await fetchBookings();
+      const active   = await autoExpirePendingBookings(raw);
+      const updated  = await autoCompleteBookings(active);
+      setBookings(updated);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      recordOperationalEvent({
+        area: "booking",
+        status: "error",
+        action: "Falha ao carregar agenda",
+        message,
+      });
+      toast({
+        title: "Erro ao carregar agenda",
+        description: getOperationalErrorMessage("booking", message),
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openComplete = async (session: Booking) => {
@@ -555,10 +601,38 @@ const AdminAgendamentos = () => {
 
       const ok = await insertBooking(buildNextReturnBooking(schedulingReturn, compNextReturn, compNextReturnTime));
       if (!ok) {
-        toast({ title: "Erro ao agendar retorno.", variant: "destructive" });
+        recordOperationalEvent({
+          area: "booking",
+          status: "error",
+          action: "Falha ao agendar retorno",
+          message: "O insert do retorno retornou falso.",
+          context: {
+            groupId: schedulingReturn.booking_group_id,
+            patient: schedulingReturn.client_name,
+            date: compNextReturn,
+            time: compNextReturnTime,
+          },
+        });
+        toast({
+          title: "Erro ao agendar retorno.",
+          description: getOperationalErrorMessage("booking", "O retorno nao foi salvo."),
+          variant: "destructive",
+        });
         return;
       }
 
+      recordOperationalEvent({
+        area: "booking",
+        status: "success",
+        action: "Retorno agendado",
+        message: "Retorno criado pelo admin.",
+        context: {
+          groupId: schedulingReturn.booking_group_id,
+          patient: schedulingReturn.client_name,
+          date: compNextReturn,
+          time: compNextReturnTime,
+        },
+      });
       toast({ title: "Retorno agendado!" });
       setSchedulingReturn(null);
       load();
@@ -660,7 +734,19 @@ const AdminAgendamentos = () => {
       });
       const completeData = await completeRes.json().catch(() => ({}));
       if (!completeRes.ok) {
-        toast({ title: "Erro ao atualizar status", description: completeData.error || `HTTP ${completeRes.status}`, variant: "destructive" });
+        const message = typeof completeData.error === "string" ? completeData.error : `HTTP ${completeRes.status}`;
+        recordOperationalEvent({
+          area: "booking",
+          status: "error",
+          action: "Falha ao concluir consulta",
+          message,
+          context: { bookingId: completing.id, patient: completing.client_name },
+        });
+        toast({
+          title: "Erro ao atualizar status",
+          description: getOperationalErrorMessage("booking", message),
+          variant: "destructive",
+        });
         return;
       }
 
@@ -670,6 +756,20 @@ const AdminAgendamentos = () => {
         returnCreated = await insertBooking(
           buildNextReturnBooking(completing, compNextReturn, compNextReturnTime || completing.appointment_time)
         );
+        if (!returnCreated) {
+          recordOperationalEvent({
+            area: "booking",
+            status: "warning",
+            action: "Retorno nao criado ao concluir",
+            message: "Prontuario foi salvo, mas o retorno automatico falhou.",
+            context: {
+              groupId: completing.booking_group_id,
+              patient: completing.client_name,
+              date: compNextReturn,
+              time: compNextReturnTime || completing.appointment_time,
+            },
+          });
+        }
       }
 
       // 4. Atualiza estado local imediatamente, depois recarrega em background
@@ -682,6 +782,19 @@ const AdminAgendamentos = () => {
       filters.setFilter(isLastSession ? "completed" : "confirmed");
 
       load();
+
+      recordOperationalEvent({
+        area: "booking",
+        status: "success",
+        action: "Consulta concluida",
+        message: "Prontuario salvo e status da consulta atualizado.",
+        context: {
+          bookingId: completing.id,
+          patient: completing.client_name,
+          returnCreated,
+          isLastSession,
+        },
+      });
 
       toast({
         title: isLastSession ? "Plano concluído! 🎉" : "Consulta concluída!",

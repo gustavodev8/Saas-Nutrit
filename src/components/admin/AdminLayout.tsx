@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  Activity,
   BookOpen,
   CalendarCheck,
   CalendarDays,
@@ -68,6 +69,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/disponibilidade", icon: CalendarDays, label: "Disponibilidade" },
       { to: "/admin/pagamentos", icon: ReceiptText, label: "Pagamentos" },
       { to: "/admin/auditoria", icon: FileText, label: "Auditoria clínica" },
+      { to: "/admin/operacao", icon: Activity, label: "Operacao" },
       { to: "/admin/alimentos", icon: Leaf, label: "Alimentos" },
       { to: "/admin/biblioteca", icon: FlaskConical, label: "Biblioteca clínica" },
     ],

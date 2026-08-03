@@ -40,10 +40,12 @@ import { PrescriptionBuilder } from "@/components/admin/PrescriptionBuilder";
 import { AnamnesisForm } from "@/components/admin/AnamnesisForm";
 import { EmailPatientReportModal } from "@/components/admin/EmailPatientReportModal";
 import { AnthropometryWizard, type MeasurementForm } from "@/components/admin/AnthropometryWizard";
+import { PatientOnboardingChecklist } from "@/components/admin/patient/PatientOnboardingChecklist";
 import { useConsultation } from "@/contexts/ConsultationContext";
 import { StrategyModal } from "@/components/admin/StrategyModal";
 import { calcMacros, type StrategyType, type MacroResult } from "@/lib/strategyUtils";
 import { type EnergyInput } from "@/lib/energyUtils";
+import { buildPatientOnboarding, type PatientOnboardingItem } from "@/lib/patientOnboarding";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -914,6 +916,19 @@ function ClinicalCentralTab({
     if (target.tab) onNavigateTab(target.tab);
   };
 
+  const onboardingItems = buildPatientOnboarding({
+    patient,
+    hasNextBooking: Boolean(nextBooking),
+    hasMeasurement: Boolean(latestMeasurement),
+    hasActivePlan: Boolean(activePlan),
+    hasExamRequest: data.examRequests.length > 0,
+    hasReport: Boolean(latestReport),
+  });
+
+  const openOnboardingItem = (item: PatientOnboardingItem) => {
+    openClinicalTarget(item);
+  };
+
   const timeline: ClinicalTimelineEvent[] = [
     ...timelineBookings.map((booking) => ({
       id: `booking-${booking.id ?? booking.booking_group_id}-${booking.session_number}`,
@@ -1124,50 +1139,54 @@ function ClinicalCentralTab({
         })}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[330px_minmax(0,1fr)]">
-        <section className="rounded-3xl border border-border bg-background p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-primary">Conduta sugerida</p>
-              <h3 className="mt-1 text-base font-black text-foreground">Ações recomendadas</h3>
-            </div>
-            {pendingActions.length === 0 ? (
-              <CheckCircle2 size={20} className="text-emerald-600" />
-            ) : (
-              <AlertCircle size={20} className="text-amber-600" />
-            )}
-          </div>
+      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <PatientOnboardingChecklist items={onboardingItems} onOpenItem={openOnboardingItem} />
 
-          {pendingActions.length === 0 ? (
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-              Sem pendências agora.
+          <section className="rounded-3xl border border-border bg-background p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-primary">Conduta sugerida</p>
+                <h3 className="mt-1 text-base font-black text-foreground">Ações recomendadas</h3>
+              </div>
+              {pendingActions.length === 0 ? (
+                <CheckCircle2 size={20} className="text-emerald-600" />
+              ) : (
+                <AlertCircle size={20} className="text-amber-600" />
+              )}
             </div>
-          ) : (
-            <div className="space-y-2">
-              {pendingActions.slice(0, 5).map((action) => {
-                const Icon = action.icon;
-                return (
-                  <button
-                    key={action.id}
-                    type="button"
-                    onClick={() => openClinicalTarget(action)}
-                    className="w-full rounded-2xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5"
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="rounded-xl bg-amber-50 p-1.5 text-amber-700">
-                        <Icon size={15} />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-bold text-foreground">{action.title}</span>
-                        <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{action.description}</span>
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </section>
+
+            {pendingActions.length === 0 ? (
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
+                Sem pendências agora. Revise a linha do tempo antes do próximo atendimento.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {pendingActions.slice(0, 5).map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <button
+                      key={action.id}
+                      type="button"
+                      onClick={() => openClinicalTarget(action)}
+                      className="w-full rounded-2xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="rounded-xl bg-amber-50 p-1.5 text-amber-700">
+                          <Icon size={15} />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-bold text-foreground">{action.title}</span>
+                          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{action.description}</span>
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
 
         <section className="rounded-3xl border border-border bg-background p-4">
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1182,7 +1201,18 @@ function ClinicalCentralTab({
             <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-8 text-center">
               <Clock3 className="mx-auto mb-3 text-muted-foreground/40" size={28} />
               <p className="text-sm font-semibold text-foreground">Nenhum evento clínico registrado ainda.</p>
-              <p className="mt-1 text-xs text-muted-foreground">Crie uma consulta, plano, avaliação ou relatório para iniciar a linha do tempo.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Comece pelo checklist: agende uma consulta, registre medidas ou crie o primeiro plano.</p>
+              {primaryAction && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-4 rounded-xl"
+                  onClick={() => openClinicalTarget(primaryAction)}
+                >
+                  {primaryAction.title}
+                </Button>
+              )}
             </div>
           ) : (
             <div className="relative space-y-2 before:absolute before:left-[17px] before:top-2 before:h-[calc(100%-16px)] before:w-px before:bg-border">

@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import type { Patient, PatientReport } from "@/lib/supabase";
+import { ageYears, formatBirthDate, formatIsoDate } from "@/lib/patientReportUtils";
 
 const RGB = {
   green: [6, 95, 70] as const,
@@ -17,31 +18,6 @@ function formatDate(date: Date) {
     month: "2-digit",
     year: "numeric",
   });
-}
-
-function formatIsoDate(iso?: string | null) {
-  if (!iso) return null;
-  const [year, month, day] = iso.split("-");
-  if (!year || !month || !day) return null;
-  return `${day}/${month}/${year}`;
-}
-
-function formatBirthDate(iso?: string | null) {
-  if (!iso) return null;
-  const [year, month, day] = iso.split("-");
-  if (!year || !month || !day) return null;
-  return `${day}/${month}/${year}`;
-}
-
-function ageYears(birthDate?: string | null) {
-  if (!birthDate) return null;
-  const birth = new Date(`${birthDate}T12:00:00`);
-  if (Number.isNaN(birth.getTime())) return null;
-  const now = new Date();
-  let years = now.getFullYear() - birth.getFullYear();
-  const monthDelta = now.getMonth() - birth.getMonth();
-  if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < birth.getDate())) years--;
-  return years;
 }
 
 function wrapParagraph(doc: jsPDF, paragraph: string, maxWidth: number): string[] {

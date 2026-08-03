@@ -59,6 +59,7 @@ import AdminDesconto from "./pages/admin/AdminDesconto";
 import AdminDisparo from "./pages/admin/AdminDisparo";
 import AdminLeads from "./pages/admin/AdminLeads";
 import AdminAuditoria from "./pages/admin/AdminAuditoria";
+import AdminOperacao from "./pages/admin/AdminOperacao";
 import AdminTemplates from "./pages/admin/AdminTemplates";
 import AdminTemplateEditor from "./pages/admin/AdminTemplateEditor";
 const AdminFerramentas = lazy(() => import("./pages/admin/AdminFerramentas"));
@@ -127,6 +128,7 @@ const App = () => (
                 <Route path="faq" element={<AdminFAQ />} />
                 <Route path="cta" element={<AdminCTA />} />
                 <Route path="auditoria" element={<AdminAuditoria />} />
+                <Route path="operacao" element={<AdminOperacao />} />
                 <Route path="contato" element={<AdminContato />} />
                 <Route path="modalidades" element={<AdminModalidades />} />
                 <Route path="produtos" element={<AdminProdutosDigitais />} />

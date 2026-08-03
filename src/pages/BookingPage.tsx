@@ -21,6 +21,7 @@ import {
 } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
 import { doesDiscountApply, formatCurrency, getDiscountedAmount } from "@/lib/discountUtils";
+import { recordOperationalEvent } from "@/lib/operationalLogs";
 
 const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -320,6 +321,13 @@ const BookingPage = () => {
           onError: (err: unknown) => {
             void err; // suppress lint warning
             brickRendered.current = false;
+            recordOperationalEvent({
+              area: "payment",
+              status: "error",
+              action: "Brick de cartao falhou",
+              message: err instanceof Error ? err.message : "Erro ao carregar formulario de cartao.",
+              context: { plan: plan.name, amount: payableAmount },
+            });
             toast({ title: "Erro ao carregar formulário de cartão. Tente usar o Pix.", variant: "destructive" });
           },
           onSubmit: async ({ formData }: { formData: Record<string, unknown> }) => {
@@ -347,6 +355,13 @@ const BookingPage = () => {
                 if (data.booking_confirmed === false) {
                   toast({ title: "Pagamento aprovado, mas erro ao confirmar agendamento. Entre em contato.", variant: "destructive" });
                 }
+                recordOperationalEvent({
+                  area: "payment",
+                  status: "success",
+                  action: "Pagamento cartao aprovado",
+                  message: "Pagamento de consulta aprovado no cartao.",
+                  context: { bookingGroupId, customerEmail: clientEmail, plan: plan.name, amount: payableAmount },
+                });
                 setStage("approved");
               } else {
                 // Traduz status_detail do MP para mensagem amigável
@@ -368,6 +383,13 @@ const BookingPage = () => {
               }
             } catch (e) {
               const msg = e instanceof Error ? e.message : "Erro no pagamento";
+              recordOperationalEvent({
+                area: "payment",
+                status: "error",
+                action: "Falha no pagamento cartao",
+                message: msg,
+                context: { bookingGroupId, customerEmail: clientEmail, plan: plan.name, amount: payableAmount },
+              });
               setStage("error");
               toast({ title: msg, variant: "destructive" });
             }
@@ -443,6 +465,13 @@ const BookingPage = () => {
       // Garante que o booking existe mesmo que o usuário feche a aba após pagar
       const saved = await saveBookings("pending", "pending", "pix");
       if (!saved) {
+        recordOperationalEvent({
+          area: "booking",
+          status: "warning",
+          action: "Agenda nao salva antes do Pix",
+          message: "O pagamento Pix foi iniciado, mas o agendamento pendente nao foi salvo.",
+          context: { bookingGroupId, customerEmail: clientEmail, plan: plan.name },
+        });
         toast({ title: "Aviso: não foi possível salvar o agendamento. Entre em contato após o pagamento.", variant: "destructive" });
       }
 
@@ -461,10 +490,24 @@ const BookingPage = () => {
       const data = await res.json();
       if (!data.qr_code) throw new Error(data.error || "Erro ao gerar Pix");
       setPixData({ payment_id: data.payment_id, qr_code: data.qr_code, qr_code_base64: data.qr_code_base64 });
+      recordOperationalEvent({
+        area: "payment",
+        status: "success",
+        action: "Pix de consulta gerado",
+        message: "QR Code Pix gerado para consulta.",
+        context: { bookingGroupId, paymentId: data.payment_id, customerEmail: clientEmail, plan: plan.name, amount: payableAmount },
+      });
       setStage("pix_qr");
       startPolling(data.payment_id);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro";
+      recordOperationalEvent({
+        area: "payment",
+        status: "error",
+        action: "Falha ao gerar Pix de consulta",
+        message: msg,
+        context: { bookingGroupId, customerEmail: clientEmail, plan: plan.name, amount: payableAmount },
+      });
       setStage("error");
       toast({ title: msg, variant: "destructive" });
     }
@@ -483,6 +526,13 @@ const BookingPage = () => {
         clearInterval(pollingRef.current!);
         if (isMounted) {
           setStage("idle");
+          recordOperationalEvent({
+            area: "payment",
+            status: "warning",
+            action: "Pix de consulta expirado",
+            message: "Polling de pagamento Pix excedeu 30 minutos.",
+            context: { paymentId, bookingGroupId, plan: plan.name },
+          });
           toast({ title: "Tempo de pagamento expirado", description: "O QR Code Pix expirou. Tente novamente.", variant: "destructive" });
         }
         return;
@@ -498,8 +548,22 @@ const BookingPage = () => {
         if (data.status === "approved") {
           clearInterval(pollingRef.current!);
           if (data.booking_confirmed === false) {
+            recordOperationalEvent({
+              area: "booking",
+              status: "warning",
+              action: "Pix aprovado sem confirmar agenda",
+              message: "Pagamento aprovado, mas confirmacao de agenda retornou falsa.",
+              context: { paymentId, bookingGroupId, plan: plan.name },
+            });
             toast({ title: "Pagamento aprovado, mas erro ao confirmar agendamento. Entre em contato.", variant: "destructive" });
           }
+          recordOperationalEvent({
+            area: "payment",
+            status: "success",
+            action: "Pix de consulta aprovado",
+            message: "Polling confirmou pagamento aprovado.",
+            context: { paymentId, bookingGroupId, plan: plan.name },
+          });
           if (isMounted) setStage("approved");
         }
       } catch {
@@ -521,6 +585,13 @@ const BookingPage = () => {
     const ok = await saveBookings("confirmed", "free", "free");
     if (!ok) {
       setStage("error");
+      recordOperationalEvent({
+        area: "booking",
+        status: "error",
+        action: "Falha ao salvar consulta gratis",
+        message: "O agendamento gratuito nao foi salvo.",
+        context: { bookingGroupId, customerEmail: clientEmail, plan: plan.name },
+      });
       toast({ title: "Erro ao salvar agendamento. Tente novamente.", variant: "destructive" });
       return;
     }
@@ -539,8 +610,23 @@ const BookingPage = () => {
           body: `Olá, ${clientName}!\n\nSua consulta gratuita de 20 minutos com Fillipe David foi confirmada.\n\n📅 Data: ${dateStr}\n⏰ Horário: ${s?.time ?? ""}\n💻 Modalidade: Online\n\nEm breve você receberá o link da videochamada.\n\nQualquer dúvida, entre em contato pelo WhatsApp.\n\nFillipe David — Nutricionista`,
         }),
       });
-    } catch { /* email failure should not block the user */ }
+    } catch (error) {
+      recordOperationalEvent({
+        area: "email",
+        status: "warning",
+        action: "Email de consulta gratis falhou",
+        message: error instanceof Error ? error.message : "Falha no envio automatico.",
+        context: { bookingGroupId, customerEmail: clientEmail },
+      });
+    }
 
+    recordOperationalEvent({
+      area: "booking",
+      status: "success",
+      action: "Consulta gratis confirmada",
+      message: "Agendamento gratuito salvo e confirmado.",
+      context: { bookingGroupId, customerEmail: clientEmail, plan: plan.name },
+    });
     setStage("approved");
   };
 
