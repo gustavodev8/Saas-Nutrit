@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Booking } from "@/lib/supabase";
+import { supabase, type Booking } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
 import { getOperationalErrorMessage, recordOperationalEvent } from "@/lib/operationalLogs";
 
@@ -77,11 +77,17 @@ export const useSendMaterial = () => {
     }
     setSending(true);
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        throw new Error("Sessão administrativa expirada. Faça login novamente.");
+      }
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-material`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          "Authorization": `Bearer ${accessToken}`,
           "apikey": SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({

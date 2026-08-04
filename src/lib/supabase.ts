@@ -16,6 +16,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // A segurança do painel admin ? garantida pelo login (AdminLogin + ProtectedRoute).
 // service_role key NUNCA deve estar em variáveis VITE_ (ficaria exposta no bundle).
 export const supabaseAdmin = supabase;
+// Observacao: o login do painel so abre a UI; a protecao real depende do RLS
+// do Supabase e das Edge Functions autenticadas no backend.
 
 // Content stored with a unix timestamp so we can do "newest wins" sync
 export type StoredContent = SiteContent & { _ts?: number };

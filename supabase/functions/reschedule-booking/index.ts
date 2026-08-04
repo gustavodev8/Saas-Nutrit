@@ -149,6 +149,6 @@ serve(async (req) => {
     return jsonResponse({ success: true }, 200, corsHeaders);
   } catch (e) {
     console.error("reschedule-booking error:", e);
-    return jsonResponse({ error: String(e) }, 500, corsHeaders);
+    return jsonResponse({ error: "Erro ao reagendar consulta." }, 500, corsHeaders);
   }
 });
