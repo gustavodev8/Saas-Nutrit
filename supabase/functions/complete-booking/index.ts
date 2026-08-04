@@ -39,6 +39,6 @@ serve(async (req) => {
     return jsonResponse({ success: true }, 200, corsHeaders);
   } catch (e) {
     console.error("complete-booking error:", e);
-    return jsonResponse({ error: String(e) }, 500, corsHeaders);
+    return jsonResponse({ error: "Erro ao concluir consulta." }, 500, corsHeaders);
   }
 });

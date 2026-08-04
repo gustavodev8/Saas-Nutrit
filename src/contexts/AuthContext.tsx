@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 
+const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL as string | undefined)?.trim().toLowerCase() || null;
+
 interface AuthContextValue {
   isAuthenticated: boolean;
   authReady: boolean;
@@ -23,14 +25,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
       const session = data.session;
-      setIsAuthenticated(Boolean(session));
-      setUserEmail(session?.user.email ?? null);
+      const sessionEmail = session?.user.email?.trim().toLowerCase() ?? null;
+      const allowed = Boolean(session && (!adminEmail || sessionEmail === adminEmail));
+      setIsAuthenticated(allowed);
+      setUserEmail(sessionEmail);
       setAuthReady(true);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(Boolean(session));
-      setUserEmail(session?.user.email ?? null);
+      const sessionEmail = session?.user.email?.trim().toLowerCase() ?? null;
+      const allowed = Boolean(session && (!adminEmail || sessionEmail === adminEmail));
+      setIsAuthenticated(allowed);
+      setUserEmail(sessionEmail);
       setAuthReady(true);
     });
 
@@ -41,6 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string): Promise<{ ok: boolean; message?: string }> => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (adminEmail && normalizedEmail !== adminEmail) {
+      return { ok: false, message: "Este usuário não tem acesso ao painel administrativo." };
+    }
+
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       return { ok: false, message: "E-mail ou senha incorretos." };

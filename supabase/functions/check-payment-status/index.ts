@@ -1,78 +1,64 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  assertAllowedOrigin,
+  assertMethod,
+  buildCorsHeaders,
+  enforceRateLimit,
+  handlePublicOptions,
+  jsonResponse,
+} from "../_shared/publicEndpoint.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("SITE_URL") || "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-async function confirmConsultationBooking(payment: {
-  status?: string;
-  external_reference?: string;
-  payment_method_id?: string;
-}) {
-  if (payment.status !== "approved") return false;
-
-  const parts = (payment.external_reference || "").split("|");
-  if (parts[0] !== "consultation" || !parts[1]) return false;
-
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceKey) return false;
-
-  const bookingGroupId = parts[1];
-  const res = await fetch(`${supabaseUrl}/rest/v1/bookings?booking_group_id=eq.${encodeURIComponent(bookingGroupId)}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      Prefer: "return=minimal",
-    },
-    body: JSON.stringify({
-      status: "confirmed",
-      payment_status: "paid",
-      payment_method: payment.payment_method_id === "pix" ? "pix" : "card",
-    }),
-  });
-
-  if (!res.ok) {
-    console.error("check-payment-status booking confirm error:", res.status, await res.text().catch(() => ""));
-    return false;
-  }
-
-  return true;
-}
+const corsHeaders = buildCorsHeaders();
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  const optionsResponse = handlePublicOptions(req, corsHeaders);
+  if (optionsResponse) return optionsResponse;
+
+  const methodError = assertMethod(req, "POST", corsHeaders);
+  if (methodError) return methodError;
+
+  const originError = assertAllowedOrigin(req, corsHeaders);
+  if (originError) return originError;
 
   try {
-    const MP_ACCESS_TOKEN = Deno.env.get("MP_ACCESS_TOKEN");
-    const { payment_id } = await req.json();
+    const rateLimitError = await enforceRateLimit({
+      req,
+      corsHeaders,
+      endpoint: "check-payment-status",
+      limit: 90,
+      windowSeconds: 300,
+    });
+    if (rateLimitError) return rateLimitError;
 
-    if (!MP_ACCESS_TOKEN || !payment_id) {
-      return new Response(JSON.stringify({ error: "Pagamento inválido." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const mpAccessToken = Deno.env.get("MP_ACCESS_TOKEN");
+    const { payment_id, poll_token } = await req.json() as {
+      payment_id?: number | string;
+      poll_token?: string;
+    };
+
+    if (!mpAccessToken || !payment_id) {
+      return jsonResponse({ error: "Pagamento invalido." }, 400, corsHeaders);
     }
 
-    const res = await fetch(`https://api.mercadopago.com/v1/payments/${payment_id}`, {
-      headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` },
+    const paymentRes = await fetch(`https://api.mercadopago.com/v1/payments/${payment_id}`, {
+      headers: { Authorization: `Bearer ${mpAccessToken}` },
     });
 
-    const data = await res.json();
-    const bookingConfirmed = await confirmConsultationBooking(data);
+    if (!paymentRes.ok) {
+      return jsonResponse({ error: "Pagamento invalido." }, 400, corsHeaders);
+    }
 
-    return new Response(JSON.stringify({ status: data.status, booking_confirmed: bookingConfirmed }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const payment = await paymentRes.json();
+    const parts = String(payment?.external_reference || "").split("|");
+    const expectedPollToken = parts.length >= 6 ? parts[5] : "";
+
+    if (expectedPollToken && poll_token !== expectedPollToken) {
+      return jsonResponse({ error: "Consulta de pagamento nao autorizada." }, 403, corsHeaders);
+    }
+
+    return jsonResponse({ status: payment.status }, 200, corsHeaders);
+  } catch (error) {
+    console.error("check-payment-status error:", error);
+    return jsonResponse({ error: "Erro ao consultar pagamento." }, 500, corsHeaders);
   }
 });

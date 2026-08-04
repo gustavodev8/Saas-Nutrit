@@ -173,6 +173,7 @@ interface PixData {
   payment_id: number;
   qr_code: string;
   qr_code_base64: string;
+  poll_token?: string;
 }
 
 const ProdutoPage = () => {
@@ -231,13 +232,13 @@ const ProdutoPage = () => {
     }
   };
 
-  const startPolling = (paymentId: number) => {
+  const startPolling = (paymentId: number, pollToken?: string) => {
     pollingRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/check-payment-status`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ payment_id: paymentId }),
+          body: JSON.stringify({ payment_id: paymentId, poll_token: pollToken }),
         });
         const data = await res.json();
         if (data.status === "approved") {
@@ -308,7 +309,12 @@ const ProdutoPage = () => {
         throw new Error(data.error || "Erro ao gerar Pix.");
       }
 
-      setPixData({ payment_id: data.payment_id, qr_code: data.qr_code, qr_code_base64: data.qr_code_base64 });
+      setPixData({
+        payment_id: data.payment_id,
+        qr_code: data.qr_code,
+        qr_code_base64: data.qr_code_base64,
+        poll_token: data.poll_token,
+      });
       recordOperationalEvent({
         area: "payment",
         status: "success",
@@ -317,7 +323,7 @@ const ProdutoPage = () => {
         context: { paymentId: data.payment_id, email, product: produto.name, amount: finalAmount },
       });
       setStage("pix");
-      startPolling(data.payment_id);
+      startPolling(data.payment_id, data.poll_token);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro inesperado.";
       recordOperationalEvent({
