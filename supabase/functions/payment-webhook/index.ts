@@ -64,6 +64,156 @@ async function verifyMpSignature(
   }
 }
 
+function redactEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
+  const [localPart, domain] = normalized.split("@");
+
+  if (!localPart || !domain) return "invalid-email";
+  if (localPart.length <= 2) return `${localPart[0] ?? "*"}***@${domain}`;
+
+  return `${localPart.slice(0, 2)}***@${domain}`;
+}
+
+function redactReference(value: string) {
+  if (!value) return "<empty>";
+  if (value.length <= 10) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function isSafeBookingGroupId(value: string) {
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 120) return false;
+
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(normalized);
+  const isPublicBookingId =
+    /^booking_[0-9]{10,16}_[a-z0-9]{4,16}$/i.test(normalized);
+
+  return isUuid || isPublicBookingId;
+}
+
+function isPlausibleEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+type ParsedReference =
+  | {
+    kind: "consultation";
+    bookingGroupId: string;
+    customerEmail: string;
+    customerName: string;
+    planName: string;
+    pollToken: string | null;
+  }
+  | {
+    kind: "ebook";
+    productIndex: number;
+    customerEmail: string;
+    fallbackPdfUrl: string;
+    customerName: string;
+    cpfHash: string | null;
+    pollToken: string | null;
+  };
+
+function isSafePollToken(value: string) {
+  return /^[A-Za-z0-9_-]{16,128}$/.test(value);
+}
+
+function parseExternalReference(rawReference: unknown): ParsedReference | null {
+  if (typeof rawReference !== "string") return null;
+
+  const externalReference = rawReference.trim();
+  if (!externalReference || externalReference.length > 1200) return null;
+
+  const parts = externalReference.split("|");
+
+  if (parts[0] === "consultation") {
+    if (parts.length !== 5 && parts.length !== 6) return null;
+
+    const bookingGroupId = parts[1]?.trim() ?? "";
+    const customerEmail = decodeURIComponent(parts[2] ?? "").trim().toLowerCase();
+    const customerName = parts[3] ? decodeURIComponent(parts[3]) : "";
+    const planName = parts[4] ? decodeURIComponent(parts[4]) : "";
+    const pollToken = parts[5]?.trim() ? parts[5].trim() : null;
+
+    if (
+      !isSafeBookingGroupId(bookingGroupId) ||
+      !isPlausibleEmail(customerEmail) ||
+      !planName.trim()
+    ) {
+      return null;
+    }
+
+    if (pollToken && !isSafePollToken(pollToken)) {
+      return null;
+    }
+
+    return {
+      kind: "consultation",
+      bookingGroupId,
+      customerEmail,
+      customerName,
+      planName,
+      pollToken,
+    };
+  }
+
+  if (!/^\d+$/.test(parts[0] ?? "")) return null;
+  if (parts.length < 4 || parts.length > 6) return null;
+
+  const productIndex = Number(parts[0]);
+  const customerEmail = decodeURIComponent(parts[1] ?? "").trim().toLowerCase();
+  const fallbackPdfUrl = parts[2] ? decodeURIComponent(parts[2]) : "";
+  const customerName = parts[3] ? decodeURIComponent(parts[3]) : "";
+  let cpfHash: string | null = null;
+  let pollToken: string | null = null;
+
+  if (parts.length >= 5) {
+    const part4 = parts[4]?.trim() ?? "";
+    if (part4) {
+      if (/^[a-f0-9]{64}$/i.test(part4)) {
+        cpfHash = part4;
+      } else if (parts.length === 5 && isSafePollToken(part4)) {
+        pollToken = part4;
+      } else {
+        return null;
+      }
+    }
+  }
+
+  if (parts.length === 6) {
+    const part5 = parts[5]?.trim() ?? "";
+    if (!part5 || !isSafePollToken(part5)) {
+      return null;
+    }
+    pollToken = part5;
+  }
+
+  if (!Number.isInteger(productIndex) || productIndex < 0 || !isPlausibleEmail(customerEmail)) {
+    return null;
+  }
+
+  if (fallbackPdfUrl) {
+    try {
+      const url = new URL(fallbackPdfUrl);
+      if (!["http:", "https:"].includes(url.protocol)) return null;
+    } catch {
+      return null;
+    }
+  }
+
+  return {
+    kind: "ebook",
+    productIndex,
+    customerEmail,
+    fallbackPdfUrl,
+    customerName,
+    cpfHash,
+    pollToken,
+  };
+}
+
 // ── Webhook handler ────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -125,21 +275,27 @@ serve(async (req) => {
       }
     }
 
-    // Parse external_reference to determine payment type
-    const parts = (payment.external_reference || "").split("|");
-    if (parts.length < 2) return new Response("ok", { status: 200 });
+    const parsedReference = parseExternalReference(payment.external_reference);
+    if (!parsedReference) {
+      console.error("payment-webhook: invalid external_reference", {
+        paymentId: String(payment.id ?? ""),
+        status: String(payment.status ?? ""),
+        externalReference: redactReference(String(payment.external_reference ?? "")),
+      });
+      return new Response("ok", { status: 200 });
+    }
 
     // ── Consultation payment ──────────────────────────────────────────────────
-    if (parts[0] === "consultation") {
-      const bookingGroupId = parts[1];
-      const customerEmail = parts[2] ? parts[2].trim() : "";
-      const customerName = parts[3] ? escapeHtml(decodeURIComponent(parts[3])) : "";
-      const planName = parts[4] ? escapeHtml(decodeURIComponent(parts[4])) : "Consulta";
+    if (parsedReference.kind === "consultation") {
+      const bookingGroupId = parsedReference.bookingGroupId;
+      const customerEmail = parsedReference.customerEmail;
+      const customerName = escapeHtml(parsedReference.customerName);
+      const planName = escapeHtml(parsedReference.planName);
 
       // Update booking status to confirmed — check HTTP status, not response body
       // (PATCH returns 204 No Content on success, so .json() would throw and give false negative)
       if (supabaseUrl && supabaseServiceKey) {
-        await fetch(`${supabaseUrl}/rest/v1/bookings?booking_group_id=eq.${encodeURIComponent(bookingGroupId)}`, {
+        const bookingUpdateRes = await fetch(`${supabaseUrl}/rest/v1/bookings?booking_group_id=eq.${encodeURIComponent(bookingGroupId)}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -153,6 +309,14 @@ serve(async (req) => {
             payment_method: payment.payment_method_id === "pix" ? "pix" : "card",
           }),
         });
+
+        if (!bookingUpdateRes.ok) {
+          console.error("payment-webhook: booking confirmation update failed", {
+            paymentId: String(payment.id ?? ""),
+            bookingGroupId: redactReference(bookingGroupId),
+            status: bookingUpdateRes.status,
+          });
+        }
       }
 
       // Send confirmation email
@@ -206,7 +370,7 @@ serve(async (req) => {
       }
 
       if (supabaseUrl && supabaseServiceKey) {
-        await fetch(`${supabaseUrl}/rest/v1/payment_logs`, {
+        const logInsertRes = await fetch(`${supabaseUrl}/rest/v1/payment_logs`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -223,16 +387,24 @@ serve(async (req) => {
             status: "approved",
           }),
         });
+
+        if (!logInsertRes.ok) {
+          console.error("payment-webhook: consultation payment log insert failed", {
+            paymentId: String(payment.id ?? ""),
+            email: redactEmail(customerEmail),
+            status: logInsertRes.status,
+          });
+        }
       }
 
       return new Response("ok", { status: 200 });
     }
 
     // ── Ebook payment ─────────────────────────────────────────────────────────
-    const customerEmail = parts[1] ? parts[1].trim() : "";
-    const fallbackPdfUrl = parts[2] ? decodeURIComponent(parts[2]) : "";
-    const cpfHash = parts[4] ? parts[4].trim() : null; // already SHA-256 hashed
-    const productIndex = Number(parts[0]);
+    const customerEmail = parsedReference.customerEmail;
+    const fallbackPdfUrl = parsedReference.fallbackPdfUrl;
+    const cpfHash = parsedReference.cpfHash; // already SHA-256 hashed
+    const productIndex = parsedReference.productIndex;
     const productName = escapeHtml(
       payment.additional_info?.items?.[0]?.title || payment.description || "E-book"
     );
@@ -335,7 +507,7 @@ serve(async (req) => {
       </html>
     `;
 
-    const customerName = parts[3] ? escapeHtml(decodeURIComponent(parts[3])) : "";
+    const customerName = escapeHtml(parsedReference.customerName);
 
     // ── Save Log First ───────────────────────────────────────────────────────
     if (supabaseUrl && supabaseServiceKey) {
@@ -361,7 +533,11 @@ serve(async (req) => {
           }),
         });
       } catch (err) {
-        console.error("Database log error:", err);
+        console.error("payment-webhook: ebook payment log insert error", {
+          paymentId: String(payment.id ?? ""),
+          email: redactEmail(customerEmail),
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
@@ -378,7 +554,8 @@ serve(async (req) => {
     });
 
     return new Response("ok", { status: 200 });
-  } catch {
+  } catch (error) {
+    console.error("payment-webhook: unexpected error", error instanceof Error ? error.message : String(error));
     return new Response("ok", { status: 200 }); // Always 200 to MP
   }
 });

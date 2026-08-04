@@ -13,7 +13,6 @@ import {
   fetchAvailabilitySlots,
   fetchBookingsForDate,
   insertBooking,
-  findPatientByCPF,
   type Booking,
   type BookingPaymentMethod,
   type BookingPaymentStatus,
@@ -108,10 +107,7 @@ const BookingPage = () => {
   const [clientPhone, setClientPhone] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
-  const [linkedPatientId, setLinkedPatientId] = useState<number | undefined>();
-  const [cpfLookingUp, setCpfLookingUp] = useState(false);
   const [cpfError, setCpfError] = useState("");
-  const [returningPatient, setReturningPatient] = useState<string | null>(null);
 
   // Clinical info
   const [anamnesisPhotos, setAnamnesisPhotos] = useState<File[]>([]);
@@ -127,7 +123,7 @@ const BookingPage = () => {
   const [payTab, setPayTab] = useState<PayTab>("pix");
   const [stage, setStage] = useState<Stage>("idle");
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
-  const [pixData, setPixData] = useState<{ payment_id: number; qr_code: string; qr_code_base64: string } | null>(null);
+  const [pixData, setPixData] = useState<{ payment_id: number; qr_code: string; qr_code_base64: string; poll_token?: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [bookingGroupId] = useState(generateGroupId);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -163,22 +159,6 @@ const BookingPage = () => {
       return;
     }
     setCpfError("");
-    setCpfLookingUp(true);
-    const patient = await findPatientByCPF(digits);
-    setCpfLookingUp(false);
-    if (patient) {
-      setLinkedPatientId(patient.id);
-      setReturningPatient(patient.name);
-      if (patient.name)  setClientName(patient.name);
-      if (patient.email) setClientEmail(patient.email);
-      if (patient.phone) setClientPhone(patient.phone);
-      if (patient.birth_date) setBirthDate(patient.birth_date);
-      if (patient.gender) setSex(patient.gender === "M" ? "masculino" : patient.gender === "F" ? "feminino" : "");
-      toast({ title: `Bem-vindo de volta, ${patient.name}!`, description: "Seus dados foram preenchidos automaticamente." });
-    } else {
-      setLinkedPatientId(undefined);
-      setReturningPatient(null);
-    }
   };
 
   // Reload slots when type or city changes
@@ -235,7 +215,6 @@ const BookingPage = () => {
         client_email: clientEmail,
         client_phone: clientPhone,
         client_cpf: cpfDigits || undefined,
-        patient_id: linkedPatientId,
         plan_name: plan.name,
         plan_index: idx,
         appointment_date: toLocalISO(s.date),
@@ -260,7 +239,6 @@ const BookingPage = () => {
     clientEmail,
     clientPhone,
     clientCpf,
-    linkedPatientId,
     plan.name,
     idx,
     birthDate,
@@ -489,7 +467,12 @@ const BookingPage = () => {
       });
       const data = await res.json();
       if (!data.qr_code) throw new Error(data.error || "Erro ao gerar Pix");
-      setPixData({ payment_id: data.payment_id, qr_code: data.qr_code, qr_code_base64: data.qr_code_base64 });
+      setPixData({
+        payment_id: data.payment_id,
+        qr_code: data.qr_code,
+        qr_code_base64: data.qr_code_base64,
+        poll_token: data.poll_token,
+      });
       recordOperationalEvent({
         area: "payment",
         status: "success",
@@ -498,7 +481,7 @@ const BookingPage = () => {
         context: { bookingGroupId, paymentId: data.payment_id, customerEmail: clientEmail, plan: plan.name, amount: payableAmount },
       });
       setStage("pix_qr");
-      startPolling(data.payment_id);
+      startPolling(data.payment_id, data.poll_token);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro";
       recordOperationalEvent({
@@ -513,7 +496,7 @@ const BookingPage = () => {
     }
   };
 
-  const startPolling = (paymentId: number) => {
+  const startPolling = (paymentId: number, pollToken?: string) => {
     let isMounted = true;
     const POLL_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos
     const startedAt = Date.now();
@@ -542,7 +525,7 @@ const BookingPage = () => {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/check-payment-status`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ payment_id: paymentId }),
+          body: JSON.stringify({ payment_id: paymentId, poll_token: pollToken }),
         });
         const data = await res.json();
         if (data.status === "approved") {
@@ -965,8 +948,6 @@ const BookingPage = () => {
                       inputMode="numeric"
                       value={clientCpf}
                       onChange={e => {
-                        setReturningPatient(null);
-                        setLinkedPatientId(undefined);
                         setCpfError("");
                         setClientCpf(formatCPF(e.target.value));
                       }}
