@@ -122,3 +122,6 @@ export const onboardingProgress = (items: PatientOnboardingItem[]) => {
     percent: items.length === 0 ? 0 : Math.round((completed / items.length) * 100),
   };
 };
+
+export const nextPendingOnboardingItem = (items: PatientOnboardingItem[]) =>
+  items.find((item) => !item.completed) ?? null;

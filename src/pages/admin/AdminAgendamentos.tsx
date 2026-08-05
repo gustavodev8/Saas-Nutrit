@@ -7,6 +7,7 @@ import {
   Plus, LinkIcon, UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { parsePreConsultationNotes, stringifyPreConsultationNotes } from "@/lib/preConsultation";
 import {
   fetchBookings, autoCompleteBookings, autoExpirePendingBookings,
   insertBooking, insertConsultationRecord, uploadRecordFile,
@@ -147,35 +148,37 @@ const AdminAgendamentos = () => {
     setEditDMeds(notes.medications || "");
     setEditDHadNutri(notes.hadNutritionist || "");
     setEditDHowFound(notes.howFound || "");
-    setEditDObs((notes as Record<string,unknown>).obs as string || "");
+    setEditDObs(notes.observacoes || (notes as Record<string, unknown>).obs as string || "");
     setEditingDetail(true);
   };
 
   const handleSaveDetailEdit = async () => {
     if (!detail) return;
     setSavingDetailEdit(true);
-    const updatedNotes = {
-      ...detailNotes,
-      goal:             editDGoal        || undefined,
-      restrictions:     editDRestrictions || undefined,
-      allergies:        editDAllergies   || undefined,
-      healthConditions: editDHealth      || undefined,
-      medications:      editDMeds        || undefined,
-      hadNutritionist:  editDHadNutri    || undefined,
-      howFound:         editDHowFound    || undefined,
-      obs:              editDObs         || undefined,
-    };
+    const updatedNotes = stringifyPreConsultationNotes(
+      {
+        goal: editDGoal || undefined,
+        restrictions: editDRestrictions || undefined,
+        allergies: editDAllergies || undefined,
+        healthConditions: editDHealth || undefined,
+        medications: editDMeds || undefined,
+        hadNutritionist: editDHadNutri || undefined,
+        howFound: editDHowFound || undefined,
+        observacoes: editDObs || undefined,
+      },
+      detailFirst?.notes,
+    );
     const ok = await updateBookingGroup(detail, {
       client_name:  editDName.trim(),
       client_email: editDEmail.trim(),
       client_phone: editDPhone.trim(),
-      notes:        JSON.stringify(updatedNotes),
+      notes:        updatedNotes ?? undefined,
     });
     setSavingDetailEdit(false);
     if (ok) {
       setBookings(prev => prev.map(b =>
         b.booking_group_id === detail
-          ? { ...b, client_name: editDName.trim(), client_email: editDEmail.trim(), client_phone: editDPhone.trim(), notes: JSON.stringify(updatedNotes) }
+          ? { ...b, client_name: editDName.trim(), client_email: editDEmail.trim(), client_phone: editDPhone.trim(), notes: updatedNotes ?? undefined }
           : b
       ));
       setEditingDetail(false);
@@ -377,11 +380,14 @@ const AdminAgendamentos = () => {
       status:           "confirmed",
       payment_status:   newPaymentStatus,
       payment_method:   newPaymentStatus === "free" ? "free" : newPaymentStatus === "paid" ? "manual" : null,
-      notes:            JSON.stringify({
-        _manual: true,
-        ...(newType === "presencial" ? { _city: manualCity } : {}),
-        ...(newNotes ? { obs: newNotes } : {}),
-      }),
+      notes:
+        stringifyPreConsultationNotes(
+          {
+            city: newType === "presencial" ? manualCity : "",
+            observacoes: newNotes || "",
+          },
+          { _manual: true },
+        ) ?? JSON.stringify({ _manual: true }),
     };
 
     const ok = await insertBooking(b);
@@ -550,9 +556,6 @@ const AdminAgendamentos = () => {
     appointmentDate: string,
     appointmentTime: string
   ): Booking => {
-    const baseNotes = (() => { try { return JSON.parse(baseSession.notes || "{}"); } catch { return {}; } })();
-    if (returnType === "presencial") baseNotes._city = returnCity;
-    else delete baseNotes._city;
     return {
       booking_group_id: baseSession.booking_group_id,
       session_number: (baseSession.session_number ?? 1) + 1,
@@ -570,7 +573,11 @@ const AdminAgendamentos = () => {
       status: "confirmed",
       payment_status: baseSession.payment_status ?? inferPaymentStatus(baseSession),
       payment_method: baseSession.payment_method ?? null,
-      notes: JSON.stringify(baseNotes),
+      notes:
+        stringifyPreConsultationNotes(
+          { city: returnType === "presencial" ? returnCity : "" },
+          baseSession.notes,
+        ) ?? baseSession.notes,
     };
   };
 
@@ -840,7 +847,7 @@ const AdminAgendamentos = () => {
   });
 
   const detailNotes: BookingClinicalNotes = (() => {
-    try { return JSON.parse(detailFirst?.notes || "{}"); } catch { return {}; }
+    return parsePreConsultationNotes(detailFirst?.notes);
   })();
 
   return (

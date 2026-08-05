@@ -1,5 +1,6 @@
 import { CalendarCheck, Clock, Globe, Loader2, MapPin } from "lucide-react";
 import type { Booking } from "@/lib/supabase";
+import { parsePreConsultationNotes } from "@/lib/preConsultation";
 import { PaymentPill, StatusPill } from "./bookingPills";
 import { BORDER_COLOR, getBookingGroupStatus, getPaymentGroupStatus } from "./bookingStatusUtils";
 import { GOAL_LABELS, type BookingClinicalNotes } from "./bookingPatientDetails";
@@ -22,11 +23,7 @@ const initials = (name: string) =>
   name?.split(" ").filter(Boolean).slice(0, 2).map(item => item[0]).join("").toUpperCase() || "?";
 
 const parseClinicalNotes = (notes?: string | null): BookingClinicalNotes => {
-  try {
-    return JSON.parse(notes || "{}") as BookingClinicalNotes;
-  } catch {
-    return {};
-  }
+  return parsePreConsultationNotes(notes);
 };
 
 export const BookingGroupsList = ({ loading, groupEntries, onOpenDetail }: BookingGroupsListProps) => {

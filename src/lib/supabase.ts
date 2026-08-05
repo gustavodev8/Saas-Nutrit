@@ -787,6 +787,9 @@ export interface PatientOperationalIndicators {
   withoutNextBookingIds: number[];
   withoutActiveMealPlanIds: number[];
   pendingExamRequestPatientIds: number[];
+  lastInteractionDates: Record<number, string>;
+  nextBookingDates: Record<number, string>;
+  nextReturnDates: Record<number, string>;
 }
 
 const normalizeIndicatorText = (value?: string | null) => value?.trim().toLowerCase() ?? "";
@@ -804,6 +807,9 @@ export async function fetchPatientOperationalIndicators(
       withoutNextBookingIds: [],
       withoutActiveMealPlanIds: [],
       pendingExamRequestPatientIds: [],
+      lastInteractionDates: {},
+      nextBookingDates: {},
+      nextReturnDates: {},
     };
   }
 
@@ -825,9 +831,8 @@ export async function fetchPatientOperationalIndicators(
   const [bookingsResult, mealPlansResult, examRequestsResult] = await Promise.all([
     supabaseAdmin
       .from("bookings")
-      .select("patient_id, client_email, client_phone, client_cpf, status, created_at, appointment_date")
-      .gte("appointment_date", today)
-      .in("status", ["pending", "confirmed"]),
+      .select("id, booking_group_id, patient_id, client_email, client_phone, client_cpf, status, created_at, appointment_date")
+      .neq("status", "cancelled"),
     supabaseAdmin
       .from("meal_plans")
       .select("patient_id, start_date, end_date")
@@ -839,20 +844,81 @@ export async function fetchPatientOperationalIndicators(
       .eq("status", "pending"),
   ]);
 
+  const bookingGroupIds = Array.from(
+    new Set(
+      (bookingsResult.data ?? [])
+        .map((booking) => booking.booking_group_id)
+        .filter((bookingGroupId): bookingGroupId is string => typeof bookingGroupId === "string" && bookingGroupId.length > 0),
+    ),
+  );
+
+  const consultationRecordsResult = bookingGroupIds.length > 0
+    ? await supabaseAdmin
+        .from("consultation_records")
+        .select("booking_group_id, next_return_date, created_at")
+        .in("booking_group_id", bookingGroupIds)
+    : { data: [], error: null };
+
   if (bookingsResult.error) console.error("[Supabase] fetchPatientOperationalIndicators bookings:", bookingsResult.error.message);
   if (mealPlansResult.error) console.error("[Supabase] fetchPatientOperationalIndicators meal plans:", mealPlansResult.error.message);
   if (examRequestsResult.error) console.error("[Supabase] fetchPatientOperationalIndicators exams:", examRequestsResult.error.message);
+  if (consultationRecordsResult.error) console.error("[Supabase] fetchPatientOperationalIndicators records:", consultationRecordsResult.error.message);
 
   const withNextBooking = new Set<number>();
+  const lastInteractionDates: Record<number, string> = {};
+  const nextBookingDates: Record<number, string> = {};
+  const patientIdByBookingGroup = new Map<string, number>();
   (bookingsResult.data ?? []).forEach((booking) => {
-    if (isPendingBookingExpired(booking)) return;
     const directId = typeof booking.patient_id === "number" ? booking.patient_id : null;
     const fallbackId =
       byEmail.get(normalizeIndicatorText(booking.client_email)) ??
       byPhone.get(onlyIndicatorDigits(booking.client_phone)) ??
       byCpf.get(onlyIndicatorDigits(booking.client_cpf));
     const patientId = directId ?? fallbackId;
-    if (patientId) withNextBooking.add(patientId);
+    if (!patientId) return;
+
+    if (typeof booking.booking_group_id === "string" && booking.booking_group_id.length > 0) {
+      patientIdByBookingGroup.set(booking.booking_group_id, patientId);
+    }
+
+    const interactionDate = booking.appointment_date || booking.created_at?.slice(0, 10);
+    if (interactionDate && (!lastInteractionDates[patientId] || interactionDate > lastInteractionDates[patientId])) {
+      lastInteractionDates[patientId] = interactionDate;
+    }
+
+    const isFutureActiveBooking =
+      booking.appointment_date >= today &&
+      (booking.status === "confirmed" || booking.status === "pending") &&
+      !isPendingBookingExpired(booking);
+
+    if (isFutureActiveBooking) {
+      withNextBooking.add(patientId);
+      if (!nextBookingDates[patientId] || booking.appointment_date < nextBookingDates[patientId]) {
+        nextBookingDates[patientId] = booking.appointment_date;
+      }
+    }
+  });
+
+  const nextReturnDates: Record<number, string> = {};
+  const latestRecordDates: Record<number, string> = {};
+  (consultationRecordsResult.data ?? []).forEach((record) => {
+    const patientId =
+      typeof record.booking_group_id === "string"
+        ? patientIdByBookingGroup.get(record.booking_group_id)
+        : undefined;
+
+    if (!patientId) return;
+
+    const recordDate = record.created_at?.slice(0, 10);
+    if (recordDate && (!lastInteractionDates[patientId] || recordDate > lastInteractionDates[patientId])) {
+      lastInteractionDates[patientId] = recordDate;
+    }
+
+    if (!record.next_return_date) return;
+    if (!recordDate || !latestRecordDates[patientId] || recordDate >= latestRecordDates[patientId]) {
+      latestRecordDates[patientId] = recordDate ?? "";
+      nextReturnDates[patientId] = record.next_return_date;
+    }
   });
 
   const withActiveMealPlan = new Set<number>();
@@ -873,6 +939,9 @@ export async function fetchPatientOperationalIndicators(
     withoutNextBookingIds: patientIds.filter((id) => !withNextBooking.has(id)),
     withoutActiveMealPlanIds: patientIds.filter((id) => !withActiveMealPlan.has(id)),
     pendingExamRequestPatientIds,
+    lastInteractionDates,
+    nextBookingDates,
+    nextReturnDates,
   };
 }
 

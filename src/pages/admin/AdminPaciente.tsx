@@ -1201,7 +1201,7 @@ function ClinicalCentralTab({
             <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-8 text-center">
               <Clock3 className="mx-auto mb-3 text-muted-foreground/40" size={28} />
               <p className="text-sm font-semibold text-foreground">Nenhum evento clínico registrado ainda.</p>
-              <p className="mt-1 text-xs text-muted-foreground">Comece pelo checklist: agende uma consulta, registre medidas ou crie o primeiro plano.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Salve uma anamnese, consulta ou relatório para começar o histórico.</p>
               {primaryAction && (
                 <Button
                   type="button"
@@ -2026,7 +2026,7 @@ function ReportTab({
               <FileText className="mx-auto mb-3 h-9 w-9 text-muted-foreground/40" />
               <p className="text-sm font-semibold text-foreground">Nenhum relatório salvo</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Crie o primeiro documento para registrar a evolução do paciente.
+                Comece pelo modelo completo ou use a estrutura padrão para registrar a primeira evolução.
               </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 <Button type="button" size="sm" className="h-8 rounded-lg gap-2" onClick={createNewReport}>
@@ -2316,12 +2316,12 @@ function AntropometriaTab({ patientId, patient, onViewDetail }: {
         <div className="flex items-center justify-center h-24">
           <Loader2 className="animate-spin text-primary" size={22} />
         </div>
-      ) : measurements.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-10 gap-2 border border-border rounded-md bg-card text-muted-foreground">
-          <Scale size={26} className="opacity-30" />
-          <p className="text-sm">Nenhuma avaliação registrada.</p>
-        </div>
-      ) : (
+        ) : measurements.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 gap-2 border border-border rounded-md bg-card text-muted-foreground">
+            <Scale size={26} className="opacity-30" />
+            <p className="text-sm text-center">Registre a primeira avaliação para liberar histórico e comparações.</p>
+          </div>
+        ) : (
         <div className="border border-border rounded-md overflow-hidden bg-card">
           <div className="px-5 py-3.5 border-b border-border bg-muted/30 flex items-center gap-2">
             <Activity size={15} className="text-muted-foreground" />
@@ -2508,8 +2508,8 @@ function PlanosTab({
             </div>
             <h3 className="mt-4 text-base font-bold text-foreground">Nenhum plano alimentar criado</h3>
             <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              Comece criando uma estratégia personalizada. Você pode usar a última avaliação antropométrica
-              {latestMeasurement ? " registrada" : " quando houver medidas registradas"} para estimar metas e macros.
+              Monte a primeira estratégia alimentar do paciente.
+              {latestMeasurement ? " Use a última avaliação para estimar metas e macros." : " Quando houver medidas, as metas ficam mais rápidas de definir."}
             </p>
             <Button onClick={() => setShowModal(true)} className="mt-5 h-10 rounded-xl px-5 font-bold">
               <Plus size={16} className="mr-2" />

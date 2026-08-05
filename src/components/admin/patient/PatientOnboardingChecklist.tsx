@@ -1,7 +1,11 @@
 import { CheckCircle2, Circle, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { onboardingProgress, type PatientOnboardingItem } from "@/lib/patientOnboarding";
+import {
+  nextPendingOnboardingItem,
+  onboardingProgress,
+  type PatientOnboardingItem,
+} from "@/lib/patientOnboarding";
 
 interface PatientOnboardingChecklistProps {
   items: PatientOnboardingItem[];
@@ -11,6 +15,9 @@ interface PatientOnboardingChecklistProps {
 export function PatientOnboardingChecklist({ items, onOpenItem }: PatientOnboardingChecklistProps) {
   const progress = onboardingProgress(items);
   const pendingItems = items.filter((item) => !item.completed);
+  const completedItems = items.filter((item) => item.completed);
+  const nextItem = nextPendingOnboardingItem(items);
+  const orderedItems = [...pendingItems, ...completedItems];
 
   return (
     <section className="rounded-3xl border border-border bg-background p-4">
@@ -19,9 +26,11 @@ export function PatientOnboardingChecklist({ items, onOpenItem }: PatientOnboard
           <p className="text-[10px] font-black uppercase tracking-widest text-primary">
             Onboarding do paciente
           </p>
-          <h3 className="mt-1 text-base font-black text-foreground">Checklist de prontuario</h3>
+          <h3 className="mt-1 text-base font-black text-foreground">Pendências do paciente</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            {progress.completed} de {progress.total} etapas concluidas.
+            {pendingItems.length === 0
+              ? "Cadastro clínico inicial concluído."
+              : `Faltam ${pendingItems.length} ${pendingItems.length === 1 ? "item" : "itens"} para concluir o cadastro clínico.`}
           </p>
         </div>
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
@@ -36,13 +45,37 @@ export function PatientOnboardingChecklist({ items, onOpenItem }: PatientOnboard
         />
       </div>
 
+      {nextItem && (
+        <div className="mb-4 rounded-2xl border border-primary/15 bg-primary/[0.04] p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest text-primary/80">
+                Próxima etapa
+              </p>
+              <p className="mt-1 text-sm font-bold text-foreground">{nextItem.label}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {nextItem.description}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 shrink-0 rounded-xl px-3 text-xs font-bold"
+              onClick={() => onOpenItem(nextItem)}
+            >
+              {nextItem.actionLabel}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {pendingItems.length === 0 ? (
         <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
-          Prontuario pronto para acompanhamento recorrente.
+          Cadastro inicial concluído. Próximo foco: acompanhamento e evolução.
         </div>
       ) : (
         <div className="space-y-2">
-          {items.map((item) => {
+          {orderedItems.map((item) => {
             const Icon = item.completed ? CheckCircle2 : Circle;
             return (
               <button

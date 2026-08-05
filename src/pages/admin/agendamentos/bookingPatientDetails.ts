@@ -8,6 +8,13 @@ export interface BookingClinicalNotes {
   medications?: string;
   hadNutritionist?: string;
   howFound?: string;
+  rotina?: string;
+  sintomas?: string;
+  suplementacao?: string;
+  examesPrevios?: string;
+  historicoNutri?: string;
+  observacoes?: string;
+  city?: string;
 }
 
 export const GOAL_LABELS: Record<string, string> = {

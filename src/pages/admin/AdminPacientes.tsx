@@ -1,7 +1,7 @@
 import {
   Users, Plus, Search, Trash2, ChevronRight, UserCircle2, Loader2, MapPin,
   TrendingUp, CalendarDays, AlertCircle, SlidersHorizontal, X,
-  ChevronLeft, AlertTriangle, ClipboardList, Utensils,
+  ChevronLeft, AlertTriangle, ClipboardList, Utensils, Clock3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,13 +21,27 @@ import {
   type Patient,
   type PatientOperationalIndicators,
 } from "@/lib/supabase";
+import {
+  derivePatientSegments,
+  resolvePatientOperationalFlags,
+  type PatientSegmentKey,
+} from "@/lib/patientSegments";
+import { PatientSegmentsBadges } from "@/components/admin/patient/PatientSegmentsBadges";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type GenderFilter = "all" | "M" | "F" | "outro";
 type SortKey      = "recent" | "oldest" | "name" | "age_asc" | "age_desc";
-type ActionFilter = "all" | "new_this_month" | "incomplete" | "no_next_booking" | "no_active_plan" | "pending_exams";
+type ActionFilter =
+  | "all"
+  | "new_this_month"
+  | "incomplete"
+  | "no_next_booking"
+  | "no_active_plan"
+  | "pending_exams"
+  | "retorno_vencido"
+  | "inativo_30d";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -67,6 +81,9 @@ const emptyOperationalIndicators: PatientOperationalIndicators = {
   withoutNextBookingIds: [],
   withoutActiveMealPlanIds: [],
   pendingExamRequestPatientIds: [],
+  lastInteractionDates: {},
+  nextBookingDates: {},
+  nextReturnDates: {},
 };
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
@@ -193,6 +210,46 @@ export default function AdminPacientes() {
     pendingExams: new Set(operationalIndicators.pendingExamRequestPatientIds),
   }), [operationalIndicators]);
 
+  const patientSegmentsById = useMemo(() => {
+    const entries = patients
+      .filter((patient): patient is Patient & { id: number } => typeof patient.id === "number")
+      .map((patient) => [
+        patient.id,
+        derivePatientSegments({
+          patient,
+          operationalFlags: resolvePatientOperationalFlags(patient.id, operationalIndicators),
+          lastInteraction: {
+            lastInteractionAt: operationalIndicators.lastInteractionDates[patient.id] ?? patient.created_at,
+            nextBookingDate: operationalIndicators.nextBookingDates[patient.id],
+            nextReturnDate: operationalIndicators.nextReturnDates[patient.id],
+          },
+        }),
+      ] as const);
+
+    return new Map<number, PatientSegmentKey[]>(entries);
+  }, [patients, operationalIndicators]);
+
+  const segmentCounts = useMemo(() => {
+    const counts: Record<PatientSegmentKey, number> = {
+      sem_proximo_agendamento: 0,
+      sem_plano_ativo: 0,
+      exames_pendentes: 0,
+      cadastro_incompleto: 0,
+      inativo_30d: 0,
+      inativo_60d: 0,
+      inativo_90d: 0,
+      retorno_vencido: 0,
+    };
+
+    patientSegmentsById.forEach((segments) => {
+      segments.forEach((segment) => {
+        counts[segment] += 1;
+      });
+    });
+
+    return counts;
+  }, [patientSegmentsById]);
+
   // ── Unique cities list for dropdown ─────────────────────────────────────────
   const cityOptions = useMemo(() => {
     const set = new Set<string>();
@@ -219,15 +276,19 @@ export default function AdminPacientes() {
     const q        = search.toLowerCase();
     const ageMinN  = ageMin  ? parseInt(ageMin)  : null;
     const ageMaxN  = ageMax  ? parseInt(ageMax)  : null;
+    const hasSegment = (patientId: number | undefined, segment: PatientSegmentKey) =>
+      typeof patientId === "number" && patientSegmentsById.get(patientId)?.includes(segment);
 
     let list = patients.filter((p) => {
       if (q && !p.name?.toLowerCase().includes(q) && !p.email?.toLowerCase().includes(q)) return false;
       if (gender !== "all" && p.gender !== gender) return false;
       if (actionFilter === "new_this_month" && p.created_at?.slice(0, 7) !== stats.thisMonth) return false;
-      if (actionFilter === "incomplete" && p.email && p.phone && p.birth_date && p.cpf) return false;
+      if (actionFilter === "incomplete" && !hasSegment(p.id, "cadastro_incompleto")) return false;
       if (actionFilter === "no_next_booking" && (!p.id || !operationalSets.noNextBooking.has(p.id))) return false;
       if (actionFilter === "no_active_plan" && (!p.id || !operationalSets.noActivePlan.has(p.id))) return false;
       if (actionFilter === "pending_exams" && (!p.id || !operationalSets.pendingExams.has(p.id))) return false;
+      if (actionFilter === "retorno_vencido" && !hasSegment(p.id, "retorno_vencido")) return false;
+      if (actionFilter === "inativo_30d" && !hasSegment(p.id, "inativo_30d")) return false;
       if (cityFilter && p.city?.trim().toLowerCase() !== cityFilter.trim().toLowerCase()) return false;
       if (ageMinN !== null || ageMaxN !== null) {
         if (!p.birth_date) return false;
@@ -255,7 +316,7 @@ export default function AdminPacientes() {
     });
 
     return list;
-  }, [patients, search, gender, actionFilter, stats.thisMonth, operationalSets, cityFilter, ageMin, ageMax, dateFrom, dateTo, sort]);
+  }, [patients, search, gender, actionFilter, stats.thisMonth, operationalSets, patientSegmentsById, cityFilter, ageMin, ageMax, dateFrom, dateTo, sort]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated  = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
@@ -285,6 +346,7 @@ export default function AdminPacientes() {
     setConfirmDeleteId(null);
     setDeletingId(id);
     const ok = await deletePatient(id);
+    if (ok) await loadPatients();
     if (ok) { setPatients((prev) => prev.filter((p) => p.id !== id)); toast.success("Paciente excluído."); }
     else    { toast.error("Erro ao excluir paciente."); }
     setDeletingId(null);
@@ -381,11 +443,29 @@ export default function AdminPacientes() {
           onClick={() => setActionFilter(actionFilter === "pending_exams" ? "all" : "pending_exams")}
         />
         <StatCard
+          icon={<AlertTriangle className="w-4 h-4" />}
+          label="Retorno vencido"
+          value={segmentCounts.retorno_vencido}
+          sub={segmentCounts.retorno_vencido > 0 ? "reativar acompanhamento" : "sem atrasos hoje"}
+          warn={segmentCounts.retorno_vencido > 0}
+          active={actionFilter === "retorno_vencido"}
+          onClick={() => setActionFilter(actionFilter === "retorno_vencido" ? "all" : "retorno_vencido")}
+        />
+        <StatCard
+          icon={<Clock3 className="w-4 h-4" />}
+          label="Inativos 30d+"
+          value={segmentCounts.inativo_30d}
+          sub={segmentCounts.inativo_30d > 0 ? "pedem reengajamento" : "base ativa"}
+          warn={segmentCounts.inativo_30d > 0}
+          active={actionFilter === "inativo_30d"}
+          onClick={() => setActionFilter(actionFilter === "inativo_30d" ? "all" : "inativo_30d")}
+        />
+        <StatCard
           icon={<AlertCircle className="w-4 h-4" />}
           label="Perfis incompletos"
-          value={stats.incomplete}
-          sub={stats.incomplete > 0 ? "completar dados essenciais" : "todos completos"}
-          warn={stats.incomplete > 0}
+          value={segmentCounts.cadastro_incompleto}
+          sub={segmentCounts.cadastro_incompleto > 0 ? "completar dados essenciais" : "todos completos"}
+          warn={segmentCounts.cadastro_incompleto > 0}
           active={actionFilter === "incomplete"}
           onClick={() => setActionFilter(actionFilter === "incomplete" ? "all" : "incomplete")}
         />
@@ -620,6 +700,11 @@ export default function AdminPacientes() {
 
               {/* Contato */}
               <div className="hidden sm:flex flex-col justify-center min-w-0 gap-0.5">
+                <PatientSegmentsBadges
+                  segments={patient.id ? (patientSegmentsById.get(patient.id) ?? []) : []}
+                  limit={3}
+                  className="mb-1"
+                />
                 <p className="text-[13px] text-foreground/80 font-medium truncate">{patient.email || "—"}</p>
                 <p className="text-[11px] text-muted-foreground/70 truncate">{patient.phone || "—"}</p>
               </div>

@@ -21,6 +21,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { doesDiscountApply, formatCurrency, getDiscountedAmount } from "@/lib/discountUtils";
 import { recordOperationalEvent } from "@/lib/operationalLogs";
+import { stringifyPreConsultationNotes } from "@/lib/preConsultation";
 
 const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -118,6 +119,12 @@ const BookingPage = () => {
   const [medications, setMedications] = useState("");
   const [hadNutritionist, setHadNutritionist] = useState("");
   const [howFound, setHowFound] = useState("");
+  const [routine, setRoutine] = useState("");
+  const [symptoms, setSymptoms] = useState("");
+  const [supplementation, setSupplementation] = useState("");
+  const [previousExams, setPreviousExams] = useState("");
+  const [nutritionHistory, setNutritionHistory] = useState("");
+  const [clinicalObservations, setClinicalObservations] = useState("");
 
   // Payment
   const [payTab, setPayTab] = useState<PayTab>("pix");
@@ -201,10 +208,23 @@ const BookingPage = () => {
         });
         return false;
       }
-      const notes = JSON.stringify({
-        birthDate, sex, goal, allergies, restrictions,
-        healthConditions, medications, hadNutritionist, howFound,
-        city: consultationType === "presencial" ? selectedCity : undefined,
+      const notes = stringifyPreConsultationNotes({
+        birthDate,
+        sex,
+        goal,
+        allergies,
+        restrictions,
+        healthConditions,
+        medications,
+        hadNutritionist,
+        howFound,
+        rotina: routine,
+        sintomas: symptoms,
+        suplementacao: supplementation,
+        examesPrevios: previousExams,
+        historicoNutri: nutritionHistory,
+        observacoes: clinicalObservations,
+        city: consultationType === "presencial" ? selectedCity : "",
       });
       const cpfDigits = clientCpf.replace(/\D/g, "");
       const booking: Booking = {
@@ -223,7 +243,7 @@ const BookingPage = () => {
         status,
         payment_status: paymentStatus,
         payment_method: paymentMethod,
-        notes,
+        notes: notes ?? undefined,
       };
       const ok = await insertBooking(booking);
       if (!ok) allOk = false;
@@ -250,6 +270,12 @@ const BookingPage = () => {
     medications,
     hadNutritionist,
     howFound,
+    routine,
+    symptoms,
+    supplementation,
+    previousExams,
+    nutritionHistory,
+    clinicalObservations,
     selectedCity,
   ]);
 
@@ -1062,6 +1088,34 @@ const BookingPage = () => {
                     placeholder="Ex: metformina, levotiroxina..." className="rounded-xl" />
                 </div>
 
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Rotina atual <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                  <textarea
+                    value={routine}
+                    onChange={e => setRoutine(e.target.value)}
+                    rows={3}
+                    placeholder="Ex: trabalho em turnos, horarios corridos, dificuldade para cozinhar..."
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Sintomas ou queixas <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                  <textarea
+                    value={symptoms}
+                    onChange={e => setSymptoms(e.target.value)}
+                    rows={3}
+                    placeholder="Ex: cansaco, inchaco, intestino preso, compulsao..."
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Suplementos em uso <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                  <Input value={supplementation} onChange={e => setSupplementation(e.target.value)}
+                    placeholder="Ex: creatina, whey, omega 3..." className="rounded-xl" />
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Já fez acompanhamento nutricional?</Label>
@@ -1083,6 +1137,38 @@ const BookingPage = () => {
                       <option value="outro">Outro</option>
                     </select>
                   </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Exames previos ou recentes <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                  <textarea
+                    value={previousExams}
+                    onChange={e => setPreviousExams(e.target.value)}
+                    rows={3}
+                    placeholder="Ex: hemograma recente, ferritina baixa, vitamina D..."
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Historico com nutricao <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                  <textarea
+                    value={nutritionHistory}
+                    onChange={e => setNutritionHistory(e.target.value)}
+                    rows={3}
+                    placeholder="Ex: ja fez dieta antes, o que funcionou, o que atrapalhou..."
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Observacoes para a consulta <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                  <textarea
+                    value={clinicalObservations}
+                    onChange={e => setClinicalObservations(e.target.value)}
+                    rows={3}
+                    placeholder="Algo importante que voce queira adiantar antes do atendimento."
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
                 </div>
               </div>
 
