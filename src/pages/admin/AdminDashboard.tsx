@@ -210,7 +210,8 @@ const AdminDashboard = () => {
           </section>
 
           <section className="grid gap-5 xl:grid-cols-[1.35fr_0.9fr] xl:items-start">
-            <div className="rounded-3xl border border-border/80 bg-card p-4 shadow-sm lg:p-5 xl:self-start">
+            <div className="space-y-5">
+              <div className="rounded-3xl border border-border/80 bg-card p-4 shadow-sm lg:p-5 xl:self-start">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-foreground">Próximos atendimentos</h2>
@@ -268,6 +269,28 @@ const AdminDashboard = () => {
                   ))}
                 </div>
               )}
+              </div>
+
+              <section className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                <QuickAction
+                  icon={FileText}
+                  label="Conteudo do site"
+                  description="Editar paginas publicas"
+                  to="/admin/hero"
+                />
+                <QuickAction
+                  icon={CalendarCheck}
+                  label="Disponibilidade"
+                  description="Ajustar horarios disponiveis"
+                  to="/admin/disponibilidade"
+                />
+                <QuickAction
+                  icon={ReceiptText}
+                  label="Auditoria"
+                  description="Ver alteracoes em pacientes"
+                  to="/admin/auditoria"
+                />
+              </section>
             </div>
 
             <div className="space-y-5">
@@ -364,7 +387,7 @@ const AdminDashboard = () => {
             </div>
           </section>
 
-          <section className="grid gap-3 md:grid-cols-3">
+          <section className="hidden">
             <QuickAction
               icon={FileText}
               label="Conteúdo do site"
