@@ -209,8 +209,8 @@ const AdminDashboard = () => {
             />
           </section>
 
-          <section className="grid gap-5 xl:grid-cols-[1.35fr_0.9fr]">
-            <div className="rounded-3xl border border-border/80 bg-card p-4 shadow-sm lg:p-5">
+          <section className="grid gap-5 xl:grid-cols-[1.35fr_0.9fr] xl:items-start">
+            <div className="rounded-3xl border border-border/80 bg-card p-4 shadow-sm lg:p-5 xl:self-start">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-foreground">Próximos atendimentos</h2>
@@ -223,16 +223,18 @@ const AdminDashboard = () => {
               </div>
 
               {dashboard.nextBookings.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center">
-                  <CalendarCheck className="mx-auto h-8 w-8 text-muted-foreground/50" />
-                  <p className="mt-3 text-sm font-medium text-foreground">Nenhum atendimento futuro</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                <div className="rounded-2xl border border-dashed border-border/80 bg-muted/15 px-6 py-10 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm">
+                    <CalendarCheck className="h-5 w-5" />
+                  </div>
+                  <p className="mt-4 text-sm font-semibold text-foreground">Nenhum atendimento futuro</p>
+                  <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
                     Crie uma consulta inicial ou retorno para manter a rotina clínica em movimento.
                   </p>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="mt-4 rounded-xl"
+                    className="mt-5 rounded-xl"
                     onClick={() => navigate("/admin/agendamentos")}
                   >
                     Abrir agenda
