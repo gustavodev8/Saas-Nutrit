@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, Outlet, useLocation } from "react-router-dom";
 import { useEffect, lazy, Suspense } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 // Contexts
 import { ContentProvider } from "@/contexts/ContentContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { PatientPortalAuthProvider } from "@/contexts/PatientPortalAuthContext";
 
 // Public pages
 import Index from "./pages/Index";
@@ -64,6 +65,13 @@ import AdminTemplates from "./pages/admin/AdminTemplates";
 import AdminTemplateEditor from "./pages/admin/AdminTemplateEditor";
 const AdminFerramentas = lazy(() => import("./pages/admin/AdminFerramentas"));
 import AdminBiblioteca from "./pages/admin/AdminBiblioteca";
+import PatientPortalProtectedRoute from "@/components/patient/PatientPortalProtectedRoute";
+import PatientPortalLogin from "./pages/portal/PatientPortalLogin";
+import PatientPortalLayout from "./pages/portal/PatientPortalLayout";
+import PatientPortalHome from "./pages/portal/PatientPortalHome";
+import PatientPortalPlan from "./pages/portal/PatientPortalPlan";
+import PatientPortalConsultas from "./pages/portal/PatientPortalConsultas";
+import PatientPortalDocuments from "./pages/portal/PatientPortalDocuments";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +80,12 @@ const ScrollToTop = () => {
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
   return null;
 };
+
+const PatientPortalRoot = () => (
+  <PatientPortalAuthProvider>
+    <Outlet />
+  </PatientPortalAuthProvider>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -99,6 +113,23 @@ const App = () => (
 
               {/* Booking page */}
               <Route path="/agendar/:planIndex" element={<BookingPage />} />
+
+              {/* Patient portal */}
+              <Route path="/portal" element={<PatientPortalRoot />}>
+                <Route path="login" element={<PatientPortalLogin />} />
+                <Route
+                  element={
+                    <PatientPortalProtectedRoute>
+                      <PatientPortalLayout />
+                    </PatientPortalProtectedRoute>
+                  }
+                >
+                  <Route index element={<PatientPortalHome />} />
+                  <Route path="plano" element={<PatientPortalPlan />} />
+                  <Route path="consultas" element={<PatientPortalConsultas />} />
+                  <Route path="documentos" element={<PatientPortalDocuments />} />
+                </Route>
+              </Route>
 
               {/* Payment status pages */}
               <Route path="/pagamento/sucesso" element={<PaymentSuccess />} />

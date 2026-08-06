@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import type { OfficialAnthropometrySource } from "@/components/admin/anthropometryTypes";
 import { cn } from "@/lib/utils";
 import {
   calcBodyFat,
@@ -210,7 +211,7 @@ interface AnthropometryWizardProps {
   onSave: (
     form: MeasurementForm,
     protocol: SkinfoldProtocol,
-    officialSource: "bio" | "skinfold" | null,
+    officialSource: OfficialAnthropometrySource,
     editingId?: number,
   ) => Promise<void>;
   onCancelEdit?: () => void;
@@ -229,7 +230,7 @@ export function AnthropometryWizard({
 }: AnthropometryWizardProps) {
   const [form, setFormState] = useState<MeasurementForm>({ assessment_date: todayISO() });
   const [protocol, setProtocol] = useState<SkinfoldProtocol>("JP3M");
-  const [officialSource, setOfficialSource] = useState<"bio" | "skinfold" | null>(null);
+  const [officialSource, setOfficialSource] = useState<OfficialAnthropometrySource>(null);
 
   useEffect(() => {
     if (editingMeasurement) {
@@ -306,7 +307,7 @@ export function AnthropometryWizard({
   const extraKeys = ALL_SF_KEYS.filter((k) => !inProtocol(k));
 
   // Auto-select official source when only one is available
-  const effectiveOfficial: "bio" | "skinfold" | null =
+  const effectiveOfficial: OfficialAnthropometrySource =
     officialSource ??
     (sfAvailable && !bioAvailable ? "skinfold" :
       bioAvailable && !sfAvailable ? "bio" : null);

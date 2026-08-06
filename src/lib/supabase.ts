@@ -955,6 +955,31 @@ export async function fetchPatient(id: number | string): Promise<Patient | null>
   return data;
 }
 
+export async function fetchCurrentPortalPatient(): Promise<Patient | null> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const email = session?.user.email?.trim().toLowerCase();
+
+  if (!email) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("patients")
+    .select("*")
+    .ilike("email", email)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error("[Supabase] fetchCurrentPortalPatient:", error.message);
+    return null;
+  }
+
+  return data?.[0] ?? null;
+}
+
 export async function upsertPatient(patient: Patient): Promise<Patient | null> {
   const { id, ...fields } = patient;
   if (id) {
@@ -1573,6 +1598,58 @@ export async function fetchBookings(): Promise<Booking[]> {
   return data || [];
 }
 
+export async function fetchPortalBookings(
+  patientId?: number | null,
+  email?: string | null,
+): Promise<Booking[]> {
+  const normalizedEmail = email?.trim().toLowerCase() ?? null;
+  const bookingMap = new Map<number, Booking>();
+
+  if (patientId) {
+    const { data, error } = await supabaseAdmin
+      .from("bookings")
+      .select("*")
+      .eq("patient_id", patientId)
+      .order("appointment_date", { ascending: true })
+      .order("appointment_time", { ascending: true });
+
+    if (error) {
+      console.error("[Supabase] fetchPortalBookings by patient:", error.message);
+    } else {
+      (data ?? []).forEach((booking) => {
+        if (booking.id != null) {
+          bookingMap.set(booking.id, booking);
+        }
+      });
+    }
+  }
+
+  if (normalizedEmail) {
+    const { data, error } = await supabaseAdmin
+      .from("bookings")
+      .select("*")
+      .ilike("client_email", normalizedEmail)
+      .order("appointment_date", { ascending: true })
+      .order("appointment_time", { ascending: true });
+
+    if (error) {
+      console.error("[Supabase] fetchPortalBookings by email:", error.message);
+    } else {
+      (data ?? []).forEach((booking) => {
+        if (booking.id != null) {
+          bookingMap.set(booking.id, booking);
+        }
+      });
+    }
+  }
+
+  return Array.from(bookingMap.values()).sort((a, b) => {
+    const left = `${a.appointment_date}T${a.appointment_time}`;
+    const right = `${b.appointment_date}T${b.appointment_time}`;
+    return left.localeCompare(right);
+  });
+}
+
 export async function fetchBookingsForDate(date: string, type: string, excludeGroupId?: string): Promise<Booking[]> {
   const { data, error } = await supabase
     .rpc('public_unavailable_booking_slots', {
@@ -1729,6 +1806,58 @@ export async function fetchConsultationRecords(booking_group_id: string): Promis
     .order('created_at', { ascending: false });
   if (error) return [];
   return data || [];
+}
+
+export async function fetchPortalConsultationRecords(
+  patientId?: number | null,
+  email?: string | null,
+): Promise<ConsultationRecord[]> {
+  const normalizedEmail = email?.trim().toLowerCase() ?? null;
+  const recordMap = new Map<string, ConsultationRecord>();
+  const portalBookings = await fetchPortalBookings(patientId, normalizedEmail);
+  const bookingGroupIds = Array.from(
+    new Set(
+      portalBookings
+        .map((booking) => booking.booking_group_id)
+        .filter((bookingGroupId): bookingGroupId is string => Boolean(bookingGroupId)),
+    ),
+  );
+
+  if (bookingGroupIds.length > 0) {
+    const { data, error } = await supabaseAdmin
+      .from("consultation_records")
+      .select("*")
+      .in("booking_group_id", bookingGroupIds)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("[Supabase] fetchPortalConsultationRecords by groups:", error.message);
+    } else {
+      (data ?? []).forEach((record) => {
+        recordMap.set(String(record.id ?? `${record.booking_group_id}-${record.created_at}`), record);
+      });
+    }
+  }
+
+  if (normalizedEmail) {
+    const { data, error } = await supabaseAdmin
+      .from("consultation_records")
+      .select("*")
+      .ilike("client_email", normalizedEmail)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("[Supabase] fetchPortalConsultationRecords by email:", error.message);
+    } else {
+      (data ?? []).forEach((record) => {
+        recordMap.set(String(record.id ?? `${record.booking_group_id}-${record.created_at}`), record);
+      });
+    }
+  }
+
+  return Array.from(recordMap.values()).sort((left, right) =>
+    (right.created_at ?? "").localeCompare(left.created_at ?? ""),
+  );
 }
 
 // ─── Blog ──────────────────────────────────────────────────────────────────────────────??
