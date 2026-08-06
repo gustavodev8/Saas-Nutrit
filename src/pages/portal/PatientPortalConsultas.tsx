@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import PatientPortalDisabledState from "@/components/patient/PatientPortalDisabledState";
 import { usePatientPortalAuth } from "@/contexts/usePatientPortalAuth";
 import { usePatientPortalSettings } from "@/contexts/usePatientPortalSettings";
-import { fetchPortalBookings, type Booking } from "@/lib/supabase";
+import { fetchPortalBookings } from "@/lib/patientPortalApi";
+import type { Booking } from "@/lib/supabase";
 import { formatPortalDateTime, formatPortalStatus, isFuturePortalDate } from "@/pages/portal/portalUtils";
 
 function BookingList({
@@ -73,7 +74,7 @@ function BookingList({
 }
 
 export default function PatientPortalConsultas() {
-  const { patient, userEmail } = usePatientPortalAuth();
+  const { patient } = usePatientPortalAuth();
   const { settings } = usePatientPortalSettings();
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -84,10 +85,10 @@ export default function PatientPortalConsultas() {
     }
 
     setLoading(true);
-    fetchPortalBookings(patient.id, userEmail)
+    fetchPortalBookings(patient.id, patient.email ?? null)
       .then(setBookings)
       .finally(() => setLoading(false));
-  }, [patient?.id, userEmail]);
+  }, [patient?.email, patient?.id]);
 
   const upcoming = useMemo(
     () => bookings.filter((booking) => isFuturePortalDate(booking.appointment_date)),

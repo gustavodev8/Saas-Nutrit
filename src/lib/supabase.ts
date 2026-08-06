@@ -443,6 +443,28 @@ export interface PatientReport {
   updated_at?: string;
 }
 
+export interface PatientPortalAccount {
+  id?: number;
+  patient_id: number;
+  auth_user_id?: string | null;
+  login: string;
+  login_normalized: string;
+  auth_email: string;
+  is_active: boolean;
+  password_set_at?: string | null;
+  last_login_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  updated_by?: string | null;
+}
+
+export interface SavePatientPortalAccountInput {
+  patientId: number;
+  login: string;
+  password?: string;
+  enabled: boolean;
+}
+
 // ─── Epic 6: Triagem Clínica Estruturada ──────────────────────────────────────────?
 export interface AnamnesisStructured {
   // OBJETIVO
@@ -1001,6 +1023,61 @@ export async function fetchPatient(id: number | string): Promise<Patient | null>
     .single();
   if (error) { console.error("[Supabase] fetchPatient:", error.message); return null; }
   return data;
+}
+
+export async function fetchPatientPortalAccount(
+  patientId: number,
+): Promise<PatientPortalAccount | null> {
+  const { data, error } = await supabaseAdmin
+    .from("patient_portal_accounts")
+    .select("*")
+    .eq("patient_id", patientId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[Supabase] fetchPatientPortalAccount:", error.message);
+    return null;
+  }
+
+  return data ?? null;
+}
+
+export async function savePatientPortalAccount(
+  input: SavePatientPortalAccountInput,
+): Promise<{ ok: boolean; account?: PatientPortalAccount; message: string }> {
+  const { data, error } = await supabase.functions.invoke<{
+    account?: PatientPortalAccount;
+    error?: string;
+    message?: string;
+  }>("patient-portal-credentials", {
+    body: {
+      action: "upsert_credentials",
+      patientId: input.patientId,
+      login: input.login,
+      password: input.password,
+      enabled: input.enabled,
+    },
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      message: error.message || "Nao foi possivel salvar as credenciais do portal.",
+    };
+  }
+
+  if (!data?.account) {
+    return {
+      ok: false,
+      message: data?.error || data?.message || "Nao foi possivel salvar as credenciais do portal.",
+    };
+  }
+
+  return {
+    ok: true,
+    account: data.account,
+    message: data.message || "Credenciais do portal atualizadas.",
+  };
 }
 
 export async function fetchCurrentPortalPatient(): Promise<Patient | null> {

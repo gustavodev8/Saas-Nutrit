@@ -12,13 +12,11 @@ import PatientPortalDisabledState from "@/components/patient/PatientPortalDisabl
 import { usePatientPortalAuth } from "@/contexts/usePatientPortalAuth";
 import { usePatientPortalSettings } from "@/contexts/usePatientPortalSettings";
 import {
-  fetchExamRequests,
-  fetchPatientReports,
   fetchPortalConsultationRecords,
-  type ConsultationRecord,
-  type PatientExamRequest,
-  type PatientReport,
-} from "@/lib/supabase";
+  fetchPortalExamRequests,
+  fetchPortalPatientReports,
+} from "@/lib/patientPortalApi";
+import type { ConsultationRecord, PatientExamRequest, PatientReport } from "@/lib/supabase";
 import { formatPortalDate, formatPortalStatus } from "@/pages/portal/portalUtils";
 
 export default function PatientPortalDocuments() {
@@ -36,9 +34,9 @@ export default function PatientPortalDocuments() {
 
     setLoading(true);
     Promise.all([
-      fetchPatientReports(patient.id),
-      fetchExamRequests(patient.id),
-      fetchPortalConsultationRecords(patient.id, patient.email),
+      fetchPortalPatientReports(patient.id),
+      fetchPortalExamRequests(patient.id),
+      fetchPortalConsultationRecords(patient.id, patient.email ?? null),
     ])
       .then(([nextReports, nextExamRequests, nextRecords]) => {
         setReports(nextReports);

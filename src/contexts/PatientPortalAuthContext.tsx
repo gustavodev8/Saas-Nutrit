@@ -5,14 +5,20 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { supabase, fetchCurrentPortalPatient, type Patient } from "@/lib/supabase";
+import type { Patient } from "@/lib/supabase";
+import { patientPortalSupabase } from "@/lib/patientPortalSupabase";
+import { fetchCurrentPortalPatient } from "@/lib/patientPortalApi";
+import {
+  buildPatientPortalAuthEmail,
+  isValidPatientPortalLogin,
+} from "@/lib/patientPortalAuth";
 import {
   PatientPortalAuthContext,
   type PatientPortalAuthContextValue,
 } from "@/contexts/patientPortalAuthShared";
 
 async function loadPatientSession() {
-  const { data } = await supabase.auth.getSession();
+  const { data } = await patientPortalSupabase.auth.getSession();
   return data.session;
 }
 
@@ -44,7 +50,7 @@ export function PatientPortalAuthProvider({ children }: { children: ReactNode })
   useEffect(() => {
     void syncFromSession();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+    const { data: listener } = patientPortalSupabase.auth.onAuthStateChange(() => {
       void syncFromSession();
     });
 
@@ -53,31 +59,33 @@ export function PatientPortalAuthProvider({ children }: { children: ReactNode })
     };
   }, [syncFromSession]);
 
-  const requestAccess = useCallback(async (email: string) => {
-    const normalized = email.trim().toLowerCase();
-    if (!normalized) {
-      return { ok: false, message: "Informe o e-mail cadastrado no seu prontuario." };
+  const loginWithCredentials = useCallback(async (login: string, password: string) => {
+    const normalizedLogin = login.trim().toLowerCase();
+    if (!normalizedLogin || !password.trim()) {
+      return { ok: false, message: "Informe seu login e sua senha." };
     }
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email: normalized,
-      options: {
-        emailRedirectTo: `${window.location.origin}/portal`,
-      },
+    if (!isValidPatientPortalLogin(normalizedLogin)) {
+      return { ok: false, message: "Login invalido. Use letras, numeros, ponto, traço ou underscore." };
+    }
+
+    const { error } = await patientPortalSupabase.auth.signInWithPassword({
+      email: buildPatientPortalAuthEmail(normalizedLogin),
+      password,
     });
 
     if (error) {
-      return { ok: false, message: error.message };
+      return { ok: false, message: "Login ou senha incorretos." };
     }
 
     return {
       ok: true,
-      message: "Enviamos um link de acesso para o seu e-mail.",
+      message: "Login realizado com sucesso.",
     };
   }, []);
 
   const logout = useCallback(async () => {
-    await supabase.auth.signOut();
+    await patientPortalSupabase.auth.signOut();
     setPatient(null);
     setUserEmail(null);
   }, []);
@@ -88,11 +96,11 @@ export function PatientPortalAuthProvider({ children }: { children: ReactNode })
       patientReady,
       patient,
       userEmail,
-      requestAccess,
+      loginWithCredentials,
       logout,
       refreshPatient: syncFromSession,
     }),
-    [authReady, logout, patient, patientReady, requestAccess, syncFromSession, userEmail],
+    [authReady, loginWithCredentials, logout, patient, patientReady, syncFromSession, userEmail],
   );
 
   return (

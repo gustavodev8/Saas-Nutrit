@@ -5,11 +5,10 @@ import PatientPortalDisabledState from "@/components/patient/PatientPortalDisabl
 import { usePatientPortalAuth } from "@/contexts/usePatientPortalAuth";
 import { usePatientPortalSettings } from "@/contexts/usePatientPortalSettings";
 import {
-  fetchFullMealPlan,
-  fetchMealPlans,
-  type Meal,
-  type MealPlan,
-} from "@/lib/supabase";
+  fetchPortalFullMealPlan,
+  fetchPortalMealPlans,
+} from "@/lib/patientPortalApi";
+import type { Meal, MealPlan } from "@/lib/supabase";
 
 export default function PatientPortalPlan() {
   const { patient } = usePatientPortalAuth();
@@ -25,7 +24,7 @@ export default function PatientPortalPlan() {
     }
 
     setLoading(true);
-    fetchMealPlans(patient.id)
+    fetchPortalMealPlans(patient.id)
       .then((nextPlans) => {
         setPlans(nextPlans);
         setSelectedPlanId(nextPlans[0]?.id ?? null);
@@ -39,7 +38,7 @@ export default function PatientPortalPlan() {
       return;
     }
 
-    void fetchFullMealPlan(selectedPlanId).then(setMeals);
+    void fetchPortalFullMealPlan(selectedPlanId).then(setMeals);
   }, [selectedPlanId]);
 
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? null;

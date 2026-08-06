@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
-import { Mail, ShieldCheck } from "lucide-react";
+import { KeyRound, ShieldCheck, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,10 @@ import { usePatientPortalSettings } from "@/contexts/usePatientPortalSettings";
 
 export default function PatientPortalLogin() {
   const { settings } = usePatientPortalSettings();
-  const { userEmail, patient, requestAccess, authReady, patientReady } = usePatientPortalAuth();
-  const [email, setEmail] = useState("");
+  const { userEmail, patient, loginWithCredentials, authReady, patientReady } =
+    usePatientPortalAuth();
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "error" | "success"; message: string } | null>(
     null,
@@ -19,7 +21,7 @@ export default function PatientPortalLogin() {
 
   const infoMessage = useMemo(() => {
     if (searchParams.get("status") === "sem-acesso") {
-      return "Este e-mail nao esta vinculado a um paciente com acesso liberado.";
+      return "Este login nao esta vinculado a um paciente com acesso ativo.";
     }
     return null;
   }, [searchParams]);
@@ -33,7 +35,7 @@ export default function PatientPortalLogin() {
     setSubmitting(true);
     setFeedback(null);
 
-    const result = await requestAccess(email);
+    const result = await loginWithCredentials(login, password);
     setFeedback({
       type: result.ok ? "success" : "error",
       message: result.message,
@@ -50,10 +52,10 @@ export default function PatientPortalLogin() {
               <ShieldCheck size={24} />
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl tracking-tight">{settings.branding.portalTitle}</CardTitle>
-              <CardDescription>
-                {settings.branding.welcomeMessage}
-              </CardDescription>
+              <CardTitle className="text-2xl tracking-tight">
+                {settings.branding.portalTitle}
+              </CardTitle>
+              <CardDescription>{settings.branding.welcomeMessage}</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -77,29 +79,59 @@ export default function PatientPortalLogin() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <label htmlFor="portal-email" className="text-sm font-medium text-foreground">
-                  E-mail
+                <label htmlFor="portal-login" className="text-sm font-medium text-foreground">
+                  Login
                 </label>
                 <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                  <UserRound
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    size={16}
+                  />
                   <Input
-                    id="portal-email"
-                    type="email"
-                    placeholder="voce@exemplo.com"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
+                    id="portal-login"
+                    type="text"
+                    placeholder="seu.login"
+                    value={login}
+                    onChange={(event) => setLogin(event.target.value)}
                     className="h-11 rounded-xl pl-9"
+                    autoComplete="username"
                   />
                 </div>
               </div>
 
-              <Button type="submit" disabled={submitting} className="h-11 w-full rounded-xl font-semibold">
-                {submitting ? "Enviando..." : "Receber link de acesso"}
+              <div className="space-y-2">
+                <label htmlFor="portal-password" className="text-sm font-medium text-foreground">
+                  Senha
+                </label>
+                <div className="relative">
+                  <KeyRound
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    size={16}
+                  />
+                  <Input
+                    id="portal-password"
+                    type="password"
+                    placeholder="Sua senha"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="h-11 rounded-xl pl-9"
+                    autoComplete="current-password"
+                  />
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="h-11 w-full rounded-xl font-semibold"
+              >
+                {submitting ? "Entrando..." : "Entrar no portal"}
               </Button>
             </form>
 
             <div className="rounded-2xl border border-border/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-              Use o mesmo e-mail informado durante o atendimento. Se precisar ajustar o cadastro, {settings.branding.supportLabel.toLowerCase()}.
+              Seu login e sua senha sao definidos pelo admin. Se precisar de acesso,{" "}
+              {settings.branding.supportLabel.toLowerCase()}.
             </div>
           </CardContent>
         </Card>

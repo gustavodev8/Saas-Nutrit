@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, ImageIcon, Loader2, Plus, Save, X } from "lucide-react";
+import { Camera, ImageIcon, KeyRound, Loader2, Plus, Save, ShieldCheck, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import {
+  isValidPatientPortalLogin,
+  normalizePatientPortalLogin,
+  validatePatientPortalPassword,
+} from "@/lib/patientPortalAuth";
 import {
   formatCPF,
   hasPatientProfileChanges,
@@ -13,7 +19,10 @@ import {
 import {
   deletePatientPhoto,
   fetchPatientPhotos,
+  fetchPatientPortalAccount,
   insertPatientPhoto,
+  savePatientPortalAccount,
+  type PatientPortalAccount,
   type Patient,
   type PatientPhoto,
   uploadPatientPhoto,
@@ -43,6 +52,16 @@ export function PatientProfileTab({ patient, onSaved }: PatientProfileTabProps) 
   const [form, setForm] = useState<Patient>({ ...patient });
   const [saving, setSaving] = useState(false);
   const [cpfError, setCpfError] = useState<string | null>(null);
+  const [portalAccount, setPortalAccount] = useState<PatientPortalAccount | null>(null);
+  const [portalForm, setPortalForm] = useState({
+    login: "",
+    password: "",
+    confirmPassword: "",
+    enabled: false,
+  });
+  const [portalLoading, setPortalLoading] = useState(true);
+  const [portalSaving, setPortalSaving] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
 
   const [photos, setPhotos] = useState<PatientPhoto[]>([]);
   const [loadingPhotos, setLoadingPhotos] = useState(true);
@@ -61,6 +80,23 @@ export function PatientProfileTab({ patient, onSaved }: PatientProfileTabProps) 
     fetchPatientPhotos(patient.id)
       .then(setPhotos)
       .finally(() => setLoadingPhotos(false));
+  }, [patient.id]);
+
+  useEffect(() => {
+    if (!patient.id) return;
+
+    setPortalLoading(true);
+    fetchPatientPortalAccount(patient.id)
+      .then((account) => {
+        setPortalAccount(account);
+        setPortalForm({
+          login: account?.login ?? "",
+          password: "",
+          confirmPassword: "",
+          enabled: account?.is_active ?? false,
+        });
+      })
+      .finally(() => setPortalLoading(false));
   }, [patient.id]);
 
   const setField = (field: keyof Patient, value: string) => {
@@ -92,6 +128,72 @@ export function PatientProfileTab({ patient, onSaved }: PatientProfileTabProps) 
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSavePortalAccess = async () => {
+    if (!patient.id) {
+      return;
+    }
+
+    const normalizedLogin = normalizePatientPortalLogin(portalForm.login);
+    const requiresPassword = portalForm.enabled && !portalAccount?.auth_user_id;
+    const shouldValidatePassword = Boolean(portalForm.password) || requiresPassword;
+
+    if (!normalizedLogin) {
+      setPortalError("Informe um login para o portal.");
+      return;
+    }
+
+    if (!isValidPatientPortalLogin(normalizedLogin)) {
+      setPortalError("Use 4 a 32 caracteres com letras, numeros, ponto, traço ou underscore.");
+      return;
+    }
+
+    if (shouldValidatePassword) {
+      const passwordError = validatePatientPortalPassword(portalForm.password);
+      if (passwordError) {
+        setPortalError(passwordError);
+        return;
+      }
+
+      if (portalForm.password !== portalForm.confirmPassword) {
+        setPortalError("As senhas do portal nao coincidem.");
+        return;
+      }
+    }
+
+    setPortalSaving(true);
+    setPortalError(null);
+
+    const result = await savePatientPortalAccount({
+      patientId: patient.id,
+      login: normalizedLogin,
+      password: portalForm.password || undefined,
+      enabled: portalForm.enabled,
+    });
+
+    setPortalSaving(false);
+
+    if (!result.ok || !result.account) {
+      setPortalError(result.message);
+      toast.error(result.message);
+      return;
+    }
+
+    setPortalAccount(result.account);
+    setPortalForm((current) => ({
+      ...current,
+      login: result.account?.login ?? current.login,
+      password: "",
+      confirmPassword: "",
+      enabled: result.account?.is_active ?? current.enabled,
+    }));
+    toast.success(result.message);
+  };
+
+  const formatAccessDate = (value?: string | null) => {
+    if (!value) return "Ainda nao definida";
+    return new Date(value).toLocaleString("pt-BR");
   };
 
   const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -333,6 +435,129 @@ export function PatientProfileTab({ patient, onSaved }: PatientProfileTabProps) 
               className="min-h-[92px] rounded-xl border-border/80 bg-muted/20 focus-visible:ring-primary/20"
             />
           </div>
+        </section>
+
+        <section className="space-y-4 border-t border-border/50 pt-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-[0.14em] text-primary">
+                Acesso ao portal
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                O admin define login e senha do paciente. O portal usa acesso com senha, sem magic link.
+              </p>
+            </div>
+            <Button
+              onClick={handleSavePortalAccess}
+              disabled={portalSaving || portalLoading}
+              variant="outline"
+              className="h-9 rounded-xl px-4 font-bold"
+            >
+              {portalSaving ? <Loader2 size={15} className="mr-2 animate-spin" /> : <ShieldCheck size={15} className="mr-2" />}
+              {portalSaving ? "Salvando..." : "Salvar acesso"}
+            </Button>
+          </div>
+
+          {portalLoading ? (
+            <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-muted/20 px-4 py-4 text-sm text-muted-foreground">
+              <Loader2 size={16} className="animate-spin" />
+              Carregando configuracao do portal...
+            </div>
+          ) : (
+            <>
+              <div className="rounded-2xl border border-border/60 bg-muted/15 px-4 py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {portalAccount?.is_active ? "Acesso ativo" : portalAccount ? "Acesso pausado" : "Acesso ainda nao criado"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Ultima definicao de senha: {formatAccessDate(portalAccount?.password_set_at)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Liberar portal
+                    </span>
+                    <Switch
+                      checked={portalForm.enabled}
+                      onCheckedChange={(checked) => {
+                        setPortalForm((current) => ({ ...current, enabled: checked }));
+                        setPortalError(null);
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+                <div className={fieldClass}>
+                  <Label htmlFor="portal-login" className={labelClass}>
+                    Login do portal
+                  </Label>
+                  <div className="relative">
+                    <UserRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
+                    <Input
+                      id="portal-login"
+                      value={portalForm.login}
+                      onChange={(event) => {
+                        setPortalForm((current) => ({ ...current, login: event.target.value }));
+                        setPortalError(null);
+                      }}
+                      placeholder="paciente.login"
+                      className="h-9 rounded-xl pl-9 bg-muted/20 border-border/80 focus-visible:ring-primary/20"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border/60 bg-background px-4 py-3 text-sm text-muted-foreground">
+                  <p className="font-semibold text-foreground">Acesso do paciente</p>
+                  <p className="mt-1">Use um login simples, sem espacos. O paciente entra em `/portal/login`.</p>
+                </div>
+
+                <div className={fieldClass}>
+                  <Label htmlFor="portal-password" className={labelClass}>
+                    Nova senha
+                  </Label>
+                  <div className="relative">
+                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
+                    <Input
+                      id="portal-password"
+                      type="password"
+                      value={portalForm.password}
+                      onChange={(event) => {
+                        setPortalForm((current) => ({ ...current, password: event.target.value }));
+                        setPortalError(null);
+                      }}
+                      placeholder={portalAccount?.auth_user_id ? "Preencha apenas para redefinir" : "Senha inicial do portal"}
+                      className="h-9 rounded-xl pl-9 bg-muted/20 border-border/80 focus-visible:ring-primary/20"
+                    />
+                  </div>
+                </div>
+
+                <div className={fieldClass}>
+                  <Label htmlFor="portal-confirm-password" className={labelClass}>
+                    Confirmar senha
+                  </Label>
+                  <Input
+                    id="portal-confirm-password"
+                    type="password"
+                    value={portalForm.confirmPassword}
+                    onChange={(event) => {
+                      setPortalForm((current) => ({ ...current, confirmPassword: event.target.value }));
+                      setPortalError(null);
+                    }}
+                    placeholder="Repita a senha"
+                    className="h-9 rounded-xl bg-muted/20 border-border/80 focus-visible:ring-primary/20"
+                  />
+                </div>
+              </div>
+
+              {portalError ? (
+                <p className="text-sm font-medium text-destructive">{portalError}</p>
+              ) : null}
+            </>
+          )}
         </section>
       </div>
 

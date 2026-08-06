@@ -15,18 +15,20 @@ import PatientPortalDisabledState from "@/components/patient/PatientPortalDisabl
 import { usePatientPortalAuth } from "@/contexts/usePatientPortalAuth";
 import { usePatientPortalSettings } from "@/contexts/usePatientPortalSettings";
 import {
-  fetchExamRequests,
-  fetchMealPlans,
-  fetchMeasurements,
-  fetchPatientReports,
   fetchPortalBookings,
   fetchPortalConsultationRecords,
-  type Booking,
-  type ConsultationRecord,
-  type MealPlan,
-  type Measurement,
-  type PatientExamRequest,
-  type PatientReport,
+  fetchPortalExamRequests,
+  fetchPortalMealPlans,
+  fetchPortalMeasurements,
+  fetchPortalPatientReports,
+} from "@/lib/patientPortalApi";
+import type {
+  Booking,
+  ConsultationRecord,
+  MealPlan,
+  Measurement,
+  PatientExamRequest,
+  PatientReport,
 } from "@/lib/supabase";
 import { formatPortalDateTime, formatPortalStatus, isFuturePortalDate } from "@/pages/portal/portalUtils";
 
@@ -57,7 +59,7 @@ function MetricCard({
 }
 
 export default function PatientPortalHome() {
-  const { patient, userEmail } = usePatientPortalAuth();
+  const { patient } = usePatientPortalAuth();
   const { settings } = usePatientPortalSettings();
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -74,12 +76,12 @@ export default function PatientPortalHome() {
 
     setLoading(true);
     Promise.all([
-      fetchPortalBookings(patient.id, userEmail),
-      fetchMealPlans(patient.id),
-      fetchMeasurements(patient.id),
-      fetchPatientReports(patient.id),
-      fetchExamRequests(patient.id),
-      fetchPortalConsultationRecords(patient.id, userEmail),
+      fetchPortalBookings(patient.id, patient.email ?? null),
+      fetchPortalMealPlans(patient.id),
+      fetchPortalMeasurements(patient.id),
+      fetchPortalPatientReports(patient.id),
+      fetchPortalExamRequests(patient.id),
+      fetchPortalConsultationRecords(patient.id, patient.email ?? null),
     ])
       .then(
         ([
@@ -99,7 +101,7 @@ export default function PatientPortalHome() {
         },
       )
       .finally(() => setLoading(false));
-  }, [patient?.id, userEmail]);
+  }, [patient?.email, patient?.id]);
 
   const nextBooking = useMemo(
     () =>

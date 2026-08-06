@@ -6,7 +6,10 @@ export interface PatientPortalAuthContextValue {
   patientReady: boolean;
   patient: Patient | null;
   userEmail: string | null;
-  requestAccess: (email: string) => Promise<{ ok: boolean; message: string }>;
+  loginWithCredentials: (
+    login: string,
+    password: string,
+  ) => Promise<{ ok: boolean; message: string }>;
   logout: () => Promise<void>;
   refreshPatient: () => Promise<void>;
 }
