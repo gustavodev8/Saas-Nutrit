@@ -20,8 +20,20 @@ import {
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { fetchBookings, fetchPatients, type Booking, type Patient } from "@/lib/supabase";
-import { buildAdminDashboardData, formatShortDate } from "@/lib/adminDashboardUtils";
+import {
+  fetchBookings,
+  fetchPatientOperationalIndicators,
+  fetchPatients,
+  type Booking,
+  type Patient,
+  type PatientOperationalIndicators,
+} from "@/lib/supabase";
+import {
+  buildAdminDashboardData,
+  buildAdminOperationalDashboardData,
+  formatShortDate,
+} from "@/lib/adminDashboardUtils";
+import { OperationalFocusPanel } from "@/components/admin/dashboard/OperationalFocusPanel";
 import { cn } from "@/lib/utils";
 
 interface SummaryCardProps {
@@ -90,16 +102,28 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [operationalIndicators, setOperationalIndicators] = useState<PatientOperationalIndicators>({
+    withoutNextBookingIds: [],
+    withoutActiveMealPlanIds: [],
+    pendingExamRequestPatientIds: [],
+    lastInteractionDates: {},
+    nextBookingDates: {},
+    nextReturnDates: {},
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
 
     Promise.all([fetchBookings(), fetchPatients()])
-      .then(([bookingRows, patientRows]) => {
+      .then(async ([bookingRows, patientRows]) => {
         if (!mounted) return;
         setBookings(bookingRows);
         setPatients(patientRows);
+
+        const indicators = await fetchPatientOperationalIndicators(patientRows);
+        if (!mounted) return;
+        setOperationalIndicators(indicators);
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -111,6 +135,10 @@ const AdminDashboard = () => {
   }, []);
 
   const dashboard = useMemo(() => buildAdminDashboardData(bookings, patients), [bookings, patients]);
+  const operationalDashboard = useMemo(
+    () => buildAdminOperationalDashboardData(patients, operationalIndicators),
+    [patients, operationalIndicators],
+  );
 
   return (
     <div className="space-y-5">
@@ -241,6 +269,11 @@ const AdminDashboard = () => {
             </div>
 
             <div className="space-y-5">
+              <OperationalFocusPanel
+                counts={operationalDashboard.counts}
+                items={operationalDashboard.items}
+                onOpen={(route) => navigate(route)}
+              />
               <div className="rounded-3xl border border-border/80 bg-card p-4 shadow-sm lg:p-5">
                 <div className="mb-4">
                   <h2 className="text-base font-semibold text-foreground">Ações rápidas</h2>
