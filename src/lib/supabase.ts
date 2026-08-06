@@ -1060,9 +1060,31 @@ export async function savePatientPortalAccount(
   });
 
   if (error) {
+    let message = error.message || "Nao foi possivel salvar as credenciais do portal.";
+    const errorContext = (error as { context?: Response | null }).context;
+
+    if (errorContext) {
+      try {
+        const errorPayload = await errorContext.clone().json() as {
+          error?: string;
+          message?: string;
+        };
+        message = errorPayload.error || errorPayload.message || message;
+      } catch {
+        try {
+          const errorText = await errorContext.clone().text();
+          if (errorText) {
+            message = errorText;
+          }
+        } catch {
+          // ignore response parsing failures and keep the fallback message
+        }
+      }
+    }
+
     return {
       ok: false,
-      message: error.message || "Nao foi possivel salvar as credenciais do portal.",
+      message,
     };
   }
 
