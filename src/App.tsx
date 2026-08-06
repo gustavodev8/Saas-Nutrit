@@ -9,6 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ContentProvider } from "@/contexts/ContentContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PatientPortalAuthProvider } from "@/contexts/PatientPortalAuthContext";
+import { PatientPortalSettingsProvider } from "@/contexts/PatientPortalSettingsContext";
 
 // Public pages
 import Index from "./pages/Index";
@@ -61,6 +62,7 @@ import AdminDisparo from "./pages/admin/AdminDisparo";
 import AdminLeads from "./pages/admin/AdminLeads";
 import AdminAuditoria from "./pages/admin/AdminAuditoria";
 import AdminOperacao from "./pages/admin/AdminOperacao";
+import AdminPortal from "./pages/admin/AdminPortal";
 import AdminTemplates from "./pages/admin/AdminTemplates";
 import AdminTemplateEditor from "./pages/admin/AdminTemplateEditor";
 const AdminFerramentas = lazy(() => import("./pages/admin/AdminFerramentas"));
@@ -90,13 +92,14 @@ const PatientPortalRoot = () => (
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ContentProvider>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <ScrollToTop />
-            <Routes>
+      <PatientPortalSettingsProvider>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <ScrollToTop />
+              <Routes>
               {/* Landing page */}
               <Route path="/" element={<Index />} />
 
@@ -160,6 +163,7 @@ const App = () => (
                 <Route path="cta" element={<AdminCTA />} />
                 <Route path="auditoria" element={<AdminAuditoria />} />
                 <Route path="operacao" element={<AdminOperacao />} />
+                <Route path="portal" element={<AdminPortal />} />
                 <Route path="contato" element={<AdminContato />} />
                 <Route path="modalidades" element={<AdminModalidades />} />
                 <Route path="produtos" element={<AdminProdutosDigitais />} />
@@ -191,10 +195,11 @@ const App = () => (
 
               {/* 404 */}
               <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </AuthProvider>
+      </PatientPortalSettingsProvider>
     </ContentProvider>
   </QueryClientProvider>
 );

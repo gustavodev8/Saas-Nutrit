@@ -1,22 +1,40 @@
-import { Home, CalendarDays, FileText, LogOut, Soup, User2 } from "lucide-react";
+import { CalendarDays, FileText, Home, LogOut, Soup } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { usePatientPortalAuth } from "@/contexts/usePatientPortalAuth";
+import { usePatientPortalSettings } from "@/contexts/usePatientPortalSettings";
+import type { PatientPortalNavigationSettings } from "@/lib/patientPortalSettings";
 import { getInitials } from "@/pages/portal/portalUtils";
 
-const navItems = [
-  { to: "/portal", icon: Home, label: "Inicio", end: true },
-  { to: "/portal/plano", icon: Soup, label: "Plano" },
-  { to: "/portal/consultas", icon: CalendarDays, label: "Consultas" },
-  { to: "/portal/documentos", icon: FileText, label: "Documentos" },
+const navItems: Array<{
+  to: string;
+  icon: typeof Home;
+  label: string;
+  end?: boolean;
+  route: keyof PatientPortalNavigationSettings;
+}> = [
+  { to: "/portal", icon: Home, label: "Inicio", end: true, route: "home" },
+  { to: "/portal/plano", icon: Soup, label: "Plano", route: "plan" },
+  { to: "/portal/consultas", icon: CalendarDays, label: "Consultas", route: "consultations" },
+  { to: "/portal/documentos", icon: FileText, label: "Documentos", route: "documents" },
 ];
 
 export default function PatientPortalLayout() {
   const { patient, logout } = usePatientPortalAuth();
+  const { settings } = usePatientPortalSettings();
+  const visibleNavItems = navItems.filter((item) => settings.navigation[item.route]);
+  const navGridClass =
+    visibleNavItems.length === 1
+      ? "grid-cols-1"
+      : visibleNavItems.length === 2
+        ? "grid-cols-2"
+        : visibleNavItems.length === 3
+          ? "grid-cols-3"
+          : "grid-cols-4";
 
   return (
-    <div className="min-h-screen bg-muted/20 pb-24">
+    <div className={`min-h-screen bg-muted/20 ${visibleNavItems.length > 0 ? "pb-24" : ""}`}>
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -27,7 +45,7 @@ export default function PatientPortalLayout() {
             </Avatar>
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                Portal do paciente
+                {settings.branding.portalTitle}
               </p>
               <p className="truncate text-sm font-semibold text-foreground">
                 {patient?.name || "Paciente"}
@@ -50,25 +68,27 @@ export default function PatientPortalLayout() {
         <Outlet />
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur">
-        <div className="mx-auto grid max-w-5xl grid-cols-4">
-          {navItems.map(({ to, icon: Icon, label, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `flex flex-col items-center justify-center gap-1 px-2 py-3 text-xs font-medium transition-colors ${
-                  isActive ? "text-primary" : "text-muted-foreground"
-                }`
-              }
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </NavLink>
-          ))}
-        </div>
-      </nav>
+      {visibleNavItems.length > 0 ? (
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur">
+          <div className={`mx-auto grid max-w-5xl ${navGridClass}`}>
+            {visibleNavItems.map(({ to, icon: Icon, label, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `flex flex-col items-center justify-center gap-1 px-2 py-3 text-xs font-medium transition-colors ${
+                    isActive ? "text-primary" : "text-muted-foreground"
+                  }`
+                }
+              >
+                <Icon size={18} />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </div>
+        </nav>
+      ) : null}
     </div>
   );
 }

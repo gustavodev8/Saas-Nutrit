@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { usePatientPortalAuth } from "@/contexts/usePatientPortalAuth";
+import { usePatientPortalSettings } from "@/contexts/usePatientPortalSettings";
 
 export default function PatientPortalLogin() {
+  const { settings } = usePatientPortalSettings();
   const { userEmail, patient, requestAccess, authReady, patientReady } = usePatientPortalAuth();
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -48,9 +50,9 @@ export default function PatientPortalLogin() {
               <ShieldCheck size={24} />
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl tracking-tight">Portal do paciente</CardTitle>
+              <CardTitle className="text-2xl tracking-tight">{settings.branding.portalTitle}</CardTitle>
               <CardDescription>
-                Entre com o e-mail cadastrado no seu prontuario para receber um link seguro de acesso.
+                {settings.branding.welcomeMessage}
               </CardDescription>
             </div>
           </CardHeader>
@@ -97,7 +99,7 @@ export default function PatientPortalLogin() {
             </form>
 
             <div className="rounded-2xl border border-border/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-              Use o mesmo e-mail informado durante o atendimento. Se precisar ajustar o cadastro, fale com a clinica.
+              Use o mesmo e-mail informado durante o atendimento. Se precisar ajustar o cadastro, {settings.branding.supportLabel.toLowerCase()}.
             </div>
           </CardContent>
         </Card>

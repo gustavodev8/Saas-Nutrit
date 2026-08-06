@@ -70,6 +70,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/pagamentos", icon: ReceiptText, label: "Pagamentos" },
       { to: "/admin/auditoria", icon: FileText, label: "Auditoria clínica" },
       { to: "/admin/operacao", icon: Activity, label: "Operacao" },
+      { to: "/admin/portal", icon: User, label: "Portal do paciente" },
       { to: "/admin/alimentos", icon: Leaf, label: "Alimentos" },
       { to: "/admin/biblioteca", icon: FlaskConical, label: "Biblioteca clínica" },
     ],

@@ -1,5 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import type { SiteContent } from "@/contexts/ContentContext";
+import {
+  clonePatientPortalSettings,
+  mergePatientPortalSettings,
+  type PatientPortalSettings,
+} from "@/lib/patientPortalSettings";
 
 const supabaseUrl     = import.meta.env.VITE_SUPABASE_URL      as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -24,6 +29,8 @@ export type StoredContent = SiteContent & { _ts?: number };
 
 const TABLE = "site_content";
 const ROW_ID = 1;
+const PATIENT_PORTAL_SETTINGS_TABLE = "patient_portal_settings";
+const PATIENT_PORTAL_SETTINGS_ROW_ID = 1;
 
 export async function fetchContent(): Promise<StoredContent | null> {
   const { data, error } = await supabase
@@ -53,6 +60,47 @@ export async function saveContent(content: StoredContent): Promise<boolean> {
 
   if (!data || data.length === 0) {
     console.error("[Supabase] saveContent: RLS bloqueou a escrita.");
+    return false;
+  }
+
+  return true;
+}
+
+export async function fetchPatientPortalSettings(): Promise<PatientPortalSettings> {
+  const { data, error } = await supabase
+    .from(PATIENT_PORTAL_SETTINGS_TABLE)
+    .select("settings")
+    .eq("id", PATIENT_PORTAL_SETTINGS_ROW_ID)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[Supabase] fetchPatientPortalSettings error:", error.message);
+    return clonePatientPortalSettings();
+  }
+
+  return mergePatientPortalSettings(data?.settings);
+}
+
+export async function savePatientPortalSettings(
+  settings: PatientPortalSettings,
+): Promise<boolean> {
+  const normalized = mergePatientPortalSettings(settings);
+  const { data, error } = await supabase
+    .from(PATIENT_PORTAL_SETTINGS_TABLE)
+    .upsert({
+      id: PATIENT_PORTAL_SETTINGS_ROW_ID,
+      settings: normalized,
+      updated_at: new Date().toISOString(),
+    })
+    .select("id");
+
+  if (error) {
+    console.error("[Supabase] savePatientPortalSettings error:", error.message);
+    return false;
+  }
+
+  if (!data || data.length === 0) {
+    console.error("[Supabase] savePatientPortalSettings: RLS blocked write.");
     return false;
   }
 

@@ -1,11 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, CreditCard, Video } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import PatientPortalDisabledState from "@/components/patient/PatientPortalDisabledState";
 import { usePatientPortalAuth } from "@/contexts/usePatientPortalAuth";
+import { usePatientPortalSettings } from "@/contexts/usePatientPortalSettings";
 import { fetchPortalBookings, type Booking } from "@/lib/supabase";
 import { formatPortalDateTime, formatPortalStatus, isFuturePortalDate } from "@/pages/portal/portalUtils";
 
-function BookingList({ title, description, items }: { title: string; description: string; items: Booking[] }) {
+function BookingList({
+  title,
+  description,
+  items,
+  showAppointmentType,
+  showPaymentStatus,
+}: {
+  title: string;
+  description: string;
+  items: Booking[];
+  showAppointmentType: boolean;
+  showPaymentStatus: boolean;
+}) {
   return (
     <Card className="rounded-3xl border-border/60">
       <CardHeader className="pb-3">
@@ -17,7 +31,10 @@ function BookingList({ title, description, items }: { title: string; description
           <p className="text-sm text-muted-foreground">Nenhuma consulta nesta secao.</p>
         ) : (
           items.map((booking) => (
-            <div key={booking.id ?? `${booking.booking_group_id}-${booking.session_number}`} className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+            <div
+              key={booking.id ?? `${booking.booking_group_id}-${booking.session_number}`}
+              className="rounded-2xl border border-border/60 bg-muted/20 p-4"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-foreground">{booking.plan_name}</p>
@@ -29,16 +46,24 @@ function BookingList({ title, description, items }: { title: string; description
                   {formatPortalStatus(booking.status)}
                 </span>
               </div>
-              <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  <Video size={14} />
-                  {booking.type === "online" ? "Online" : "Presencial"}
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <CreditCard size={14} />
-                  Pagamento: {booking.payment_status ?? "pendente"}
-                </span>
-              </div>
+
+              {showAppointmentType || showPaymentStatus ? (
+                <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                  {showAppointmentType ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Video size={14} />
+                      {booking.type === "online" ? "Online" : "Presencial"}
+                    </span>
+                  ) : null}
+
+                  {showPaymentStatus ? (
+                    <span className="inline-flex items-center gap-1">
+                      <CreditCard size={14} />
+                      Pagamento: {booking.payment_status ?? "pendente"}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ))
         )}
@@ -49,11 +74,14 @@ function BookingList({ title, description, items }: { title: string; description
 
 export default function PatientPortalConsultas() {
   const { patient, userEmail } = usePatientPortalAuth();
+  const { settings } = usePatientPortalSettings();
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
 
   useEffect(() => {
-    if (!patient?.id) return;
+    if (!patient?.id) {
+      return;
+    }
 
     setLoading(true);
     fetchPortalBookings(patient.id, userEmail)
@@ -69,6 +97,15 @@ export default function PatientPortalConsultas() {
     () => bookings.filter((booking) => !isFuturePortalDate(booking.appointment_date)).reverse(),
     [bookings],
   );
+
+  if (!settings.navigation.consultations) {
+    return (
+      <PatientPortalDisabledState
+        title="Consultas temporariamente ocultas"
+        description="A agenda foi retirada da navegacao pelo responsavel do portal."
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -91,18 +128,37 @@ export default function PatientPortalConsultas() {
         </Card>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <BookingList
-          title="Proximas consultas"
-          description="Compromissos futuros registrados no sistema."
-          items={upcoming}
-        />
-        <BookingList
-          title="Historico"
-          description="Atendimentos ja realizados ou encerrados."
-          items={history}
-        />
-      </div>
+      {settings.consultations.upcoming || settings.consultations.history ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {settings.consultations.upcoming ? (
+            <BookingList
+              title="Proximas consultas"
+              description="Compromissos futuros registrados no sistema."
+              items={upcoming}
+              showAppointmentType={settings.consultations.appointmentType}
+              showPaymentStatus={settings.consultations.paymentStatus}
+            />
+          ) : null}
+
+          {settings.consultations.history ? (
+            <BookingList
+              title="Historico"
+              description="Atendimentos ja realizados ou encerrados."
+              items={history}
+              showAppointmentType={settings.consultations.appointmentType}
+              showPaymentStatus={settings.consultations.paymentStatus}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      {!loading && !settings.consultations.upcoming && !settings.consultations.history ? (
+        <Card className="rounded-3xl border-dashed border-border/80">
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            O modulo esta ativo, mas os blocos de agenda e historico foram ocultados pelo admin.
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }
