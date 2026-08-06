@@ -40,6 +40,7 @@ interface OperationalFocusPanelProps {
   items: OperationalFocusItem[];
   onOpen(route: string): void;
   className?: string;
+  maxItems?: number;
 }
 
 const metricCards = [
@@ -81,8 +82,9 @@ export function OperationalFocusPanel({
   items,
   onOpen,
   className,
+  maxItems = 5,
 }: OperationalFocusPanelProps) {
-  const priorityItems = items.slice(0, 5);
+  const priorityItems = items.slice(0, maxItems);
   const totalOpenItems = Object.values(counts).reduce((sum, value) => sum + value, 0);
 
   return (
