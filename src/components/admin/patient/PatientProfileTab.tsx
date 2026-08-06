@@ -135,60 +135,68 @@ export function PatientProfileTab({ patient, onSaved }: PatientProfileTabProps) 
       return;
     }
 
+    const failPortalSave = (message: string) => {
+      setPortalError(message);
+      toast.error(message);
+    };
+
     const normalizedLogin = normalizePatientPortalLogin(portalForm.login);
     const requiresPassword = portalForm.enabled && !portalAccount?.auth_user_id;
     const shouldValidatePassword = Boolean(portalForm.password) || requiresPassword;
 
     if (!normalizedLogin) {
-      setPortalError("Informe um login para o portal.");
+      failPortalSave("Informe um login para o portal.");
       return;
     }
 
     if (!isValidPatientPortalLogin(normalizedLogin)) {
-      setPortalError("Use 4 a 32 caracteres com letras, numeros, ponto, traço ou underscore.");
+      failPortalSave("Use 4 a 32 caracteres com letras, numeros, ponto, traco ou underscore.");
       return;
     }
 
     if (shouldValidatePassword) {
       const passwordError = validatePatientPortalPassword(portalForm.password);
       if (passwordError) {
-        setPortalError(passwordError);
+        failPortalSave(passwordError);
         return;
       }
 
       if (portalForm.password !== portalForm.confirmPassword) {
-        setPortalError("As senhas do portal nao coincidem.");
+        failPortalSave("As senhas do portal nao coincidem.");
         return;
       }
     }
 
     setPortalSaving(true);
     setPortalError(null);
+    try {
+      const result = await savePatientPortalAccount({
+        patientId: patient.id,
+        login: normalizedLogin,
+        password: portalForm.password || undefined,
+        enabled: portalForm.enabled,
+      });
 
-    const result = await savePatientPortalAccount({
-      patientId: patient.id,
-      login: normalizedLogin,
-      password: portalForm.password || undefined,
-      enabled: portalForm.enabled,
-    });
+      if (!result.ok || !result.account) {
+        failPortalSave(result.message);
+        return;
+      }
 
-    setPortalSaving(false);
-
-    if (!result.ok || !result.account) {
-      setPortalError(result.message);
-      toast.error(result.message);
-      return;
+      setPortalAccount(result.account);
+      setPortalForm((current) => ({
+        ...current,
+        login: result.account?.login ?? current.login,
+        password: "",
+        confirmPassword: "",
+        enabled: result.account?.is_active ?? current.enabled,
+      }));
+      toast.success(result.message);
+    } catch (error) {
+      console.error("[PatientProfileTab] handleSavePortalAccess:", error);
+      failPortalSave("Nao foi possivel salvar o acesso do portal.");
+    } finally {
+      setPortalSaving(false);
     }
-
-    setPortalAccount(result.account);
-    setPortalForm((current) => ({
-      ...current,
-      login: result.account?.login ?? current.login,
-      password: "",
-      confirmPassword: "",
-      enabled: result.account?.is_active ?? current.enabled,
-    }));
-    toast.success(result.message);
   };
 
   const formatAccessDate = (value?: string | null) => {
@@ -448,6 +456,7 @@ export function PatientProfileTab({ patient, onSaved }: PatientProfileTabProps) 
               </p>
             </div>
             <Button
+              type="button"
               onClick={handleSavePortalAccess}
               disabled={portalSaving || portalLoading}
               variant="outline"
