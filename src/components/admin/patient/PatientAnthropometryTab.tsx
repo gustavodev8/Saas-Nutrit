@@ -31,7 +31,6 @@ import { Button } from "@/components/ui/button";
 interface PatientAnthropometryTabProps {
   patientId: string;
   patient: Patient;
-  onViewDetail: (measurement: Measurement) => void;
 }
 
 function formatDate(dateStr: string) {
@@ -45,7 +44,6 @@ function formatDate(dateStr: string) {
 export function PatientAnthropometryTab({
   patientId,
   patient,
-  onViewDetail,
 }: PatientAnthropometryTabProps) {
   const pid = Number(patientId);
   const { setMeasurement: ctxSetMeasurement } = useConsultation();
@@ -291,13 +289,13 @@ export function PatientAnthropometryTab({
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-0.5">
-                          <button
-                            onClick={() => onViewDetail(measurement)}
+                          <Link
+                            to={`/admin/pacientes/${patientId}/relatorio-antropometrico?measurement=${measurement.id}`}
                             className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                             title="Abrir detalhes"
                           >
                             <Eye size={14} />
-                          </button>
+                          </Link>
                           <button
                             onClick={() => {
                               setEditingMeasurement(measurement);

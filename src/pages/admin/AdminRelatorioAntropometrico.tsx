@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Loader2, Activity, FileDown, CalendarDays, CheckSquare, Square } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,17 @@ const calcAge = (birthDate: string): number => {
   let age = today.getFullYear() - birth.getFullYear();
   const mo = today.getMonth() - birth.getMonth();
   if (mo < 0 || (mo === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+};
+
+const calcAgeAt = (birthDate: string, assessmentDate: string): number => {
+  const birth = new Date(`${birthDate}T12:00:00`);
+  const assessment = new Date(`${assessmentDate}T12:00:00`);
+  let age = assessment.getFullYear() - birth.getFullYear();
+  const monthDelta = assessment.getMonth() - birth.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && assessment.getDate() < birth.getDate())) {
+    age--;
+  }
   return age;
 };
 
@@ -344,6 +355,8 @@ function DateSelector({
   onToggle,
   onSelectLatestTwo,
   onSelectLatestThree,
+  onSelectLatestFive,
+  onSelectBaselineAndLatest,
   onSelectAll,
   onClear,
 }: {
@@ -352,6 +365,8 @@ function DateSelector({
   onToggle: (id: number) => void;
   onSelectLatestTwo: () => void;
   onSelectLatestThree: () => void;
+  onSelectLatestFive: () => void;
+  onSelectBaselineAndLatest: () => void;
   onSelectAll: () => void;
   onClear: () => void;
 }) {
@@ -373,9 +388,9 @@ function DateSelector({
           <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-bold">
             {selectedIds.length} de {measurements.length}
           </span>
-          {selectedIds.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold border border-emerald-100">
-              PDF otimizado até {PRINT_MAX}
+          {selectedIds.length > PRINT_MAX && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px] font-bold border border-amber-200">
+              PDF recomendado até {PRINT_MAX} colunas
             </span>
           )}
         </div>
@@ -402,10 +417,24 @@ function DateSelector({
             </button>
             <button
               type="button"
-              onClick={onSelectAll}
+              onClick={onSelectLatestFive}
               className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-muted"
             >
               Últimas {PRINT_MAX}
+            </button>
+            <button
+              type="button"
+              onClick={onSelectBaselineAndLatest}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-muted"
+            >
+              Inicial + atual
+            </button>
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-muted"
+            >
+              Todas
             </button>
           </div>
           <div className="flex flex-wrap gap-2 mb-3">
@@ -458,6 +487,7 @@ const getSkinfoldValue = (measurement: Measurement, key: SkinfoldKey): number | 
 
 export default function AdminRelatorioAntropometrico() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading]           = useState(true);
   const [patient, setPatient]           = useState<Patient | null>(null);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
@@ -469,30 +499,26 @@ export default function AdminRelatorioAntropometrico() {
       .then(([p, ms]) => {
         setPatient(p);
         setMeasurements(ms);
-        // Default: 2 most recent
-        const defaults = ms.slice(0, 2).map((m) => m.id!).filter(Boolean);
+        const requestedMeasurementId = Number(searchParams.get("measurement"));
+        const requestedMeasurement = ms.find((m) => m.id === requestedMeasurementId);
+        const defaults = requestedMeasurement
+          ? [requestedMeasurement.id!]
+          : ms.slice(0, 2).map((m) => m.id!).filter(Boolean);
         setSelectedIds(defaults);
       })
       .catch(() => toast.error("Erro ao carregar dados."))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, searchParams]);
 
   // ── Selection handlers ──────────────────────────────────────────────────────
   const toggleId = (mid: number) =>
     setSelectedIds((prev) => {
       if (prev.includes(mid)) return prev.filter((x) => x !== mid);
-      if (prev.length >= PRINT_MAX) {
-        toast.warning(`Selecione no máximo ${PRINT_MAX} avaliações para manter o PDF legível.`);
-        return prev;
-      }
       return [...prev, mid];
     });
 
   const selectAll = () => {
-    if (measurements.length > PRINT_MAX) {
-      toast.info(`Selecionei as ${PRINT_MAX} avaliações mais recentes para preservar a leitura do PDF.`);
-    }
-    setSelectedIds(measurements.slice(0, PRINT_MAX).map((m) => m.id!).filter(Boolean));
+    setSelectedIds(measurements.map((m) => m.id!).filter(Boolean));
   };
 
   const selectLatestTwo = () =>
@@ -500,6 +526,19 @@ export default function AdminRelatorioAntropometrico() {
 
   const selectLatestThree = () =>
     setSelectedIds(measurements.slice(0, 3).map((m) => m.id!).filter(Boolean));
+
+  const selectLatestFive = () =>
+    setSelectedIds(measurements.slice(0, PRINT_MAX).map((m) => m.id!).filter(Boolean));
+
+  const selectBaselineAndLatest = () => {
+    const latest = measurements[0]?.id;
+    const baseline = measurements[measurements.length - 1]?.id;
+    setSelectedIds(
+      latest != null && baseline != null
+        ? Array.from(new Set([latest, baseline]))
+        : measurements.slice(0, 1).map((m) => m.id!).filter(Boolean),
+    );
+  };
 
   const clearAll = () => setSelectedIds([]);
 
@@ -546,7 +585,8 @@ export default function AdminRelatorioAntropometrico() {
     );
   }
 
-  const gender: "M" | "F" = patient.gender === "F" ? "F" : "M";
+  const gender: "M" | "F" | null =
+    patient.gender === "F" || patient.gender === "M" ? patient.gender : null;
   const age = patient.birth_date ? calcAge(patient.birth_date) : 30;
   const N = cols.length;
   const colSpan = N + 1;
@@ -559,7 +599,7 @@ export default function AdminRelatorioAntropometrico() {
         ? parseFloat((m.weight * (m.body_fat / 100)).toFixed(1))
         : null,
     arm:
-      m.arm_relax_r != null && m.sf_triceps != null
+      gender && m.arm_relax_r != null && m.sf_triceps != null
         ? calcArmAnthropometry(m.arm_relax_r, m.sf_triceps, gender)
         : null,
   }));
@@ -714,6 +754,8 @@ export default function AdminRelatorioAntropometrico() {
         onToggle={toggleId}
         onSelectLatestTwo={selectLatestTwo}
         onSelectLatestThree={selectLatestThree}
+        onSelectLatestFive={selectLatestFive}
+        onSelectBaselineAndLatest={selectBaselineAndLatest}
         onSelectAll={selectAll}
         onClear={clearAll}
       />
@@ -809,6 +851,7 @@ export default function AdminRelatorioAntropometrico() {
                   values={cols.map((m) => m.body_fat ?? null)}
                   unit="%"
                   suffix={(val) => {
+                    if (!gender) return null;
                     const cl = classifyBodyFat(val, gender);
                     return (
                       <span className={cn("ml-1.5 text-[10px] font-semibold print:hidden", cl.color)}>
@@ -866,7 +909,15 @@ export default function AdminRelatorioAntropometrico() {
                       label="Adequação AMBc (Frisancho, 1990)"
                       values={derived.map((d) => {
                         if (!d.arm) return null;
-                        const cl = classifyAmbc(d.arm.ambc, gender, age);
+                        const colIndex = derived.indexOf(d);
+                        if (!gender || !patient.birth_date || !cols[colIndex]?.assessment_date) {
+                          return null;
+                        }
+                        const assessmentAge = calcAgeAt(
+                          patient.birth_date,
+                          cols[colIndex].assessment_date,
+                        );
+                        const cl = classifyAmbc(d.arm.ambc, gender, assessmentAge);
                         return `${cl.pct}% — ${cl.label}`;
                       })}
                     />

@@ -20,7 +20,6 @@ import {
   ClinicalCentralTab,
 } from "@/components/admin/patient/ClinicalCentralTab";
 import { PatientAnthropometryTab } from "@/components/admin/patient/PatientAnthropometryTab";
-import { PatientMeasurementDetailView } from "@/components/admin/patient/PatientMeasurementDetailView";
 import { PatientMealPlansTab } from "@/components/admin/patient/PatientMealPlansTab";
 import { PatientProfileTab } from "@/components/admin/patient/PatientProfileTab";
 import { PatientReportsTab } from "@/components/admin/patient/PatientReportsTab";
@@ -31,9 +30,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   fetchPatient,
-  fetchMeasurements,
   type Patient,
-  type Measurement,
 } from "@/lib/supabase";
 
 // --- Helpers -------------------------------------------------------------------
@@ -87,9 +84,6 @@ export default function AdminPaciente() {
   const [loading, setLoading] = useState(true);
   const [patient, setPatient] = useState<Patient | null>(null);
 
-  // --- FULL PAGE DETAIL VIEW STATE ---
-  const [selectedMeasurement, setSelectedMeasurement] = useState<Measurement | null>(null);
-
   useEffect(() => {
     if (!id) return;
     setLoading(true);
@@ -129,16 +123,6 @@ export default function AdminPaciente() {
           </Button>
         </Link>
       </div>
-    );
-  }
-
-  // --- RENDER: FULL PAGE REPORT VIEW -----------------------------------------------
-  if (selectedMeasurement) {
-    return (
-      <PatientMeasurementDetailView
-        measurement={selectedMeasurement}
-        onBack={() => setSelectedMeasurement(null)}
-      />
     );
   }
 
@@ -232,7 +216,6 @@ export default function AdminPaciente() {
         <PatientAnthropometryTab
           patientId={id!}
           patient={patient}
-          onViewDetail={setSelectedMeasurement}
         />
       )}
 
