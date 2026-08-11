@@ -60,11 +60,11 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: "central",      label: "Central",              icon: <LayoutDashboard size={16} /> },
   { key: "perfil",       label: "Perfil",               icon: <User size={16} /> },
   { key: "anamnese",     label: "Anamnese",              icon: <ClipboardList size={16} /> },
-  { key: "relatorio",    label: "Relat?rio",            icon: <FileText size={16} /> },
+  { key: "relatorio",    label: "Relatório",            icon: <FileText size={16} /> },
   { key: "antropometria",label: "Medidas",               icon: <Activity size={16} /> },
   { key: "planos",       label: "Planos",                icon: <BookOpen size={16} /> },
   { key: "protocolos",   label: "Exames",                icon: <ClipboardList size={16} /> },
-  { key: "prescricao",   label: "Prescri??o",            icon: <BookOpen size={16} /> },
+  { key: "prescricao",   label: "Prescrição",            icon: <BookOpen size={16} /> },
 ];
 
 const isTabKey = (value: string | null): value is TabKey =>
@@ -115,7 +115,7 @@ export default function AdminPaciente() {
   if (!patient) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <p className="text-muted-foreground">Paciente n?o encontrado.</p>
+        <p className="text-muted-foreground">Paciente não encontrado.</p>
         <Link to="/admin/pacientes">
           <Button variant="outline">
             <ArrowLeft size={16} className="mr-2" />
@@ -134,7 +134,7 @@ export default function AdminPaciente() {
         <div className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground">
           <Link to="/admin/pacientes" className="hover:text-primary transition-colors">Pacientes</Link>
           <ChevronRight size={12} className="opacity-50" />
-          <span className="text-foreground/70">{patient.name || "Prontu?rio"}</span>
+          <span className="text-foreground/70">{patient.name || "Prontuário"}</span>
           <ChevronRight size={12} className="opacity-50" />
           <span className="text-primary">{TABS.find((tab) => tab.key === activeTab)?.label ?? "Central"}</span>
         </div>

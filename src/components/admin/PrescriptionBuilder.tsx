@@ -486,7 +486,7 @@ export function PrescriptionBuilder({ patientId }: Props) {
       })),
     })), editingPrescriptionId);
     setSaving(false);
-    if (!ok) { toast.error("Erro ao salvar a prescri??o."); return; }
+    if (!ok) { toast.error("Erro ao salvar a prescrição."); return; }
     toast.success(editingPrescriptionId ? "Prescrição atualizada com sucesso." : "Prescrição salva com sucesso.");
     setBlocks([]);
     setEditingPrescriptionId(undefined);
@@ -495,7 +495,7 @@ export function PrescriptionBuilder({ patientId }: Props) {
   };
 
   const handleDeletePrescription = async (id: number) => {
-    if (!confirm("Excluir esta prescri??o?")) return;
+    if (!confirm("Excluir esta prescrição?")) return;
     if (await deletePrescription(id)) {
       toast.success("Prescrição excluída.");
       setHistory((prev) => prev.filter((p) => p.id !== id));
