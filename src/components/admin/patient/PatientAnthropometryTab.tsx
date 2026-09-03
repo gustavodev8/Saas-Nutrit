@@ -18,6 +18,7 @@ import {
   toMeasurementRecord,
 } from "@/lib/patientAnthropometry";
 import type { SkinfoldProtocol } from "@/lib/anthropometryUtils";
+import { calculateFourComponentAnthropometry } from "@/lib/fourComponentAnthropometry";
 import {
   deleteMeasurement,
   fetchMeasurements,
@@ -140,37 +141,64 @@ export function PatientAnthropometryTab({
   const latest = measurements[0];
   const latestBmi = latest ? calcBMI(latest.weight, latest.height) : null;
   const latestSummary = buildLatestMeasurementSummary(latest, latestBmi);
+  const latestFourComponent = latest &&
+    latest.weight != null &&
+    latest.height != null &&
+    latest.body_fat != null &&
+    latest.biestyloid_diameter_mm != null &&
+    latest.biepicondylar_femur_diameter_mm != null &&
+    latest.four_component_reference
+    ? calculateFourComponentAnthropometry({
+        weightKg: latest.weight,
+        heightCm: latest.height,
+        bodyFatPct: latest.body_fat,
+        biestyloidDiameterMm: latest.biestyloid_diameter_mm,
+        biepicondylarFemurDiameterMm: latest.biepicondylar_femur_diameter_mm,
+        reference: latest.four_component_reference,
+      }).result
+    : null;
 
   return (
     <div className="space-y-4">
       {latest && (
-        <div className="flex items-stretch gap-0 border border-border rounded-md overflow-hidden">
-          <div className="px-4 py-3.5 bg-muted/50 border-r border-border flex flex-col justify-center shrink-0">
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Última
-            </p>
-            <p className="text-sm font-medium text-foreground mt-0.5">
-              {latest.assessment_date ? formatDate(latest.assessment_date) : "—"}
-            </p>
-          </div>
-          {latestSummary.map((item, index) => (
-            <div
-              key={item.label}
-              className={`flex-1 px-4 py-3.5 bg-card flex flex-col justify-center min-w-0${
-                index > 0 ? " border-l border-border" : ""
-              }`}
-            >
-              <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                {item.label}
+        <div className="space-y-3">
+          <div className="flex items-stretch gap-0 border border-border rounded-md overflow-hidden">
+            <div className="px-4 py-3.5 bg-muted/50 border-r border-border flex flex-col justify-center shrink-0">
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                Última
               </p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <p className="text-[15px] font-bold tabular-nums text-foreground">
-                  {item.value}
-                </p>
-                {item.badge && <BMIBadge bmi={item.badge} />}
-              </div>
+              <p className="text-sm font-medium text-foreground mt-0.5">
+                {latest.assessment_date ? formatDate(latest.assessment_date) : "—"}
+              </p>
             </div>
-          ))}
+            {latestSummary.map((item, index) => (
+              <div
+                key={item.label}
+                className={`flex-1 px-4 py-3.5 bg-card flex flex-col justify-center min-w-0${
+                  index > 0 ? " border-l border-border" : ""
+                }`}
+              >
+                <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                  {item.label}
+                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <p className="text-[15px] font-bold tabular-nums text-foreground">
+                    {item.value}
+                  </p>
+                  {item.badge && <BMIBadge bmi={item.badge} />}
+                </div>
+              </div>
+            ))}
+          </div>
+          {latestFourComponent && (
+            <div className="rounded-md border border-primary/20 bg-primary/5 px-4 py-3">
+              <p className="text-xs font-semibold text-primary">Estimativa antropométrica de quatro componentes</p>
+              <p className="mt-1 text-sm text-foreground">
+                Gorda {latestFourComponent.fatMassKg} kg · Óssea {latestFourComponent.boneMassKg} kg · Residual {latestFourComponent.residualMassKg} kg · Muscular estimada {latestFourComponent.estimatedMuscleMassKg} kg
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Estimativa antropométrica, não diagnóstico ou densitometria.</p>
+            </div>
+          )}
         </div>
       )}
 

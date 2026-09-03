@@ -7,6 +7,7 @@
 - QA independente: PASS condicional. Todas as verificacoes locais passaram; as condicoes restantes dependem da validacao no Supabase, Resend e Vercel.
 - Tentativa de validacao e publicacao remota em 2026-09-01 bloqueada: a CLI do Supabase retornou `Unauthorized (401)` ao consultar projetos e migrations. Nenhuma operacao remota, commit ou push foi executado.
 - Em 2026-09-02, a CLI foi autenticada e o projeto vinculado foi confirmado como `nutri` (`qwwltjaoftnsuvpgrsmm`, `us-east-1`). A unica migration pendente e `supabase/migrations/20260831000000_atomic_security_controls.sql`. O ciclo remoto continua bloqueado porque o secret `MP_WEBHOOK_SECRET` esta ausente. Ele deve corresponder ao segredo configurado no painel Mercado Pago; nao deve ser gerado arbitrariamente.
+- Em 2026-09-02, foi implementado e aprovado em QA o fracionamento antropometrico em quatro componentes. A migration local `supabase/migrations/20260902000000_add_four_component_anthropometry.sql` tambem esta pendente e deve ser aplicada junto das migrations de seguranca antes de publicar o conjunto.
 
 ## Alteracoes locais
 
@@ -17,6 +18,8 @@
 - `src/lib/mpWebhookSecurity.test.ts`: testes de assinatura, expiração, configuracao e mismatch de identificador.
 - `supabase/functions/_shared/publicEndpoint.ts`: rate limit fail-closed via RPC atomica.
 - `supabase/migrations/20260831000000_atomic_security_controls.sql`: RPCs atomicas para rate limit e claim de webhook.
+- `src/lib/fourComponentAnthropometry.ts` e telas antropometricas: estimativa de massa gorda, ossea, residual e muscular por diferenca, baseada em von Dobeln/Rocha, Wurch e De Rose/Guimaraes.
+- `supabase/migrations/20260902000000_add_four_component_anthropometry.sql`: campos rastreaveis para diâmetros osseos e referencia do protocolo, com constraints de validade.
 
 ## Validacoes locais
 
@@ -24,11 +27,12 @@
 - `npm run test`: 74 testes passaram.
 - `npm audit --omit=dev`: 0 vulnerabilidades.
 - `git diff --check`: passou.
+- Fracionamento em quatro componentes: `npm test` passou com 80 testes; `npm run build` e `git diff --check` passaram. QA independente: PASS.
 
 ## Pre-condicoes para publicacao
 
 1. Configurar `MP_WEBHOOK_SECRET` no projeto Supabase com o valor correspondente ao webhook do Mercado Pago.
-2. Confirmar o projeto Supabase correto e aplicar `supabase/migrations/20260831000000_atomic_security_controls.sql` antes de publicar as Edge Functions.
+2. Confirmar o projeto Supabase correto e aplicar `supabase/migrations/20260831000000_atomic_security_controls.sql` e `supabase/migrations/20260902000000_add_four_component_anthropometry.sql` antes de publicar as Edge Functions.
 3. Confirmar que `payment-webhook` aceita o webhook externo sem JWT obrigatorio e que sua validacao HMAC permanece ativa.
 4. Confirmar, sem exibir valores, a presenca dos secrets de Mercado Pago e Supabase exigidos pelo webhook.
 5. Publicar as Edge Functions e testar pagamento em ambiente seguro com um evento valido, verificando retry/idempotencia.

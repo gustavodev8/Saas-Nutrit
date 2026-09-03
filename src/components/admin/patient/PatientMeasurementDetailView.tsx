@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { calcBMI, getBmiClass } from "@/lib/patientAnthropometry";
+import { calculateFourComponentAnthropometry } from "@/lib/fourComponentAnthropometry";
 import type { Measurement } from "@/lib/supabase";
 
 interface PatientMeasurementDetailViewProps {
@@ -127,6 +128,21 @@ export function PatientMeasurementDetailView({
 }: PatientMeasurementDetailViewProps) {
   const bmi = calcBMI(measurement.weight, measurement.height);
   const bmiInfo = bmi ? getBmiClass(parseFloat(bmi)) : null;
+  const fourComponent = measurement.weight != null &&
+    measurement.height != null &&
+    measurement.body_fat != null &&
+    measurement.biestyloid_diameter_mm != null &&
+    measurement.biepicondylar_femur_diameter_mm != null &&
+    measurement.four_component_reference
+    ? calculateFourComponentAnthropometry({
+        weightKg: measurement.weight,
+        heightCm: measurement.height,
+        bodyFatPct: measurement.body_fat,
+        biestyloidDiameterMm: measurement.biestyloid_diameter_mm,
+        biepicondylarFemurDiameterMm: measurement.biepicondylar_femur_diameter_mm,
+        reference: measurement.four_component_reference,
+      }).result
+    : null;
 
   return (
     <div className="min-h-screen animate-in fade-in slide-in-from-bottom-4 bg-background pb-20 duration-500">
@@ -305,6 +321,33 @@ export function PatientMeasurementDetailView({
             </div>
           </div>
         </div>
+
+        {fourComponent && (
+          <div className="rounded-[32px] border border-primary/20 bg-primary/5 p-8 shadow-sm">
+            <div className="mb-5">
+              <p className="text-[11px] font-black uppercase tracking-[0.15em] text-primary">Fracionamento antropométrico</p>
+              <h4 className="mt-1 text-lg font-black text-foreground">Estimativa de quatro componentes</h4>
+              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                Dados de paquímetro: biestiloide {measurement.biestyloid_diameter_mm} mm e biepicondiliano do fêmur {measurement.biepicondylar_femur_diameter_mm} mm; referência {measurement.four_component_reference}. Não é resultado de bioimpedância, diagnóstico ou densitometria.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                ["Massa gorda", fourComponent.fatMassKg, fourComponent.fatMassPct],
+                ["Massa óssea", fourComponent.boneMassKg, fourComponent.boneMassPct],
+                ["Massa residual", fourComponent.residualMassKg, fourComponent.residualMassPct],
+                ["Massa muscular estimada", fourComponent.estimatedMuscleMassKg, fourComponent.estimatedMuscleMassPct],
+              ].map(([label, kg, pct]) => (
+                <div key={label as string} className="rounded-2xl border border-primary/15 bg-background p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{label}</p>
+                  <p className="mt-2 text-2xl font-black tabular-nums">{kg as number} kg</p>
+                  <p className="text-xs text-muted-foreground">{pct as number}% do peso</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-5 text-xs text-muted-foreground">Método: von Döbeln mod. Rocha (1975) e referência residual de Würch (1974).</p>
+          </div>
+        )}
 
         {measurement.notes && (
           <div className="group relative overflow-hidden rounded-[32px] border border-border/60 bg-muted/20 p-8">

@@ -17,6 +17,7 @@ import {
   classifyAmbc,
   type SkinfoldKey,
 } from "@/lib/anthropometryUtils";
+import { calculateFourComponentAnthropometry } from "@/lib/fourComponentAnthropometry";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -485,6 +486,26 @@ const ALL_SF_KEYS: SkinfoldKey[] = [
 const getSkinfoldValue = (measurement: Measurement, key: SkinfoldKey): number | null =>
   measurement[key] ?? null;
 
+const getFourComponentEstimate = (measurement: Measurement) => {
+  if (
+    measurement.weight == null ||
+    measurement.height == null ||
+    measurement.body_fat == null ||
+    measurement.biestyloid_diameter_mm == null ||
+    measurement.biepicondylar_femur_diameter_mm == null ||
+    !measurement.four_component_reference
+  ) return null;
+
+  return calculateFourComponentAnthropometry({
+    weightKg: measurement.weight,
+    heightCm: measurement.height,
+    bodyFatPct: measurement.body_fat,
+    biestyloidDiameterMm: measurement.biestyloid_diameter_mm,
+    biepicondylarFemurDiameterMm: measurement.biepicondylar_femur_diameter_mm,
+    reference: measurement.four_component_reference,
+  }).result;
+};
+
 export default function AdminRelatorioAntropometrico() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
@@ -602,6 +623,7 @@ export default function AdminRelatorioAntropometrico() {
       gender && m.arm_relax_r != null && m.sf_triceps != null
         ? calcArmAnthropometry(m.arm_relax_r, m.sf_triceps, gender)
         : null,
+    fourComponent: getFourComponentEstimate(m),
   }));
 
   const sfSums = cols.map((m) => {
@@ -618,6 +640,7 @@ export default function AdminRelatorioAntropometrico() {
   const hasSup     = cols.some((m) => [m.arm_relax_r, m.arm_relax_l, m.arm_contract_r, m.arm_contract_l, m.forearm_r, m.forearm_l, m.wrist_r, m.wrist_l].some((v) => v != null));
   const hasInf     = cols.some((m) => [m.thigh_prox_r, m.thigh_prox_l, m.thigh_r, m.thigh_l, m.calf_r, m.calf_l].some((v) => v != null));
   const hasDobras  = cols.some((m) => ALL_SF_KEYS.some((k) => getSkinfoldValue(m, k) != null));
+  const hasFourComponent = derived.some((d) => d.fourComponent != null);
 
   const mostRecent = cols[cols.length - 1];
   const oldest = cols[0];
@@ -642,6 +665,14 @@ export default function AdminRelatorioAntropometrico() {
       previous: oldest?.lean_mass ?? null,
       unit: "kg",
       decimals: 1,
+    },
+    {
+      label: "Muscular estimada",
+      current: derived[derived.length - 1]?.fourComponent?.estimatedMuscleMassKg ?? null,
+      previous: derived[0]?.fourComponent?.estimatedMuscleMassKg ?? null,
+      unit: "kg",
+      decimals: 1,
+      helper: "estimativa antropométrica",
     },
     {
       label: "Cintura",
@@ -876,6 +907,29 @@ export default function AdminRelatorioAntropometrico() {
                   decimals={0}
                 />
 
+                {hasFourComponent && (
+                  <>
+                    <SectionRow label="Fracionamento Antropométrico — 4 Componentes (estimativa)" colSpan={colSpan} />
+                    <MetricRow label="Massa gorda estimada" values={derived.map((d) => d.fourComponent?.fatMassKg ?? null)} unit="kg" />
+                    <MetricRow label="Massa gorda estimada" values={derived.map((d) => d.fourComponent?.fatMassPct ?? null)} unit="% do peso" />
+                    <MetricRow label="Massa óssea estimada" values={derived.map((d) => d.fourComponent?.boneMassKg ?? null)} unit="kg" />
+                    <MetricRow label="Massa óssea estimada" values={derived.map((d) => d.fourComponent?.boneMassPct ?? null)} unit="% do peso" />
+                    <MetricRow label="Massa residual estimada" values={derived.map((d) => d.fourComponent?.residualMassKg ?? null)} unit="kg" />
+                    <MetricRow label="Massa residual estimada" values={derived.map((d) => d.fourComponent?.residualMassPct ?? null)} unit="% do peso" />
+                    <MetricRow label="Massa muscular estimada" values={derived.map((d) => d.fourComponent?.estimatedMuscleMassKg ?? null)} unit="kg" />
+                    <MetricRow label="Massa muscular estimada" values={derived.map((d) => d.fourComponent?.estimatedMuscleMassPct ?? null)} unit="% do peso" />
+                    <StringRow label="Referência do protocolo" values={cols.map((m) => m.four_component_reference ?? null)} />
+                    <StringRow
+                      label="Diâmetros aferidos"
+                      values={cols.map((m) =>
+                        m.biestyloid_diameter_mm != null && m.biepicondylar_femur_diameter_mm != null
+                          ? `Biestiloide ${m.biestyloid_diameter_mm} mm · Fêmur ${m.biepicondylar_femur_diameter_mm} mm`
+                          : null,
+                      )}
+                    />
+                  </>
+                )}
+
                 {/* ── Índices do Braço (AMB / AGB) ─────────────────────── */}
                 {hasArmData && (
                   <>
@@ -1023,6 +1077,12 @@ export default function AdminRelatorioAntropometrico() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {hasFourComponent && (
+        <div className="rounded border border-primary/20 bg-primary/5 px-5 py-4 text-xs leading-relaxed text-muted-foreground print:px-3 print:py-2 print:text-[8px]">
+          <span className="font-semibold text-foreground">Nota metodológica:</span> fracionamento antropométrico estimado por von Döbeln mod. Rocha (1975) para massa óssea e Würch (1974) para massa residual. Os valores não são diagnóstico, resultado de bioimpedância ou densitometria.
         </div>
       )}
 

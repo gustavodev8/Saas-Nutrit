@@ -3,6 +3,7 @@ import type {
   OfficialAnthropometrySource,
 } from "@/components/admin/anthropometryTypes";
 import { calcBodyFat, type SkinfoldProtocol } from "@/lib/anthropometryUtils";
+import { validateFourComponentProtocol } from "@/lib/fourComponentAnthropometry";
 import type { Measurement, Patient } from "@/lib/supabase";
 
 const numberOrUndefined = (value?: string) =>
@@ -71,6 +72,8 @@ export async function buildAnthropometryPayload(params: {
   const numericFields: Array<keyof MeasurementForm> = [
     "weight",
     "height",
+    "biestyloid_diameter_mm",
+    "biepicondylar_femur_diameter_mm",
     "neck",
     "shoulder",
     "chest",
@@ -168,6 +171,25 @@ export async function buildAnthropometryPayload(params: {
             ? parseFloat((weight * (1 - bioFatPct / 100)).toFixed(2))
             : undefined;
     }
+  }
+
+  const fourComponentErrors = validateFourComponentProtocol({
+    weightKg: weight ?? undefined,
+    heightCm: numberOrUndefined(form.height),
+    bodyFatPct: typeof payload.body_fat === "number" ? payload.body_fat : undefined,
+    biestyloidDiameterMm: numberOrUndefined(form.biestyloid_diameter_mm),
+    biepicondylarFemurDiameterMm: numberOrUndefined(form.biepicondylar_femur_diameter_mm),
+    reference: form.four_component_reference,
+  });
+  if (fourComponentErrors.length > 0) {
+    throw new Error(fourComponentErrors[0]);
+  }
+  if (
+    numberOrUndefined(form.biestyloid_diameter_mm) != null &&
+    numberOrUndefined(form.biepicondylar_femur_diameter_mm) != null &&
+    (form.four_component_reference === "M" || form.four_component_reference === "F")
+  ) {
+    payload.four_component_reference = form.four_component_reference;
   }
 
   return payload;

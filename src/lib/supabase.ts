@@ -578,6 +578,10 @@ export interface Measurement {
   lean_mass?: number;
   visceral_fat?: number;
   body_density?: number;
+  // Estimativa antropométrica de quatro componentes (entradas rastreáveis)
+  biestyloid_diameter_mm?: number;
+  biepicondylar_femur_diameter_mm?: number;
+  four_component_reference?: "M" | "F";
   // Dobras cutâneas (mm)
   sf_pectoral?: number;
   sf_midaxillary?: number;

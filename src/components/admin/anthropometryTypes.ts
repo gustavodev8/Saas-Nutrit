@@ -7,6 +7,9 @@ export type MeasurementForm = {
   bio_fat_pct?: string;
   bio_lean_kg?: string;
   visceral_fat?: string;
+  biestyloid_diameter_mm?: string;
+  biepicondylar_femur_diameter_mm?: string;
+  four_component_reference?: "M" | "F" | "";
   sf_pectoral?: string;
   sf_midaxillary?: string;
   sf_triceps?: string;

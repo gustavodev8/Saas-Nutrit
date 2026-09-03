@@ -15,6 +15,11 @@ import {
   type SkinfoldKey,
   type SkinfoldProtocol,
 } from "@/lib/anthropometryUtils";
+import {
+  calculateFourComponentAnthropometry,
+  type FourComponentReference,
+  validateFourComponentProtocol,
+} from "@/lib/fourComponentAnthropometry";
 import type { Measurement, Patient } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,6 +32,10 @@ export type MeasurementForm = {
   bio_fat_pct?: string;   // % gordura da balança
   bio_lean_kg?: string;   // massa muscular (kg) da balança
   visceral_fat?: string;  // gordura visceral (índice)
+  // Fracionamento antropométrico em quatro componentes
+  biestyloid_diameter_mm?: string;
+  biepicondylar_femur_diameter_mm?: string;
+  four_component_reference?: FourComponentReference | "";
   // Dobras cutâneas
   sf_pectoral?: string; sf_midaxillary?: string; sf_triceps?: string;
   sf_biceps?: string; sf_subscapular?: string; sf_suprailiac?: string;
@@ -184,6 +193,9 @@ function measurementToForm(m: Measurement): MeasurementForm {
     bio_fat_pct: !m.sf_protocol ? s(m.body_fat) : "",
     bio_lean_kg: !m.sf_protocol ? s(m.lean_mass) : "",
     visceral_fat: s(m.visceral_fat),
+    biestyloid_diameter_mm: s(m.biestyloid_diameter_mm),
+    biepicondylar_femur_diameter_mm: s(m.biepicondylar_femur_diameter_mm),
+    four_component_reference: m.four_component_reference ?? "",
     sf_pectoral: s(m.sf_pectoral), sf_midaxillary: s(m.sf_midaxillary),
     sf_triceps: s(m.sf_triceps), sf_biceps: s(m.sf_biceps),
     sf_subscapular: s(m.sf_subscapular), sf_suprailiac: s(m.sf_suprailiac),
@@ -228,13 +240,22 @@ export function AnthropometryWizard({
   onCancelEdit,
   saving,
 }: AnthropometryWizardProps) {
-  const [form, setFormState] = useState<MeasurementForm>({ assessment_date: todayISO() });
+  const initialReference: FourComponentReference | "" =
+    patient.gender === "M" || patient.gender === "F" ? patient.gender : "";
+  const [form, setFormState] = useState<MeasurementForm>({
+    assessment_date: todayISO(),
+    four_component_reference: initialReference,
+  });
   const [protocol, setProtocol] = useState<SkinfoldProtocol>("JP3M");
   const [officialSource, setOfficialSource] = useState<OfficialAnthropometrySource>(null);
+  const [fourComponentSaveError, setFourComponentSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (editingMeasurement) {
-      setFormState(measurementToForm(editingMeasurement));
+      setFormState({
+        ...measurementToForm(editingMeasurement),
+        four_component_reference: editingMeasurement.four_component_reference ?? initialReference,
+      });
       if (editingMeasurement.sf_protocol) {
         setProtocol(editingMeasurement.sf_protocol as SkinfoldProtocol);
         setOfficialSource("skinfold");
@@ -244,18 +265,24 @@ export function AnthropometryWizard({
         setOfficialSource(null);
       }
     } else {
-      setFormState({ assessment_date: todayISO() });
+      setFormState({ assessment_date: todayISO(), four_component_reference: initialReference });
       setProtocol("JP3M");
       setOfficialSource(null);
     }
-  }, [editingMeasurement]);
+  }, [editingMeasurement, initialReference]);
 
-  const setField = (field: string, value: string) =>
+  const setField = (field: string, value: string) => {
+    setFourComponentSaveError(null);
     setFormState((p) => ({ ...p, [field]: value }));
+  };
 
   const handleClone = () => {
     if (!latestMeasurement) return;
-    setFormState({ ...measurementToForm(latestMeasurement), assessment_date: todayISO() });
+    setFormState({
+      ...measurementToForm(latestMeasurement),
+      assessment_date: todayISO(),
+      four_component_reference: latestMeasurement.four_component_reference ?? initialReference,
+    });
     if (latestMeasurement.sf_protocol) {
       setProtocol(latestMeasurement.sf_protocol as SkinfoldProtocol);
       setOfficialSource("skinfold");
@@ -313,9 +340,13 @@ export function AnthropometryWizard({
       bioAvailable && !sfAvailable ? "bio" : null);
 
   const handleSave = async () => {
+    if (fourComponentValidation.length > 0) {
+      setFourComponentSaveError(fourComponentValidation[0]);
+      return;
+    }
     await onSave(form, protocol, effectiveOfficial, editingMeasurement?.id);
     if (!editingMeasurement) {
-      setFormState({ assessment_date: todayISO() });
+      setFormState({ assessment_date: todayISO(), four_component_reference: initialReference });
       setProtocol("JP3M");
       setOfficialSource(null);
     }
@@ -338,6 +369,32 @@ export function AnthropometryWizard({
     : effectiveOfficial === "skinfold"
       ? "Adipômetro"
       : "Não definido";
+  const fourComponentValidation = validateFourComponentProtocol({
+    weightKg: currentWeight ?? undefined,
+    heightCm: currentHeight ?? undefined,
+    bodyFatPct: officialFatPct ?? undefined,
+    biestyloidDiameterMm: form.biestyloid_diameter_mm === "" || form.biestyloid_diameter_mm == null
+      ? undefined
+      : Number(form.biestyloid_diameter_mm),
+    biepicondylarFemurDiameterMm: form.biepicondylar_femur_diameter_mm === "" || form.biepicondylar_femur_diameter_mm == null
+      ? undefined
+      : Number(form.biepicondylar_femur_diameter_mm),
+    reference: form.four_component_reference,
+  });
+  const hasFourComponentProtocolData = Boolean(
+    form.biestyloid_diameter_mm || form.biepicondylar_femur_diameter_mm,
+  );
+  const fourComponentCalculation = hasFourComponentProtocolData && fourComponentValidation.length === 0
+    ? calculateFourComponentAnthropometry({
+        weightKg: currentWeight ?? Number.NaN,
+        heightCm: currentHeight ?? Number.NaN,
+        bodyFatPct: officialFatPct ?? Number.NaN,
+        biestyloidDiameterMm: Number(form.biestyloid_diameter_mm),
+        biepicondylarFemurDiameterMm: Number(form.biepicondylar_femur_diameter_mm),
+        reference: form.four_component_reference as FourComponentReference,
+      })
+    : null;
+  const fourComponent = fourComponentCalculation?.result ?? null;
   const filledCircumferences = [
     "neck", "shoulder", "chest", "waist", "abdomen", "hip",
     "arm_relax_r", "arm_relax_l", "arm_contract_r", "arm_contract_l",
@@ -567,7 +624,82 @@ export function AnthropometryWizard({
           </div>
         </Section>
 
-        {/* ── 7. Resultado da Composição Corporal ── */}
+        {/* ── 7. Fracionamento antropométrico ── */}
+        <Section
+          title="Fracionamento Antropométrico — 4 Componentes"
+          subtitle="Opcional. Estimativa por paquímetro; não é bioimpedância, diagnóstico ou densitometria."
+          collapsible
+          defaultOpen={false}
+        >
+          <div className="space-y-4">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Meça com paquímetro o diâmetro biestiloide do punho e o biepicondiliano do fêmur, ambos em milímetros (mm).
+              A prévia exige peso, altura e o percentual de gordura definido como oficial nesta avaliação.
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <NI
+                label="Diâmetro biestiloide (mm)"
+                field="biestyloid_diameter_mm"
+                form={form}
+                setField={setField}
+                placeholder="55"
+              />
+              <NI
+                label="Diâmetro biepicondiliano fêmur (mm)"
+                field="biepicondylar_femur_diameter_mm"
+                form={form}
+                setField={setField}
+                placeholder="98"
+              />
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground">Referência do protocolo</Label>
+                <select
+                  value={form.four_component_reference ?? ""}
+                  onChange={(event) => setField("four_component_reference", event.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Selecione M/F</option>
+                  <option value="M">Masculina (M)</option>
+                  <option value="F">Feminina (F)</option>
+                </select>
+              </div>
+            </div>
+            {patient.gender !== "M" && patient.gender !== "F" && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                O cadastro não informa uma referência M/F. Se optar pelo cálculo, selecione explicitamente a referência do protocolo.
+              </p>
+            )}
+            {fourComponent && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <p className="text-xs font-bold text-primary">Prévia de estimativa antropométrica</p>
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[
+                    ["Massa gorda", fourComponent.fatMassKg, fourComponent.fatMassPct],
+                    ["Massa óssea", fourComponent.boneMassKg, fourComponent.boneMassPct],
+                    ["Massa residual", fourComponent.residualMassKg, fourComponent.residualMassPct],
+                    ["Muscular estimada", fourComponent.estimatedMuscleMassKg, fourComponent.estimatedMuscleMassPct],
+                  ].map(([label, kg, pct]) => (
+                    <div key={label as string} className="rounded-lg border border-primary/10 bg-background p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+                      <p className="mt-1 text-lg font-black tabular-nums">{kg as number} kg</p>
+                      <p className="text-xs text-muted-foreground">{pct as number}% do peso</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+                  Estimativa antropométrica: von Döbeln mod. Rocha (1975) para massa óssea e Würch (1974) para massa residual. Não substitui densitometria.
+                </p>
+              </div>
+            )}
+            {hasFourComponentProtocolData && !fourComponent && fourComponentValidation[0] && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                {fourComponentSaveError ?? fourComponentValidation[0]}
+              </p>
+            )}
+          </div>
+        </Section>
+
+        {/* ── 8. Resultado da Composição Corporal ── */}
         {(bioAvailable || sfAvailable) && (
           <Section
             title="Resultado da Composição Corporal"

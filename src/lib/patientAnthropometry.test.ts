@@ -20,6 +20,9 @@ describe("patientAnthropometry", () => {
         weight: "80",
         height: "180",
         bio_fat_pct: "20",
+        biestyloid_diameter_mm: "55",
+        biepicondylar_femur_diameter_mm: "98",
+        four_component_reference: "M",
         waist: "90",
       },
       patientId: 7,
@@ -35,6 +38,9 @@ describe("patientAnthropometry", () => {
     expect(payload.body_fat).toBe(20);
     expect(payload.lean_mass).toBe(64);
     expect(payload.waist).toBe(90);
+    expect(payload.biestyloid_diameter_mm).toBe(55);
+    expect(payload.biepicondylar_femur_diameter_mm).toBe(98);
+    expect(payload.four_component_reference).toBe("M");
   });
 
   it("prefers skinfold result when selected as official source", async () => {
@@ -76,6 +82,22 @@ describe("patientAnthropometry", () => {
     expect(payload.body_fat).toBe(25);
     expect(payload.lean_mass).toBe(52.5);
     expect(payload.sf_protocol).toBeUndefined();
+  });
+
+  it("does not build a payload with a partial four-component protocol", async () => {
+    await expect(buildAnthropometryPayload({
+      form: {
+        assessment_date: "2026-08-06",
+        weight: "75",
+        height: "180",
+        bio_fat_pct: "15",
+        biestyloid_diameter_mm: "55",
+      },
+      patientId: 10,
+      patientGender: "M",
+      protocol: "JP3M",
+      officialSource: "bio",
+    })).rejects.toThrow("diâmetro biepicondiliano do fêmur");
   });
 
   it("builds latest measurement summary with fallback values", () => {
