@@ -1,4 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  hasRequiredPaymentWebhookConfig,
+  validatePaymentWebhookRequest,
+} from "../_shared/mpWebhookSecurity.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -10,74 +14,6 @@ function escapeHtml(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#x27;");
-}
-
-/**
- * Verify Mercado Pago HMAC-SHA256 webhook signature.
- * MP sends x-signature: "ts=...,v1=..." and x-request-id headers.
- * Docs: https://www.mercadopago.com.br/developers/pt/docs/your-integrations/notifications/webhooks
- */
-async function verifyMpSignature(
-  req: Request,
-  rawBody: string,
-  secret: string,
-): Promise<boolean> {
-  try {
-    const xSignature = req.headers.get("x-signature") ?? "";
-    const xRequestId = req.headers.get("x-request-id") ?? "";
-
-    if (!xSignature || !xRequestId) return false;
-
-    // Parse ts and v1 from x-signature header
-    const parts = xSignature.split(",");
-    let ts = "";
-    let v1 = "";
-    for (const part of parts) {
-      const [k, val] = part.split("=");
-      if (k?.trim() === "ts") ts = val?.trim() ?? "";
-      if (k?.trim() === "v1") v1 = val?.trim() ?? "";
-    }
-    if (!ts || !v1) return false;
-
-    // Extract data_id from URL query string
-    const url = new URL(req.url);
-    const dataId = url.searchParams.get("data.id") ?? url.searchParams.get("id") ?? "";
-
-    // Build the signed manifest: id;request-id;ts
-    const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
-
-    // HMAC-SHA256
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(secret);
-    const msgData = encoder.encode(manifest);
-    const cryptoKey = await crypto.subtle.importKey(
-      "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
-    );
-    const signatureBytes = await crypto.subtle.sign("HMAC", cryptoKey, msgData);
-    const expected = Array.from(new Uint8Array(signatureBytes))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-
-    return expected === v1;
-  } catch {
-    return false;
-  }
-}
-
-function redactEmail(email: string) {
-  const normalized = email.trim().toLowerCase();
-  const [localPart, domain] = normalized.split("@");
-
-  if (!localPart || !domain) return "invalid-email";
-  if (localPart.length <= 2) return `${localPart[0] ?? "*"}***@${domain}`;
-
-  return `${localPart.slice(0, 2)}***@${domain}`;
-}
-
-function redactReference(value: string) {
-  if (!value) return "<empty>";
-  if (value.length <= 10) return value;
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 function isSafeBookingGroupId(value: string) {
@@ -214,30 +150,110 @@ function parseExternalReference(rawReference: unknown): ParsedReference | null {
   };
 }
 
+type PaymentClaimState = "claimed" | "approved" | "processing";
+
+function serviceUnavailableResponse() {
+  return new Response("Service unavailable", { status: 503 });
+}
+
+function redactIdentifier(value: string): string {
+  const normalized = value.trim();
+  if (normalized.length <= 4) return "***";
+  return `${normalized.slice(0, 3)}...${normalized.slice(-3)}`;
+}
+
+async function claimPaymentWebhook(
+  supabaseUrl: string,
+  serviceKey: string,
+  paymentId: string,
+): Promise<PaymentClaimState | null> {
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/claim_payment_webhook`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+    },
+    body: JSON.stringify({
+      p_payment_id: paymentId,
+      p_stale_after_seconds: 900,
+    }),
+  });
+
+  if (!response.ok) return null;
+
+  try {
+    const state = await response.json();
+    return state === "claimed" || state === "approved" || state === "processing" ? state : null;
+  } catch {
+    return null;
+  }
+}
+
+async function finalizePaymentLog(
+  supabaseUrl: string,
+  serviceKey: string,
+  paymentId: string,
+  fields: Record<string, unknown>,
+): Promise<boolean> {
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/payment_logs?payment_id=eq.${encodeURIComponent(paymentId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({ ...fields, status: "approved", updated_at: new Date().toISOString() }),
+    },
+  );
+
+  return response.ok;
+}
+
 // ── Webhook handler ────────────────────────────────────────────────────────────
 
 serve(async (req) => {
   try {
-    const MP_ACCESS_TOKEN = Deno.env.get("MP_ACCESS_TOKEN");
-    const MP_WEBHOOK_SECRET = Deno.env.get("MP_WEBHOOK_SECRET"); // Set in Supabase secrets
-    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    const FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "noreply@nutrivida.com.br";
+    const config = {
+      mpAccessToken: Deno.env.get("MP_ACCESS_TOKEN")?.trim(),
+      mpWebhookSecret: Deno.env.get("MP_WEBHOOK_SECRET")?.trim(),
+      supabaseUrl: Deno.env.get("SUPABASE_URL")?.trim(),
+      supabaseServiceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim(),
+    };
+
+    if (!hasRequiredPaymentWebhookConfig(config)) return serviceUnavailableResponse();
 
     const rawBody = await req.text();
-    const body = JSON.parse(rawBody);
-
-    // ── Signature verification — always enforce in production ─────────────────
-    if (MP_WEBHOOK_SECRET) {
-      const valid = await verifyMpSignature(req, rawBody, MP_WEBHOOK_SECRET);
-      if (!valid) {
-        console.error("payment-webhook: invalid MP signature — possible fake webhook attempt");
-        return new Response("Unauthorized", { status: 401 });
-      }
-    } else {
-      // No secret configured — log a loud warning but still process (allows initial setup)
-      // ACTION REQUIRED: set MP_WEBHOOK_SECRET in Supabase Secrets to enforce validation
-      console.error("payment-webhook: WARNING — MP_WEBHOOK_SECRET not set. Webhook signature NOT verified. Set this secret immediately.");
+    let body: { type?: unknown; data?: { id?: unknown } };
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return new Response("ok", { status: 200 });
     }
+
+    const security = await validatePaymentWebhookRequest({
+      config,
+      requestUrl: req.url,
+      rawBody,
+      bodyDataId: body.data?.id,
+      xSignature: req.headers.get("x-signature"),
+      xRequestId: req.headers.get("x-request-id"),
+    });
+
+    if (!security.ok) {
+      if (security.status === 503) return serviceUnavailableResponse();
+      console.error("payment-webhook: invalid MP signature — possible fake webhook attempt");
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const mpAccessToken = config.mpAccessToken!;
+    const supabaseUrl = config.supabaseUrl!;
+    const supabaseServiceKey = config.supabaseServiceRoleKey!;
+    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")?.trim();
+    const FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "noreply@nutrivida.com.br";
 
     // MP sends type=payment for payment events
     if (body.type !== "payment") {
@@ -249,41 +265,48 @@ serve(async (req) => {
 
     // Fetch payment details from MP API (source of truth — can't be faked)
     const paymentRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` },
+      headers: { Authorization: `Bearer ${mpAccessToken}` },
     });
-    if (!paymentRes.ok) return new Response("ok", { status: 200 });
-    const payment = await paymentRes.json();
+    if (!paymentRes.ok) {
+      return paymentRes.status >= 500 || paymentRes.status === 429
+        ? serviceUnavailableResponse()
+        : new Response("ok", { status: 200 });
+    }
+
+    let payment: {
+      id?: unknown;
+      status?: unknown;
+      external_reference?: unknown;
+      payment_method_id?: unknown;
+      transaction_amount?: unknown;
+      additional_info?: { items?: Array<{ title?: unknown }> };
+      description?: unknown;
+    };
+    try {
+      payment = await paymentRes.json();
+    } catch {
+      return serviceUnavailableResponse();
+    }
 
     if (payment.status !== "approved") {
       return new Response("ok", { status: 200 });
     }
 
-    // ── Idempotency: skip if already processed ────────────────────────────────
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (supabaseUrl && supabaseServiceKey) {
-      const existsRes = await fetch(
-        `${supabaseUrl}/rest/v1/payment_logs?payment_id=eq.${encodeURIComponent(String(payment.id))}&status=eq.approved&select=id&limit=1`,
-        { headers: { apikey: supabaseServiceKey, Authorization: `Bearer ${supabaseServiceKey}` } }
-      );
-      if (existsRes.ok) {
-        const existing = await existsRes.json().catch(() => []);
-        if (Array.isArray(existing) && existing.length > 0) {
-          return new Response("ok", { status: 200 }); // already processed
-        }
-      }
-    }
-
     const parsedReference = parseExternalReference(payment.external_reference);
     if (!parsedReference) {
       console.error("payment-webhook: invalid external_reference", {
-        paymentId: String(payment.id ?? ""),
-        status: String(payment.status ?? ""),
-        externalReference: redactReference(String(payment.external_reference ?? "")),
+        paymentId: redactIdentifier(String(payment.id ?? paymentId)),
       });
-      return new Response("ok", { status: 200 });
+      return serviceUnavailableResponse();
     }
+
+    const resolvedPaymentId = String(payment.id ?? paymentId).trim();
+    if (!resolvedPaymentId) return new Response("ok", { status: 200 });
+
+    const claimState = await claimPaymentWebhook(supabaseUrl, supabaseServiceKey, resolvedPaymentId);
+    if (!claimState) return serviceUnavailableResponse();
+    if (claimState === "approved") return new Response("ok", { status: 200 });
+    if (claimState === "processing") return serviceUnavailableResponse();
 
     // ── Consultation payment ──────────────────────────────────────────────────
     if (parsedReference.kind === "consultation") {
@@ -294,29 +317,24 @@ serve(async (req) => {
 
       // Update booking status to confirmed — check HTTP status, not response body
       // (PATCH returns 204 No Content on success, so .json() would throw and give false negative)
-      if (supabaseUrl && supabaseServiceKey) {
-        const bookingUpdateRes = await fetch(`${supabaseUrl}/rest/v1/bookings?booking_group_id=eq.${encodeURIComponent(bookingGroupId)}`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": supabaseServiceKey,
-            "Authorization": `Bearer ${supabaseServiceKey}`,
-            "Prefer": "return=minimal",
-          },
-          body: JSON.stringify({
-            status: "confirmed",
-            payment_status: "paid",
-            payment_method: payment.payment_method_id === "pix" ? "pix" : "card",
-          }),
-        });
+      const bookingUpdateRes = await fetch(`${supabaseUrl}/rest/v1/bookings?booking_group_id=eq.${encodeURIComponent(bookingGroupId)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": supabaseServiceKey,
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+          "Prefer": "return=minimal",
+        },
+        body: JSON.stringify({
+          status: "confirmed",
+          payment_status: "paid",
+          payment_method: payment.payment_method_id === "pix" ? "pix" : "card",
+        }),
+      });
 
-        if (!bookingUpdateRes.ok) {
-          console.error("payment-webhook: booking confirmation update failed", {
-            paymentId: String(payment.id ?? ""),
-            bookingGroupId: redactReference(bookingGroupId),
-            status: bookingUpdateRes.status,
-          });
-        }
+      if (!bookingUpdateRes.ok) {
+        console.error("payment-webhook: booking confirmation update failed");
+        return serviceUnavailableResponse();
       }
 
       // Send confirmation email
@@ -356,45 +374,33 @@ serve(async (req) => {
         </html>
       `;
 
-      if (RESEND_API_KEY && customerEmail) {
-        await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from: FROM_EMAIL,
-            to: customerEmail,
-            subject: `Consulta confirmada — ${planName}`,
-            html: confirmationHtml,
-          }),
-        });
-      }
+      if (!RESEND_API_KEY) return serviceUnavailableResponse();
 
-      if (supabaseUrl && supabaseServiceKey) {
-        const logInsertRes = await fetch(`${supabaseUrl}/rest/v1/payment_logs`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": supabaseServiceKey,
-            "Authorization": `Bearer ${supabaseServiceKey}`,
-            "Prefer": "return=minimal",
-          },
-          body: JSON.stringify({
-            payment_id: String(payment.id),
-            customer_name: customerName,
-            customer_email: customerEmail,
-            product_name: planName,
-            amount: payment.transaction_amount,
-            status: "approved",
-          }),
-        });
+      const emailRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": `payment-webhook:${resolvedPaymentId}:consultation`,
+        },
+        body: JSON.stringify({
+          from: FROM_EMAIL,
+          to: customerEmail,
+          subject: `Consulta confirmada — ${planName}`,
+          html: confirmationHtml,
+        }),
+      });
+      if (!emailRes.ok) return serviceUnavailableResponse();
 
-        if (!logInsertRes.ok) {
-          console.error("payment-webhook: consultation payment log insert failed", {
-            paymentId: String(payment.id ?? ""),
-            email: redactEmail(customerEmail),
-            status: logInsertRes.status,
-          });
-        }
+      const logUpdated = await finalizePaymentLog(supabaseUrl, supabaseServiceKey, resolvedPaymentId, {
+        customer_name: customerName,
+        customer_email: customerEmail,
+        product_name: planName,
+        amount: payment.transaction_amount,
+      });
+      if (!logUpdated) {
+        console.error("payment-webhook: consultation payment log update failed");
+        return serviceUnavailableResponse();
       }
 
       return new Response("ok", { status: 200 });
@@ -409,33 +415,48 @@ serve(async (req) => {
       payment.additional_info?.items?.[0]?.title || payment.description || "E-book"
     );
 
-    if (!customerEmail || !RESEND_API_KEY) {
+    if (!customerEmail) {
       return new Response("ok", { status: 200 });
     }
+    if (!RESEND_API_KEY) return serviceUnavailableResponse();
 
     // Fetch pdfFiles from site_content by productIndex
     type PdfFile = { url: string; label: string };
     let pdfFiles: PdfFile[] = [];
     let primaryPdfUrl = fallbackPdfUrl;
 
-    if (supabaseUrl && supabaseServiceKey) {
-      try {
-        const scRes = await fetch(
-          `${supabaseUrl}/rest/v1/site_content?id=eq.1&select=content`,
-          { headers: { apikey: supabaseServiceKey, Authorization: `Bearer ${supabaseServiceKey}` } }
-        );
-        if (scRes.ok) {
-          const scData = await scRes.json();
-          const item = scData?.[0]?.content?.produtosDigitais?.items?.[productIndex];
-          if (item) {
-            if (Array.isArray(item.pdfFiles) && item.pdfFiles.length > 0) {
-              pdfFiles = item.pdfFiles as PdfFile[];
-            } else if (item.pdfUrl) {
-              primaryPdfUrl = item.pdfUrl;
-            }
-          }
-        }
-      } catch { /* fall through to fallback */ }
+    const scRes = await fetch(
+      `${supabaseUrl}/rest/v1/site_content?id=eq.1&select=content`,
+      { headers: { apikey: supabaseServiceKey, Authorization: `Bearer ${supabaseServiceKey}` } }
+    );
+    if (!scRes.ok) return serviceUnavailableResponse();
+
+    let scData: { content?: { produtosDigitais?: { items?: Array<{ pdfFiles?: PdfFile[]; pdfUrl?: string }> } } }[];
+    try {
+      scData = await scRes.json();
+    } catch {
+      return serviceUnavailableResponse();
+    }
+
+    const item = scData?.[0]?.content?.produtosDigitais?.items?.[productIndex];
+    if (!item) {
+      console.error("payment-webhook: product fulfillment unavailable", {
+        paymentId: redactIdentifier(resolvedPaymentId),
+      });
+      return serviceUnavailableResponse();
+    }
+    if (Array.isArray(item.pdfFiles) && item.pdfFiles.length > 0) {
+      pdfFiles = item.pdfFiles;
+    } else if (item.pdfUrl) {
+      primaryPdfUrl = item.pdfUrl;
+    }
+
+    const hasPdfFulfillment = pdfFiles.some((pdfFile) => Boolean(pdfFile?.url?.trim())) || Boolean(primaryPdfUrl.trim());
+    if (!hasPdfFulfillment) {
+      console.error("payment-webhook: product fulfillment unavailable", {
+        paymentId: redactIdentifier(resolvedPaymentId),
+      });
+      return serviceUnavailableResponse();
     }
 
     // Build PDF links block for email
@@ -509,42 +530,13 @@ serve(async (req) => {
 
     const customerName = escapeHtml(parsedReference.customerName);
 
-    // ── Save Log First ───────────────────────────────────────────────────────
-    if (supabaseUrl && supabaseServiceKey) {
-      try {
-        await fetch(`${supabaseUrl}/rest/v1/payment_logs`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": supabaseServiceKey,
-            "Authorization": "Bearer " + supabaseServiceKey,
-            "Prefer": "return=minimal",
-          },
-          body: JSON.stringify({
-            payment_id: String(payment.id),
-            customer_name: customerName,
-            customer_email: customerEmail,
-            customer_cpf_hash: cpfHash,
-            product_name: productName,
-            product_index: productIndex,
-            amount: payment.transaction_amount,
-            status: "approved",
-            pdf_url: pdfFiles.length > 0 ? pdfFiles[0].url : primaryPdfUrl,
-          }),
-        });
-      } catch (err) {
-        console.error("payment-webhook: ebook payment log insert error", {
-          paymentId: String(payment.id ?? ""),
-          email: redactEmail(customerEmail),
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-
-    // ── Send Email Second ────────────────────────────────────────────────────
-    await fetch("https://api.resend.com/emails", {
+    const emailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `payment-webhook:${resolvedPaymentId}:ebook`,
+      },
       body: JSON.stringify({
         from: FROM_EMAIL,
         to: customerEmail,
@@ -552,10 +544,25 @@ serve(async (req) => {
         html: emailHtml,
       }),
     });
+    if (!emailRes.ok) return serviceUnavailableResponse();
+
+    const logUpdated = await finalizePaymentLog(supabaseUrl, supabaseServiceKey, resolvedPaymentId, {
+      customer_name: customerName,
+      customer_email: customerEmail,
+      customer_cpf_hash: cpfHash,
+      product_name: productName,
+      product_index: productIndex,
+      amount: payment.transaction_amount,
+      pdf_url: pdfFiles.length > 0 ? pdfFiles[0].url : primaryPdfUrl,
+    });
+    if (!logUpdated) {
+      console.error("payment-webhook: ebook payment log update failed");
+      return serviceUnavailableResponse();
+    }
 
     return new Response("ok", { status: 200 });
-  } catch (error) {
-    console.error("payment-webhook: unexpected error", error instanceof Error ? error.message : String(error));
-    return new Response("ok", { status: 200 }); // Always 200 to MP
+  } catch {
+    console.error("payment-webhook: unexpected processing error");
+    return new Response("Service unavailable", { status: 503 });
   }
 });

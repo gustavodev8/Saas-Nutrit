@@ -108,75 +108,51 @@ export async function enforceRateLimit({
   windowSeconds,
   extraKey = "",
 }: RateLimitInput) {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const unavailableResponse = () =>
+    jsonResponse({ error: "Servico temporariamente indisponivel." }, 503, corsHeaders);
 
-  if (!supabaseUrl || !serviceKey) return null;
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim();
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
 
-  const bucketStart = new Date(
-    Math.floor(Date.now() / (windowSeconds * 1000)) * windowSeconds * 1000,
-  ).toISOString();
-
-  const fingerprintHash = await getClientFingerprint(req, `${endpoint}|${extraKey}`);
-  const table = "public_request_rate_limits";
-  const commonHeaders = {
-    apikey: serviceKey,
-    Authorization: `Bearer ${serviceKey}`,
-    "Content-Type": "application/json",
-  };
+  if (!supabaseUrl || !serviceKey) return unavailableResponse();
 
   try {
-    const queryUrl =
-      `${supabaseUrl}/rest/v1/${table}` +
-      `?endpoint=eq.${encodeURIComponent(endpoint)}` +
-      `&fingerprint_hash=eq.${encodeURIComponent(fingerprintHash)}` +
-      `&bucket_start=eq.${encodeURIComponent(bucketStart)}` +
-      "&select=id,hit_count" +
-      "&limit=1";
+    const bucketStart = new Date(
+      Math.floor(Date.now() / (windowSeconds * 1000)) * windowSeconds * 1000,
+    ).toISOString();
 
-    const currentRes = await fetch(queryUrl, { headers: commonHeaders });
-    if (!currentRes.ok) {
-      console.warn("Rate limit lookup skipped:", currentRes.status, await currentRes.text().catch(() => ""));
-      return null;
-    }
+    const fingerprintHash = await getClientFingerprint(req, `${endpoint}|${extraKey}`);
+    const commonHeaders = {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      "Content-Type": "application/json",
+    };
 
-    const rows = await currentRes.json().catch(() => []) as Array<{ id: number; hit_count: number }>;
-    const current = rows[0];
-
-    if (current && Number(current.hit_count) >= limit) {
-      return jsonResponse({ error: "Muitas tentativas. Aguarde e tente novamente." }, 429, corsHeaders);
-    }
-
-    if (current) {
-      await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${current.id}`, {
-        method: "PATCH",
-        headers: {
-          ...commonHeaders,
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({
-          hit_count: Number(current.hit_count) + 1,
-          updated_at: new Date().toISOString(),
-        }),
-      });
-      return null;
-    }
-
-    await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+    const rateLimitRes = await fetch(`${supabaseUrl}/rest/v1/rpc/consume_public_rate_limit`, {
       method: "POST",
-      headers: {
-        ...commonHeaders,
-        Prefer: "return=minimal",
-      },
+      headers: commonHeaders,
       body: JSON.stringify({
-        endpoint,
-        fingerprint_hash: fingerprintHash,
-        bucket_start: bucketStart,
-        hit_count: 1,
+        p_endpoint: endpoint,
+        p_fingerprint_hash: fingerprintHash,
+        p_bucket_start: bucketStart,
+        p_hit_limit: limit,
       }),
     });
-  } catch (error) {
-    console.warn("Rate limit skipped due to error:", error);
+    if (!rateLimitRes.ok) return unavailableResponse();
+
+    let allowed: unknown;
+    try {
+      allowed = await rateLimitRes.json();
+    } catch {
+      return unavailableResponse();
+    }
+
+    if (allowed === false) {
+      return jsonResponse({ error: "Muitas tentativas. Aguarde e tente novamente." }, 429, corsHeaders);
+    }
+    if (allowed !== true) return unavailableResponse();
+  } catch {
+    return unavailableResponse();
   }
 
   return null;

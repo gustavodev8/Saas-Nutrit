@@ -1,0 +1,40 @@
+# Continuidade Codex
+
+## Estado atual
+
+- Branch local: `main`, com alteracoes de hardening ainda sem commit ou push.
+- Nenhuma migration, segredo, Edge Function ou configuracao remota foi aplicada nesta rodada.
+- QA independente: PASS condicional. Todas as verificacoes locais passaram; as condicoes restantes dependem da validacao no Supabase, Resend e Vercel.
+- Tentativa de validacao e publicacao remota em 2026-09-01 bloqueada: a CLI do Supabase retornou `Unauthorized (401)` ao consultar projetos e migrations. Nenhuma operacao remota, commit ou push foi executado.
+- Em 2026-09-02, a CLI foi autenticada e o projeto vinculado foi confirmado como `nutri` (`qwwltjaoftnsuvpgrsmm`, `us-east-1`). A unica migration pendente e `supabase/migrations/20260831000000_atomic_security_controls.sql`. O ciclo remoto continua bloqueado porque o secret `MP_WEBHOOK_SECRET` esta ausente. Ele deve corresponder ao segredo configurado no painel Mercado Pago; nao deve ser gerado arbitrariamente.
+
+## Alteracoes locais
+
+- `package.json`, `package-lock.json` e `.nvmrc`: runtime Node minimo `22.13.0` e dependencias de producao atualizadas.
+- `vercel.json`: headers de seguranca e Content Security Policy para a SPA.
+- `supabase/functions/payment-webhook/index.ts`: configuracao obrigatoria, validacao HMAC/anti-replay, vinculacao do ID assinado ao corpo, idempotencia e falha fechada para erros transitorios.
+- `supabase/functions/_shared/mpWebhookSecurity.ts`: funcoes reutilizaveis para assinatura Mercado Pago.
+- `src/lib/mpWebhookSecurity.test.ts`: testes de assinatura, expiração, configuracao e mismatch de identificador.
+- `supabase/functions/_shared/publicEndpoint.ts`: rate limit fail-closed via RPC atomica.
+- `supabase/migrations/20260831000000_atomic_security_controls.sql`: RPCs atomicas para rate limit e claim de webhook.
+
+## Validacoes locais
+
+- `npm run build`: passou.
+- `npm run test`: 74 testes passaram.
+- `npm audit --omit=dev`: 0 vulnerabilidades.
+- `git diff --check`: passou.
+
+## Pre-condicoes para publicacao
+
+1. Configurar `MP_WEBHOOK_SECRET` no projeto Supabase com o valor correspondente ao webhook do Mercado Pago.
+2. Confirmar o projeto Supabase correto e aplicar `supabase/migrations/20260831000000_atomic_security_controls.sql` antes de publicar as Edge Functions.
+3. Confirmar que `payment-webhook` aceita o webhook externo sem JWT obrigatorio e que sua validacao HMAC permanece ativa.
+4. Confirmar, sem exibir valores, a presenca dos secrets de Mercado Pago e Supabase exigidos pelo webhook.
+5. Publicar as Edge Functions e testar pagamento em ambiente seguro com um evento valido, verificando retry/idempotencia.
+6. Fazer deploy Vercel e conferir Node `>=22.13.0` e headers/CSP entregues em producao.
+7. Confirmar suporte do Resend a `Idempotency-Key` para deduplicacao de reenvios.
+
+## Proximo passo seguro
+
+Configurar o secret `MP_WEBHOOK_SECRET` correto no Supabase e entao executar a validacao remota coordenada acima. Nao fazer push ou deploy antes da migration estar aplicada, pois os endpoints endurecidos falham fechados se os RPCs ainda nao existirem.
