@@ -45,6 +45,19 @@ Tabelas: `site_content`, `bookings`, `availability_slots`, `consultation_records
 - Não usar `ShopSection`, `PricingSection` ou `ScheduleSection` — estão obsoletos
 - Não fazer push com `--force` para o main
 
+## Protocolo Permanente de Colaboração
+
+Estas regras se aplicam a qualquer Codex que trabalhar neste repositório.
+
+1. O Codex principal atua como arquiteto e coordenador: entende requisitos, inspeciona o repositório, define critérios de aceite, revisa diffs e comunica decisões. Ele só edita documentação de governança ou handoff quando necessário.
+2. Alterações de implementação devem ser delegadas a um agente full-stack com `gpt-5.6-luna` e raciocínio `high`.
+3. Após a implementação, um segundo agente independente, também com `gpt-5.6-luna` e raciocínio `high`, deve fazer QA em modo read-only. O QA relata achados reproduzíveis, severidade, arquivo/linha, impacto e recomendação; não corrige código.
+4. Achados que reprovem o QA retornam ao mesmo agente implementador. O ciclo continua até `PASS` ou `PASS condicional`, com as condições registradas.
+5. Antes de qualquer ação remota, confirme projeto, ambiente e escopo. Nunca exponha segredos em chat, logs, commits, screenshots ou comandos exibidos.
+6. Migrations, deploys e alterações remotas devem respeitar dependências de publicação. Não publique funções que dependem de migrations ainda não aplicadas.
+7. Ao encerrar trabalho material, atualize `CONTINUIDADE-CODEX.md` com estado local/remoto, validações, limitações, bloqueios e próximo passo seguro.
+8. Ao iniciar uma nova sessão, leia `AGENTS.md`, `CONTINUIDADE-CODEX.md`, `README.md`, os exemplos de ambiente pertinentes e o status/diff do Git antes de agir.
+
 ## Comandos úteis
 ```bash
 npm run dev       # servidor local (localhost:8080)

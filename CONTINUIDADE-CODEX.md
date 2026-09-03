@@ -2,10 +2,10 @@
 
 ## Estado atual
 
-- Branch local: `main`, com alteracoes de hardening ainda sem commit ou push.
-- Nenhuma migration, segredo, Edge Function ou configuracao remota foi aplicada nesta rodada.
+- Branch local: `main`, sincronizada com `origin/main` apos os commits `6808cd6`, `22a6d1b`, `d481a8a` e `dd282be`.
+- Nenhuma migration, segredo ou Edge Function foi aplicada/publicada nesta rodada.
 - QA independente: PASS condicional. Todas as verificacoes locais passaram; as condicoes restantes dependem da validacao no Supabase, Resend e Vercel.
-- Tentativa de validacao e publicacao remota em 2026-09-01 bloqueada: a CLI do Supabase retornou `Unauthorized (401)` ao consultar projetos e migrations. Nenhuma operacao remota, commit ou push foi executado.
+- Tentativa de validacao e publicacao remota em 2026-09-01 foi inicialmente bloqueada: a CLI do Supabase retornou `Unauthorized (401)` ao consultar projetos e migrations.
 - Em 2026-09-02, a CLI foi autenticada e o projeto vinculado foi confirmado como `nutri` (`qwwltjaoftnsuvpgrsmm`, `us-east-1`). A unica migration pendente e `supabase/migrations/20260831000000_atomic_security_controls.sql`. O ciclo remoto continua bloqueado porque o secret `MP_WEBHOOK_SECRET` esta ausente. Ele deve corresponder ao segredo configurado no painel Mercado Pago; nao deve ser gerado arbitrariamente.
 - Em 2026-09-02, foi implementado e aprovado em QA o fracionamento antropometrico em quatro componentes. A migration local `supabase/migrations/20260902000000_add_four_component_anthropometry.sql` tambem esta pendente e deve ser aplicada junto das migrations de seguranca antes de publicar o conjunto.
 
@@ -20,6 +20,7 @@
 - `supabase/migrations/20260831000000_atomic_security_controls.sql`: RPCs atomicas para rate limit e claim de webhook.
 - `src/lib/fourComponentAnthropometry.ts` e telas antropometricas: estimativa de massa gorda, ossea, residual e muscular por diferenca, baseada em von Dobeln/Rocha, Wurch e De Rose/Guimaraes.
 - `supabase/migrations/20260902000000_add_four_component_anthropometry.sql`: campos rastreaveis para diâmetros osseos e referencia do protocolo, com constraints de validade.
+- `pnpm-lock.yaml` e `package.json`: lockfile sincronizado e pnpm `10.34.5` fixado para builds Vercel reproduziveis.
 
 ## Validacoes locais
 
