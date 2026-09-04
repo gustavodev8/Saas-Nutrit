@@ -181,10 +181,8 @@ export async function buildAnthropometryPayload(params: {
     biepicondylarFemurDiameterMm: numberOrUndefined(form.biepicondylar_femur_diameter_mm),
     reference: form.four_component_reference,
   });
-  if (fourComponentErrors.length > 0) {
-    throw new Error(fourComponentErrors[0]);
-  }
   if (
+    fourComponentErrors.length === 0 &&
     numberOrUndefined(form.biestyloid_diameter_mm) != null &&
     numberOrUndefined(form.biepicondylar_femur_diameter_mm) != null &&
     (form.four_component_reference === "M" || form.four_component_reference === "F")

@@ -171,6 +171,58 @@ function MetricRow({ label, values, unit = "", decimals = 1, showDelta = true, s
   );
 }
 
+function MetricPairRow({
+  label,
+  massValues,
+  percentageValues,
+}: {
+  label: string;
+  massValues: (number | null | undefined)[];
+  percentageValues: (number | null | undefined)[];
+}) {
+  if ([...massValues, ...percentageValues].every((value) => value == null)) return null;
+
+  return (
+    <tr className="border-b border-border/30 last:border-0 hover:bg-muted/10 transition-colors print:hover:bg-transparent">
+      <td className="px-4 py-2.5 text-sm text-muted-foreground print:text-[9px] print:py-1.5 print:px-3">
+        {label}
+      </td>
+      {massValues.map((mass, index) => {
+        const percentage = percentageValues[index];
+        const previousMass = index > 0 ? massValues[index - 1] : undefined;
+        const previousPercentage = index > 0 ? percentageValues[index - 1] : undefined;
+        return (
+          <td
+            key={index}
+            className="px-4 py-2.5 text-right tabular-nums print:text-[9px] print:py-1.5 print:px-3"
+          >
+            <div>
+              {mass != null ? (
+                <>
+                  <span className="font-semibold text-foreground">{mass.toFixed(1)} kg</span>
+                  {renderDelta(mass, previousMass, 1)}
+                </>
+              ) : (
+                <span className="text-muted-foreground/30">—</span>
+              )}
+            </div>
+            <div className="mt-0.5 text-xs text-muted-foreground print:text-[8px]">
+              {percentage != null ? (
+                <>
+                  {percentage.toFixed(1)}% do peso
+                  {renderDelta(percentage, previousPercentage, 1)}
+                </>
+              ) : (
+                <span className="text-muted-foreground/30">—</span>
+              )}
+            </div>
+          </td>
+        );
+      })}
+    </tr>
+  );
+}
+
 function BilateralRow({
   label,
   rights,
@@ -910,14 +962,26 @@ export default function AdminRelatorioAntropometrico() {
                 {hasFourComponent && (
                   <>
                     <SectionRow label="Fracionamento Antropométrico — 4 Componentes (estimativa)" colSpan={colSpan} />
-                    <MetricRow label="Massa gorda estimada" values={derived.map((d) => d.fourComponent?.fatMassKg ?? null)} unit="kg" />
-                    <MetricRow label="Massa gorda estimada" values={derived.map((d) => d.fourComponent?.fatMassPct ?? null)} unit="% do peso" />
-                    <MetricRow label="Massa óssea estimada" values={derived.map((d) => d.fourComponent?.boneMassKg ?? null)} unit="kg" />
-                    <MetricRow label="Massa óssea estimada" values={derived.map((d) => d.fourComponent?.boneMassPct ?? null)} unit="% do peso" />
-                    <MetricRow label="Massa residual estimada" values={derived.map((d) => d.fourComponent?.residualMassKg ?? null)} unit="kg" />
-                    <MetricRow label="Massa residual estimada" values={derived.map((d) => d.fourComponent?.residualMassPct ?? null)} unit="% do peso" />
-                    <MetricRow label="Massa muscular estimada" values={derived.map((d) => d.fourComponent?.estimatedMuscleMassKg ?? null)} unit="kg" />
-                    <MetricRow label="Massa muscular estimada" values={derived.map((d) => d.fourComponent?.estimatedMuscleMassPct ?? null)} unit="% do peso" />
+                    <MetricPairRow
+                      label="Massa gorda estimada"
+                      massValues={derived.map((d) => d.fourComponent?.fatMassKg ?? null)}
+                      percentageValues={derived.map((d) => d.fourComponent?.fatMassPct ?? null)}
+                    />
+                    <MetricPairRow
+                      label="Massa óssea estimada"
+                      massValues={derived.map((d) => d.fourComponent?.boneMassKg ?? null)}
+                      percentageValues={derived.map((d) => d.fourComponent?.boneMassPct ?? null)}
+                    />
+                    <MetricPairRow
+                      label="Massa residual estimada"
+                      massValues={derived.map((d) => d.fourComponent?.residualMassKg ?? null)}
+                      percentageValues={derived.map((d) => d.fourComponent?.residualMassPct ?? null)}
+                    />
+                    <MetricPairRow
+                      label="Massa muscular estimada"
+                      massValues={derived.map((d) => d.fourComponent?.estimatedMuscleMassKg ?? null)}
+                      percentageValues={derived.map((d) => d.fourComponent?.estimatedMuscleMassPct ?? null)}
+                    />
                     <StringRow label="Referência do protocolo" values={cols.map((m) => m.four_component_reference ?? null)} />
                     <StringRow
                       label="Diâmetros aferidos"

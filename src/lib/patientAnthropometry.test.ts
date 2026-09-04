@@ -84,8 +84,8 @@ describe("patientAnthropometry", () => {
     expect(payload.sf_protocol).toBeUndefined();
   });
 
-  it("does not build a payload with a partial four-component protocol", async () => {
-    await expect(buildAnthropometryPayload({
+  it("saves the assessment and ignores an incomplete optional four-component protocol", async () => {
+    const payload = await buildAnthropometryPayload({
       form: {
         assessment_date: "2026-08-06",
         weight: "75",
@@ -97,7 +97,13 @@ describe("patientAnthropometry", () => {
       patientGender: "M",
       protocol: "JP3M",
       officialSource: "bio",
-    })).rejects.toThrow("diâmetro biepicondiliano do fêmur");
+    });
+
+    expect(payload.weight).toBe(75);
+    expect(payload.body_fat).toBe(15);
+    expect(payload.biestyloid_diameter_mm).toBe(55);
+    expect(payload.biepicondylar_femur_diameter_mm).toBeUndefined();
+    expect(payload.four_component_reference).toBeUndefined();
   });
 
   it("builds latest measurement summary with fallback values", () => {

@@ -74,7 +74,7 @@ export function validateFourComponentProtocol(input: FourComponentProtocolInput)
   if (input.biepicondylarFemurDiameterMm == null) missing.push("diâmetro biepicondiliano do fêmur");
   if (input.reference !== "M" && input.reference !== "F") missing.push("referência M/F");
   if (missing.length > 0) {
-    return [`Para salvar o fracionamento, informe: ${missing.join(", ")}.`];
+    return [`Para calcular o fracionamento, informe: ${missing.join(", ")}.`];
   }
 
   return validateCompleteInput(input as FourComponentInput);

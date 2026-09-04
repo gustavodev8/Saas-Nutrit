@@ -340,10 +340,6 @@ export function AnthropometryWizard({
       bioAvailable && !sfAvailable ? "bio" : null);
 
   const handleSave = async () => {
-    if (fourComponentValidation.length > 0) {
-      setFourComponentSaveError(fourComponentValidation[0]);
-      return;
-    }
     await onSave(form, protocol, effectiveOfficial, editingMeasurement?.id);
     if (!editingMeasurement) {
       setFormState({ assessment_date: todayISO(), four_component_reference: initialReference });
