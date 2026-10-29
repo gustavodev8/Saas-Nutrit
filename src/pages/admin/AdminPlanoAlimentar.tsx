@@ -38,6 +38,7 @@ import { MealPresetImportModal, type MealPresetImportTarget } from "@/components
 import { useConsultation } from "@/contexts/ConsultationContext";
 import { generateClinicalAlerts } from "@/lib/clinicalAlertsUtils";
 import { generateMealPlanPdf } from "@/lib/generateMealPlanPdf";
+import { normalizeLegacyMealAlternatives } from "@/lib/mealAlternatives";
 import { generateMonthlyShoppingList } from "@/lib/monthlyShoppingList";
 import {
   getMealNutritionTargets,
@@ -246,6 +247,7 @@ export default function AdminPlanoAlimentar() {
   });
   const [meals, setMeals]   = useState<EditorMeal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [legacyOptionsPendingSave, setLegacyOptionsPendingSave] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [showEmail, setShowEmail]       = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
@@ -295,16 +297,19 @@ export default function AdminPlanoAlimentar() {
       setPreviousPlan(priorPlan);
 
       if (isNew) {
+        setLegacyOptionsPendingSave(false);
         setMeals(DEFAULT_MEALS.map((p) => ({ meal_name: p.meal_name, time_suggestion: p.time_suggestion, foods: [] })));
         return;
       }
 
       const loadedMeals = await fetchFullMealPlan(resolvedPlanId);
+      const normalizedMeals = normalizeLegacyMealAlternatives(loadedMeals);
+      setLegacyOptionsPendingSave(normalizedMeals.length < loadedMeals.length);
       const found = plans.find((p) => p.id === resolvedPlanId);
       if (found) setPlan(found);
       setMeals(
-        loadedMeals.length > 0
-          ? loadedMeals.map(mealToEditor)
+        normalizedMeals.length > 0
+          ? normalizedMeals.map(mealToEditor)
           : DEFAULT_MEALS.map((p) => ({ meal_name: p.meal_name, time_suggestion: p.time_suggestion, foods: [] }))
       );
     } catch { toast.error("Erro ao carregar o plano."); }
@@ -344,9 +349,11 @@ export default function AdminPlanoAlimentar() {
       measurement_id: previousPlan.measurement_id ?? current.measurement_id,
       get_kcal: previousPlan.get_kcal ?? current.get_kcal,
     }));
+    const normalizedSourceMeals = normalizeLegacyMealAlternatives(sourceMeals);
+    setLegacyOptionsPendingSave(normalizedSourceMeals.length < sourceMeals.length);
     setMeals(
-      sourceMeals.length > 0
-        ? sourceMeals.map(mealToEditor)
+      normalizedSourceMeals.length > 0
+        ? normalizedSourceMeals.map(mealToEditor)
         : DEFAULT_MEALS.map((p) => ({ meal_name: p.meal_name, time_suggestion: p.time_suggestion, foods: [] }))
     );
     toast.success("Plano anterior clonado para o rascunho atual.");
@@ -544,6 +551,7 @@ export default function AdminPlanoAlimentar() {
   const handleTemplateImport = (importedMeals: Meal[], mode: "replace" | "append") => {
     const editorMeals = importedMeals.map(mealToEditor);
     setMeals((prev) => mode === "replace" ? editorMeals : [...prev, ...editorMeals]);
+    if (mode === "replace") setLegacyOptionsPendingSave(false);
   };
 
   const handleMealPresetImport = (importedMeal: Meal, mode: "replace" | "append") => {
@@ -753,6 +761,7 @@ export default function AdminPlanoAlimentar() {
         { ...planWithLineage, id: savedPlan.id },
         meals,
       );
+      setLegacyOptionsPendingSave(false);
       setLastSavedAt(new Date());
       setAutosaveState("saved");
       setAutosaveError(null);
@@ -836,6 +845,8 @@ export default function AdminPlanoAlimentar() {
       return;
     }
 
+    if (legacyOptionsPendingSave) return;
+
     if (autosaveSnapshot === lastSavedSnapshotRef.current) {
       if (autosaveState === "pending") {
         setAutosaveState(lastSavedAt ? "saved" : "idle");
@@ -857,7 +868,7 @@ export default function AdminPlanoAlimentar() {
         autosaveTimeoutRef.current = null;
       }
     };
-  }, [autosaveSnapshot, autosaveState, ctxLoading, lastSavedAt, loading, saveCurrentPlan]);
+  }, [autosaveSnapshot, autosaveState, ctxLoading, lastSavedAt, legacyOptionsPendingSave, loading, saveCurrentPlan]);
 
   useEffect(() => () => {
     if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
@@ -865,6 +876,7 @@ export default function AdminPlanoAlimentar() {
 
   const autosaveLabel = useMemo(() => {
     if (autosaveState === "saving") return "Salvando automaticamente...";
+    if (legacyOptionsPendingSave) return "Salve para organizar as opções antigas";
     if (autosaveState === "pending") return "Alterações pendentes";
     if (autosaveState === "error") return autosaveError ?? "Falha no salvamento automático";
     if (lastSavedAt) {
@@ -874,9 +886,11 @@ export default function AdminPlanoAlimentar() {
       })}`;
     }
     return "Autosave ativo";
-  }, [autosaveError, autosaveState, lastSavedAt]);
+  }, [autosaveError, autosaveState, lastSavedAt, legacyOptionsPendingSave]);
 
-  const autosaveToneClass = autosaveState === "error"
+  const autosaveToneClass = legacyOptionsPendingSave
+    ? "text-amber-600"
+    : autosaveState === "error"
     ? "text-destructive"
     : autosaveState === "pending"
       ? "text-amber-600"
@@ -1325,6 +1339,23 @@ export default function AdminPlanoAlimentar() {
 
         {/* Refeições */}
         <div>
+          {legacyOptionsPendingSave && (
+            <div className="mb-3 flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-700" />
+                <div>
+                  <p className="text-sm font-semibold">Opções antigas reconhecidas</p>
+                  <p className="mt-0.5 text-xs text-amber-900">
+                    As opções foram agrupadas nesta tela. Salve o plano para gravá-las como alternativas; alimentos e quantidades serão preservados.
+                  </p>
+                </div>
+              </div>
+              <Button size="sm" onClick={() => void saveCurrentPlan()} disabled={saving} className="shrink-0">
+                <Save size={14} />
+                Salvar plano organizado
+              </Button>
+            </div>
+          )}
           <div className="mb-3 flex flex-col gap-3 rounded-2xl border border-border/60 bg-card p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-primary">

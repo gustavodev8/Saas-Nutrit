@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
+import { normalizeLegacyMealAlternatives } from "@/lib/mealAlternatives";
 import {
   fetchDietTemplates,
   type DietTemplate,
@@ -42,6 +43,7 @@ function strategyBadge(strategy?: string) {
 
 function templateMealToMeal(tm: DietTemplateMeal): Meal {
   return {
+    id: tm.id,
     plan_id: 0,
     meal_name: tm.meal_name,
     time_suggestion: tm.time_suggestion ?? "",
@@ -64,7 +66,11 @@ function templateMealToMeal(tm: DietTemplateMeal): Meal {
   };
 }
 
-function templateParentMealToMeal(tm: DietTemplateMeal, templateMeals: DietTemplateMeal[]): Meal {
+function templateParentMealToMeal(
+  tm: DietTemplateMeal,
+  templateMeals: DietTemplateMeal[],
+  includeLegacyAlternatives = true,
+): Meal {
   const meal = templateMealToMeal(tm);
   meal.alternative_meals = templateMeals
     .filter((candidate) => candidate.is_substitution_of === tm.id)
@@ -78,16 +84,32 @@ function templateParentMealToMeal(tm: DietTemplateMeal, templateMeals: DietTempl
         foods: mapped.foods,
       };
     });
-  return meal;
+
+  if (!includeLegacyAlternatives) return meal;
+
+  const legacyCandidates = templateMeals
+    .filter((candidate) => !candidate.is_substitution_of && candidate.id !== tm.id)
+    .map(templateMealToMeal);
+  return normalizeLegacyMealAlternatives([meal, ...legacyCandidates])
+    .find((candidate) => candidate.id === tm.id) ?? meal;
 }
 
 function getTemplateParentMeals(template: DietTemplate): DietTemplateMeal[] {
-  return (template.meals ?? []).filter((meal) => !meal.is_substitution_of);
+  const templateMeals = template.meals ?? [];
+  const roots = templateMeals.filter((meal) => !meal.is_substitution_of);
+  const normalizedIds = new Set(
+    normalizeLegacyMealAlternatives(roots.map((meal) => templateParentMealToMeal(meal, templateMeals, false)))
+      .map((meal) => meal.id),
+  );
+  return roots.filter((meal) => normalizedIds.has(meal.id));
 }
 
 function templateToMeals(template: DietTemplate): Meal[] {
   const templateMeals = template.meals ?? [];
-  return getTemplateParentMeals(template).map((meal) => templateParentMealToMeal(meal, templateMeals));
+  const meals = templateMeals
+    .filter((meal) => !meal.is_substitution_of)
+    .map((meal) => templateParentMealToMeal(meal, templateMeals, false));
+  return normalizeLegacyMealAlternatives(meals);
 }
 
 function TemplateCard({
