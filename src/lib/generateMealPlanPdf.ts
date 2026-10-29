@@ -1,7 +1,7 @@
 ﻿import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { MealPlan, Meal, Patient } from "@/lib/supabase";
-import { normalizePdfMealAlternatives } from "@/lib/mealPlanPdfUtils";
+import { preparePdfMeals } from "@/lib/mealPlanPdfUtils";
 
 type RGB = [number, number, number];
 
@@ -220,6 +220,21 @@ function alternativeMealHeight(doc: jsPDF, meal: Meal, cardW: number) {
   const foodLines = foods.length > 0 ? foods.length : 1;
   const foodsHeight = Math.max(11, foodLines * 4.2 + 1.5);
   return 25.2 + titleLines * 4.2 + foodsHeight;
+}
+
+function alternativeMealColumnsHeight(doc: jsPDF, meals: Meal[], pageWidth: number, pageHeight: number, margin: number) {
+  const contentW = pageWidth - margin * 2;
+  const columns = pageWidth > pageHeight ? 3 : 2;
+  const gap = 3.5;
+  let height = 0;
+
+  for (let i = 0; i < meals.length; i += columns) {
+    const cards = meals.slice(i, i + columns);
+    const rowCardW = (contentW - gap * (cards.length - 1)) / cards.length;
+    height += Math.max(...cards.map((meal) => alternativeMealHeight(doc, meal, rowCardW))) + 2;
+  }
+
+  return height;
 }
 
 function drawAlternativeMealColumns(
@@ -474,7 +489,7 @@ export function generateMealPlanPdf(
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 14;
-  const pdfMeals = normalizePdfMealAlternatives(meals);
+  const pdfMeals = preparePdfMeals(meals);
 
   const grand = pdfMeals.reduce(
     (acc, meal) => {
@@ -548,6 +563,25 @@ export function generateMealPlanPdf(
 
   y += 23;
 
+  if (plan.daily_calories && grand.cal > 0) {
+    const targetPercent = Math.round((grand.cal / plan.daily_calories) * 100);
+    if (targetPercent < 80 || targetPercent > 120) {
+      const direction = targetPercent < 80 ? "abaixo" : "acima";
+      const note = `Refeições principais: ${Math.round(grand.cal)} kcal (${targetPercent}% da meta de ${Math.round(plan.daily_calories)} kcal), ${direction} da meta. As opções substitutas não entram neste total. Confira o plano antes de finalizar.`;
+      const lines = doc.splitTextToSize(note, pageWidth - margin * 2 - 18);
+      const boxH = 8 + lines.length * 3.5;
+      roundRect(doc, margin, y, pageWidth - margin * 2, boxH, 2.2, [255, 251, 235], [245, 158, 11]);
+      doc.setTextColor(146, 64, 14);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.6);
+      doc.text("Atenção", margin + 4, y + 5);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.4);
+      doc.text(lines, margin + 4, y + 9);
+      y += boxH + 4;
+    }
+  }
+
   if (plan.notes?.trim()) {
     const lines = doc.splitTextToSize(plan.notes.trim(), pageWidth - margin * 2 - 10);
     const h = 10 + lines.length * 3.7;
@@ -565,8 +599,7 @@ export function generateMealPlanPdf(
 
   pdfMeals.forEach((meal, index) => {
     const label = String(index + 1).padStart(2, "0");
-    y = drawMeal(doc, meal, label, pageWidth, pageHeight, margin, y, substitutionLayout, "main");
-
+    let selectedAlternatives: Meal[] = [];
     if (meal.alternative_meals && meal.alternative_meals.length > 0) {
       const hasSelection = options?.selectedAlternatives
         ? Object.prototype.hasOwnProperty.call(options.selectedAlternatives, index)
@@ -576,7 +609,7 @@ export function generateMealPlanPdf(
         ? selected
         : meal.alternative_meals.map((_, altIdx) => altIdx);
 
-      const selectedAlternatives = altIndexes
+      selectedAlternatives = altIndexes
         .map((altIdx) => ({
           altIdx,
           alt: meal.alternative_meals?.[altIdx],
@@ -590,15 +623,26 @@ export function generateMealPlanPdf(
           foods: alt.foods,
           substitution_items: alt.substitution_items ?? [],
         }));
+    }
 
-      if (substitutionLayout === "columns" && selectedAlternatives.length > 0) {
-        y = drawAlternativeMealColumns(doc, selectedAlternatives, pageWidth, pageHeight, margin, y);
-      } else {
-        selectedAlternatives.forEach((altMeal, altIdx) => {
-          const subLabel = `${label}.${String.fromCharCode(97 + altIdx)}`;
-          y = drawMeal(doc, altMeal, subLabel, pageWidth, pageHeight, margin, y, substitutionLayout, "substitution");
-        });
-      }
+    const alternativesHeight = substitutionLayout === "columns"
+      ? alternativeMealColumnsHeight(doc, selectedAlternatives, pageWidth, pageHeight, margin)
+      : selectedAlternatives.reduce((height, alternative) => height + mealHeight(alternative, substitutionLayout), 0);
+    const blockHeight = mealHeight(meal, substitutionLayout) + alternativesHeight;
+    if (selectedAlternatives.length > 0 && blockHeight <= pageHeight - 30 && y + blockHeight > pageHeight - 16) {
+      doc.addPage();
+      y = 14;
+    }
+
+    y = drawMeal(doc, meal, label, pageWidth, pageHeight, margin, y, substitutionLayout, "main");
+
+    if (substitutionLayout === "columns" && selectedAlternatives.length > 0) {
+      y = drawAlternativeMealColumns(doc, selectedAlternatives, pageWidth, pageHeight, margin, y);
+    } else {
+      selectedAlternatives.forEach((altMeal, altIdx) => {
+        const subLabel = `${label}.${String.fromCharCode(97 + altIdx)}`;
+        y = drawMeal(doc, altMeal, subLabel, pageWidth, pageHeight, margin, y, substitutionLayout, "substitution");
+      });
     }
   });
 

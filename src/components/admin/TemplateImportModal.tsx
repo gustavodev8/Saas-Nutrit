@@ -3,6 +3,7 @@ import { Loader2, FileText, CheckCircle2, ChevronRight, LayoutList } from "lucid
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
 import {
   fetchDietTemplates,
   type DietTemplate,
@@ -45,27 +46,20 @@ function templateMealToMeal(tm: DietTemplateMeal): Meal {
     meal_name: tm.meal_name,
     time_suggestion: tm.time_suggestion ?? "",
     foods: (tm.foods ?? []).map((tf: DietTemplateFood): MealFood => {
-      const qty = tf.quantity;
-      const calc = (per100?: number) =>
-        per100 && qty ? parseFloat(((per100 * qty) / 100).toFixed(1)) : undefined;
-      return {
+      return calculateFoodMacros({
         meal_id: 0,
         food_name: tf.food_name,
-        quantity: qty ?? undefined,
+        quantity: tf.quantity ?? undefined,
         unit: tf.unit ?? "g",
         kcal_per_100g: tf.kcal_per_100g ?? undefined,
         protein_per_100g: tf.protein_per_100g ?? undefined,
         carbs_per_100g: tf.carbs_per_100g ?? undefined,
         fat_per_100g: tf.fat_per_100g ?? undefined,
-        calories: calc(tf.kcal_per_100g),
-        protein: calc(tf.protein_per_100g),
-        carbs: calc(tf.carbs_per_100g),
-        fat: calc(tf.fat_per_100g),
         household_measure: tf.household_measure ?? undefined,
         measure_amount: tf.measure_amount ?? undefined,
         food_group: tf.food_group ?? undefined,
         notes: tf.notes ?? undefined,
-      };
+      });
     }),
   };
 }

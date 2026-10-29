@@ -1,4 +1,5 @@
 import type { AlternativeMeal, Meal } from "@/lib/supabase";
+import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
 
 const LEGACY_ALTERNATIVE_SUFFIX = /\s+[—–-]\s+(?:opção|opcao)\s+(\d+)\s*$/i;
 
@@ -53,4 +54,15 @@ export function normalizePdfMealAlternatives(meals: Meal[]): Meal[] {
   });
 
   return parents.filter((_, index) => !groupedIndexes.has(index));
+}
+
+export function preparePdfMeals(meals: Meal[]): Meal[] {
+  return normalizePdfMealAlternatives(meals).map((meal) => ({
+    ...meal,
+    foods: (meal.foods ?? []).map((food) => calculateFoodMacros(food)),
+    alternative_meals: (meal.alternative_meals ?? []).map((alternative) => ({
+      ...alternative,
+      foods: (alternative.foods ?? []).map((food) => calculateFoodMacros(food)),
+    })),
+  }));
 }

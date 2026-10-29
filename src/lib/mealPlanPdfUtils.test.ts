@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Meal } from "@/lib/supabase";
-import { normalizePdfMealAlternatives } from "@/lib/mealPlanPdfUtils";
+import { normalizePdfMealAlternatives, preparePdfMeals } from "@/lib/mealPlanPdfUtils";
 
 const meal = (meal_name: string, time_suggestion = "08:00"): Meal => ({
   plan_id: 1,
@@ -39,5 +39,30 @@ describe("normalizePdfMealAlternatives", () => {
     expect(ambiguous).toHaveLength(3);
     expect(differentTime).toHaveLength(2);
     expect(differentTime[0].alternative_meals).toEqual([]);
+  });
+
+  it("recalculates stale macros for parent meals and regrouped alternatives", () => {
+    const eggFood = {
+      meal_id: 0,
+      food_name: "Ovo de galinha",
+      quantity: 5,
+      unit: "un",
+      kcal_per_100g: 146,
+      protein_per_100g: 13.3,
+      carbs_per_100g: 0.6,
+      fat_per_100g: 9.5,
+      calories: 7,
+      protein: 0.6,
+      carbs: 0,
+      fat: 0.5,
+    };
+    const result = preparePdfMeals([
+      { ...meal("Café da manhã"), foods: [eggFood] },
+      { ...meal("Café da manhã — Opção 2"), foods: [eggFood] },
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].foods?.[0].calories).toBe(365);
+    expect(result[0].alternative_meals?.[0].foods?.[0].calories).toBe(365);
   });
 });
