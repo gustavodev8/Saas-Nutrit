@@ -2284,6 +2284,10 @@ export interface MealPresetFood {
   protein?: number;
   carbs?: number;
   fat?: number;
+  kcal_per_100g?: number;
+  protein_per_100g?: number;
+  carbs_per_100g?: number;
+  fat_per_100g?: number;
   notes?: string;
   sort_order?: number;
   household_measure?: string;
@@ -2392,6 +2396,10 @@ export async function saveMealPresetFoods(presetId: number, foods: MealPresetFoo
       protein: food.protein ?? null,
       carbs: food.carbs ?? null,
       fat: food.fat ?? null,
+      kcal_per_100g: food.kcal_per_100g ?? null,
+      protein_per_100g: food.protein_per_100g ?? null,
+      carbs_per_100g: food.carbs_per_100g ?? null,
+      fat_per_100g: food.fat_per_100g ?? null,
       notes: food.notes ?? null,
       sort_order: food.sort_order ?? index,
       household_measure: food.household_measure ?? null,

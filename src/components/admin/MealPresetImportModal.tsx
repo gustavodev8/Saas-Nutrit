@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { fetchMealPresets, type MealPreset, type MealPresetFood, type Meal, type MealFood } from "@/lib/supabase";
+import { fetchMealPresets, type MealPreset, type Meal } from "@/lib/supabase";
+import { mealPresetToMeal } from "@/lib/mealPresetUtils";
 
 function normalizeText(value: string) {
   return value
@@ -12,32 +13,6 @@ function normalizeText(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
-}
-
-function mealPresetToMeal(preset: MealPreset): Meal {
-  const foods = preset.foods ?? [];
-
-  return {
-    plan_id: 0,
-    meal_name: preset.meal_name,
-    time_suggestion: preset.time_suggestion ?? "",
-    notes: preset.notes ?? "",
-    foods: foods.map((food: MealPresetFood): MealFood => ({
-      meal_id: 0,
-      food_name: food.food_name,
-      quantity: food.quantity ?? undefined,
-      unit: food.unit ?? "g",
-      calories: food.calories ?? undefined,
-      protein: food.protein ?? undefined,
-      carbs: food.carbs ?? undefined,
-      fat: food.fat ?? undefined,
-      notes: food.notes ?? undefined,
-      household_measure: food.household_measure ?? undefined,
-      measure_amount: food.measure_amount ?? undefined,
-      food_group: food.food_group ?? undefined,
-    })),
-    substitution_items: [],
-  };
 }
 
 function formatTotals(preset: MealPreset) {
@@ -401,6 +376,17 @@ export function MealPresetImportModal({
                     </div>
                   )}
                 </div>
+              )}
+
+              {selected?.foods?.some((food) =>
+                food.kcal_per_100g == null ||
+                food.protein_per_100g == null ||
+                food.carbs_per_100g == null ||
+                food.fat_per_100g == null
+              ) && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                  Este modelo contém alimentos sem valores-base por 100 g. Em modelos antigos, alterar quantidade ou unidade pode não atualizar os macros; confira ou selecione novamente esses alimentos.
+                </p>
               )}
 
               {selected && hasMeals && (

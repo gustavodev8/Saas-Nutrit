@@ -22,6 +22,8 @@ import {
   saveDietTemplateMeals,
   type MealFood,
 } from "@/lib/supabase";
+import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
+import { getFoodHouseholdMeasures } from "@/lib/foodDatabase";
 
 // ─── Defaults ──────────────────────────────────────────────────────────────────────
 
@@ -65,29 +67,23 @@ function templateMealToEditor(tm: import("@/lib/supabase").DietTemplateMeal): Ed
     time_suggestion: tm.time_suggestion,
     notes:           tm.notes ?? undefined,
     substitutions:   [],
-    foods: (tm.foods ?? []).map((tf): MealFood => {
-      const qty   = tf.quantity ?? undefined;
-      const calc  = (per100?: number) =>
-        per100 && qty ? parseFloat(((per100 * qty) / 100).toFixed(1)) : undefined;
-      return {
+    foods: (tm.foods ?? []).map((tf): MealFood =>
+      calculateFoodMacros({
         meal_id:          0,
         food_name:        tf.food_name,
-        quantity:         qty,
+        quantity:         tf.quantity ?? undefined,
         unit:             tf.unit ?? "g",
         kcal_per_100g:    tf.kcal_per_100g    ?? undefined,
         protein_per_100g: tf.protein_per_100g ?? undefined,
         carbs_per_100g:   tf.carbs_per_100g   ?? undefined,
         fat_per_100g:     tf.fat_per_100g     ?? undefined,
-        calories:         calc(tf.kcal_per_100g),
-        protein:          calc(tf.protein_per_100g),
-        carbs:            calc(tf.carbs_per_100g),
-        fat:              calc(tf.fat_per_100g),
+        household_measures: getFoodHouseholdMeasures(tf.food_name),
         household_measure: tf.household_measure ?? undefined,
         measure_amount:    tf.measure_amount    ?? undefined,
         food_group:        tf.food_group        ?? undefined,
         notes:             tf.notes             ?? undefined,
-      };
-    }),
+      }),
+    ),
   };
 }
 

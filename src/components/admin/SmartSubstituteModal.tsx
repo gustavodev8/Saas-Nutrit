@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import { BUILT_IN_FOODS, FOOD_CATEGORIES, type FoodItem } from "@/lib/foodDatabase";
 import { fetchCustomFoods } from "@/components/admin/customFoods";
 import type { MealFood } from "@/lib/supabase";
+import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
+import type { HouseholdMeasure } from "@/lib/foodDatabase";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -91,6 +93,7 @@ interface SubstituteResult {
   protein_per_100g: number;
   carbs_per_100g:   number;
   fat_per_100g:     number;
+  household_measures?: HouseholdMeasure[];
 }
 
 interface Props {
@@ -148,6 +151,7 @@ export function SmartSubstituteModal({ open, food, onClose, onSubstitute }: Prop
       protein_per_100g: selected.protein,
       carbs_per_100g:   selected.carbs,
       fat_per_100g:     selected.fat,
+      household_measures: selected.household_measures,
     });
     onClose();
   };
@@ -231,11 +235,21 @@ export function SmartSubstituteModal({ open, food, onClose, onSubstitute }: Prop
                 {selected.kcal} kcal · P {selected.protein}g · C {selected.carbs}g · G {selected.fat}g (por 100g)
               </span>
             </div>
-            {food.quantity && (
+            {food.quantity !== undefined && (
               <span className="text-muted-foreground shrink-0">
                 →&nbsp;
                 <strong className="text-foreground">
-                  {((selected.kcal * food.quantity) / 100).toFixed(0)} kcal
+                  {calculateFoodMacros({
+                    meal_id: food.meal_id,
+                    food_name: selected.name,
+                    quantity: food.quantity,
+                    unit: food.unit,
+                    kcal_per_100g: selected.kcal,
+                    protein_per_100g: selected.protein,
+                    carbs_per_100g: selected.carbs,
+                    fat_per_100g: selected.fat,
+                    household_measures: selected.household_measures,
+                  }).calories?.toFixed(0) ?? "—"} kcal
                 </strong>
                 &nbsp;com {food.quantity}{food.unit ?? "g"}
               </span>

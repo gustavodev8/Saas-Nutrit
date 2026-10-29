@@ -12,7 +12,7 @@ import { SmartSubstituteModal } from "@/components/admin/SmartSubstituteModal";
 import { cn } from "@/lib/utils";
 import type { HouseholdMeasure } from "@/lib/foodDatabase";
 import type { MealFood, SubstitutionItem } from "@/lib/supabase";
-import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
+import { calculateFoodMacros, usesEstimatedFoodUnitConversion } from "@/lib/calculateFoodMacros";
 import { fetchSmartSubstitutions } from "@/lib/supabase";
 import { calculateSubstitutions, type SubstitutionRule, type FoodSubstitution } from "@/lib/smartSubstitutions";
 
@@ -208,6 +208,11 @@ export function FoodRow({
             onSelect={handleSelect}
             onCustomName={(name) => onChange({ ...food, food_name: name })}
           />
+          {food.quantity !== undefined && food.quantity > 0 && usesEstimatedFoodUnitConversion(food) && (
+            <p className="mt-1 text-[10px] leading-tight text-amber-700">
+              Conversão estimada para esta unidade; prefira gramas ou uma medida cadastrada.
+            </p>
+          )}
         </td>
 
         {/* Quantidade + Unidade */}
@@ -340,6 +345,7 @@ export function FoodRow({
             protein_per_100g: s.protein_per_100g,
             carbs_per_100g:   s.carbs_per_100g,
             fat_per_100g:     s.fat_per_100g,
+            household_measures: s.household_measures,
           }))
         }
       />

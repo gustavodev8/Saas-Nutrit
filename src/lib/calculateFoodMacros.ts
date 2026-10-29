@@ -1,20 +1,39 @@
 import { getFoodHouseholdMeasures, type FoodItem, type HouseholdMeasure } from "@/lib/foodDatabase";
 import type { MealFood } from "@/lib/supabase";
 
+function normalizeMeasure(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+export function usesEstimatedFoodUnitConversion(food: MealFood, foodDb?: FoodItem): boolean {
+  const unit = normalizeMeasure(food.unit ?? "g");
+  if (unit === "g" || unit === "grama" || unit === "gramas" || unit === "kg") return false;
+
+  const measures = food.household_measures ?? foodDb?.household_measures ?? getFoodHouseholdMeasures(food.food_name);
+  return !measures?.some((measure) => {
+    const measureUnit = normalizeMeasure(measure.unit);
+    return measureUnit === unit || (unit === "un" && measureUnit.includes("unidade"));
+  });
+}
+
 export function calculateFoodMacros(food: MealFood, foodDb?: FoodItem): MealFood {
   const qty = food.quantity;
-  if (!qty || !food.kcal_per_100g) return food;
+  if (qty === undefined || !Number.isFinite(qty)) return food;
+  if (qty < 0) {
+    return { ...food, calories: undefined, protein: undefined, carbs: undefined, fat: undefined };
+  }
+  if (qty === 0) {
+    return { ...food, calories: 0, protein: 0, carbs: 0, fat: 0 };
+  }
+  if (food.kcal_per_100g === undefined) return food;
 
   const availableMeasures = food.household_measures ?? foodDb?.household_measures ?? getFoodHouseholdMeasures(food.food_name);
   const unit = (food.unit ?? "g").trim();
   let grams = qty;
-
-  const normalizeMeasure = (value: string) =>
-    value
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .trim();
 
   const normalizedUnit = normalizeMeasure(unit);
   const measureByName = (measures?: HouseholdMeasure[]) => {
