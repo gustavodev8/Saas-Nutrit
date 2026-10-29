@@ -38,7 +38,7 @@ import { MealPresetImportModal, type MealPresetImportTarget } from "@/components
 import { useConsultation } from "@/contexts/ConsultationContext";
 import { generateClinicalAlerts } from "@/lib/clinicalAlertsUtils";
 import { generateMealPlanPdf } from "@/lib/generateMealPlanPdf";
-import { normalizeLegacyMealAlternatives } from "@/lib/mealAlternatives";
+import { hasStaleMealMacros, recalculateMealMacros } from "@/lib/mealMacros";
 import { generateMonthlyShoppingList } from "@/lib/monthlyShoppingList";
 import {
   getMealNutritionTargets,
@@ -303,8 +303,10 @@ export default function AdminPlanoAlimentar() {
       }
 
       const loadedMeals = await fetchFullMealPlan(resolvedPlanId);
-      const normalizedMeals = normalizeLegacyMealAlternatives(loadedMeals);
-      setLegacyOptionsPendingSave(normalizedMeals.length < loadedMeals.length);
+      const normalizedMeals = recalculateMealMacros(loadedMeals);
+      setLegacyOptionsPendingSave(
+        normalizedMeals.length < loadedMeals.length || hasStaleMealMacros(loadedMeals),
+      );
       const found = plans.find((p) => p.id === resolvedPlanId);
       if (found) setPlan(found);
       setMeals(
@@ -349,8 +351,10 @@ export default function AdminPlanoAlimentar() {
       measurement_id: previousPlan.measurement_id ?? current.measurement_id,
       get_kcal: previousPlan.get_kcal ?? current.get_kcal,
     }));
-    const normalizedSourceMeals = normalizeLegacyMealAlternatives(sourceMeals);
-    setLegacyOptionsPendingSave(normalizedSourceMeals.length < sourceMeals.length);
+    const normalizedSourceMeals = recalculateMealMacros(sourceMeals);
+    setLegacyOptionsPendingSave(
+      normalizedSourceMeals.length < sourceMeals.length || hasStaleMealMacros(sourceMeals),
+    );
     setMeals(
       normalizedSourceMeals.length > 0
         ? normalizedSourceMeals.map(mealToEditor)
@@ -1344,15 +1348,15 @@ export default function AdminPlanoAlimentar() {
               <div className="flex items-start gap-2.5">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-700" />
                 <div>
-                  <p className="text-sm font-semibold">Opções antigas reconhecidas</p>
+                  <p className="text-sm font-semibold">Plano recalculado para revisão</p>
                   <p className="mt-0.5 text-xs text-amber-900">
-                    As opções foram agrupadas nesta tela. Salve o plano para gravá-las como alternativas; alimentos e quantidades serão preservados.
+                    Opções antigas foram agrupadas e/ou valores nutricionais recalculados em memória. Revise o plano e salve para persistir; nada é gravado automaticamente.
                   </p>
                 </div>
               </div>
               <Button size="sm" onClick={() => void saveCurrentPlan()} disabled={saving} className="shrink-0">
                 <Save size={14} />
-                Salvar plano organizado
+                Salvar plano revisado
               </Button>
             </div>
           )}
