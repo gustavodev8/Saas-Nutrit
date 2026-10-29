@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { normalizePdfMealAlternatives } from "@/lib/mealPlanPdfUtils";
 import type { Meal } from "@/lib/supabase";
 
 type SelectedAlternatives = Record<number, number[]>;
@@ -38,13 +39,14 @@ export function MealPlanPdfOptionsDialog({
 }: Props) {
   const [selection, setSelection] = useState<SelectedAlternatives>({});
   const [layout, setLayout] = useState<PdfSubstitutionLayout>("stacked");
+  const pdfMeals = useMemo(() => normalizePdfMealAlternatives(meals), [meals]);
 
   useEffect(() => {
     if (open) {
-      setSelection(buildInitialSelection(meals));
+      setSelection(buildInitialSelection(pdfMeals));
       setLayout("stacked");
     }
-  }, [open, meals]);
+  }, [open, pdfMeals]);
 
   useEffect(() => {
     if (layout !== "columns") return;
@@ -93,7 +95,7 @@ export function MealPlanPdfOptionsDialog({
   const handleConfirm = () => {
     const normalizedSelection: SelectedAlternatives = {};
 
-    meals.forEach((meal, mealIndex) => {
+    pdfMeals.forEach((meal, mealIndex) => {
       const alternatives = meal.alternative_meals ?? [];
       if (alternatives.length > 0) {
         normalizedSelection[mealIndex] = selection[mealIndex] ?? [];
@@ -103,7 +105,7 @@ export function MealPlanPdfOptionsDialog({
     onConfirm(normalizedSelection, layout);
   };
 
-  const mealsWithAlternatives = meals.filter((meal) => (meal.alternative_meals?.length ?? 0) > 0);
+  const mealsWithAlternatives = pdfMeals.filter((meal) => (meal.alternative_meals?.length ?? 0) > 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -149,7 +151,7 @@ export function MealPlanPdfOptionsDialog({
               {emptyMessage}
             </div>
           ) : (
-            meals.map((meal, mealIndex) => {
+            pdfMeals.map((meal, mealIndex) => {
               const alternatives = meal.alternative_meals ?? [];
               if (alternatives.length === 0) return null;
 

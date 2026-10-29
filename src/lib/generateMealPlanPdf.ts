@@ -1,6 +1,7 @@
 ﻿import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { MealPlan, Meal, Patient } from "@/lib/supabase";
+import { normalizePdfMealAlternatives } from "@/lib/mealPlanPdfUtils";
 
 type RGB = [number, number, number];
 
@@ -473,8 +474,9 @@ export function generateMealPlanPdf(
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 14;
+  const pdfMeals = normalizePdfMealAlternatives(meals);
 
-  const grand = meals.reduce(
+  const grand = pdfMeals.reduce(
     (acc, meal) => {
       const totals = sum(meal.foods);
       return {
@@ -561,7 +563,7 @@ export function generateMealPlanPdf(
     y += h + 4;
   }
 
-  meals.forEach((meal, index) => {
+  pdfMeals.forEach((meal, index) => {
     const label = String(index + 1).padStart(2, "0");
     y = drawMeal(doc, meal, label, pageWidth, pageHeight, margin, y, substitutionLayout, "main");
 
