@@ -70,8 +70,30 @@ function templateMealToMeal(tm: DietTemplateMeal): Meal {
   };
 }
 
+function templateParentMealToMeal(tm: DietTemplateMeal, templateMeals: DietTemplateMeal[]): Meal {
+  const meal = templateMealToMeal(tm);
+  meal.alternative_meals = templateMeals
+    .filter((candidate) => candidate.is_substitution_of === tm.id)
+    .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    .map((alternative) => {
+      const mapped = templateMealToMeal(alternative);
+      return {
+        meal_name: mapped.meal_name,
+        time_suggestion: mapped.time_suggestion,
+        notes: mapped.notes,
+        foods: mapped.foods,
+      };
+    });
+  return meal;
+}
+
+function getTemplateParentMeals(template: DietTemplate): DietTemplateMeal[] {
+  return (template.meals ?? []).filter((meal) => !meal.is_substitution_of);
+}
+
 function templateToMeals(template: DietTemplate): Meal[] {
-  return (template.meals ?? []).map((tm) => templateMealToMeal(tm));
+  const templateMeals = template.meals ?? [];
+  return getTemplateParentMeals(template).map((meal) => templateParentMealToMeal(meal, templateMeals));
 }
 
 function TemplateCard({
@@ -83,8 +105,9 @@ function TemplateCard({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const mealCount = template.meals?.length ?? 0;
-  const foodCount = template.meals?.reduce((s, m) => s + (m.foods?.length ?? 0), 0) ?? 0;
+  const parentMeals = getTemplateParentMeals(template);
+  const mealCount = parentMeals.length;
+  const foodCount = parentMeals.reduce((sum, meal) => sum + (meal.foods?.length ?? 0), 0);
 
   return (
     <button
@@ -202,9 +225,9 @@ export function TemplateImportModal({
     if (!selected) return;
 
     if (scope === "meal") {
-      const meal = selected.meals?.[selectedMealIndex];
+      const meal = getTemplateParentMeals(selected)[selectedMealIndex];
       if (!meal || !onImportMealBlock) return;
-      onImportMealBlock(templateMealToMeal(meal), mode);
+      onImportMealBlock(templateParentMealToMeal(meal, selected.meals ?? []), mode);
     } else {
       onImport(templateToMeals(selected), mode);
     }
@@ -212,7 +235,7 @@ export function TemplateImportModal({
     onClose();
   };
 
-  const selectedMealCount = selected?.meals?.length ?? 0;
+  const selectedMealCount = selected ? getTemplateParentMeals(selected).length : 0;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -267,8 +290,8 @@ export function TemplateImportModal({
 
                   {previewOpen && (
                     <div className="p-3 space-y-2 bg-background/60">
-                      {(selected.meals ?? []).map((m, i) => (
-                        <MealPreview key={i} meal={m} />
+                      {getTemplateParentMeals(selected).map((m, i) => (
+                        <MealPreview key={m.id ?? i} meal={m} />
                       ))}
                     </div>
                   )}
@@ -281,7 +304,7 @@ export function TemplateImportModal({
                     Bloco para aplicar em {targetMealLabel ?? "esta refeicao"}
                   </p>
                   <div className="space-y-1.5">
-                    {(selected.meals ?? []).map((meal, index) => (
+                    {getTemplateParentMeals(selected).map((meal, index) => (
                       <label
                         key={`${selected.id}-${index}`}
                         className={cn(
