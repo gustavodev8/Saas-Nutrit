@@ -34,13 +34,26 @@ export const useBookingStatusActions = ({
 
   const handleDeleteGroup = async (groupId: string) => {
     setDeletingGroup(true);
-    const ok = await deleteBookingGroup(groupId);
-    setDeletingGroup(false);
-    if (ok) {
+    let result: Awaited<ReturnType<typeof deleteBookingGroup>>;
+    try {
+      result = await deleteBookingGroup(groupId);
+    } catch (error) {
+      console.error("deleteBookingGroup failed unexpectedly:", error);
+      result = "failed";
+    } finally {
+      setDeletingGroup(false);
+    }
+    if (result === "deleted") {
       setBookings(prev => prev.filter(booking => booking.booking_group_id !== groupId));
       setConfirmDeleteGroup(null);
       setDetail(null);
       toast({ title: "Agendamento excluído." });
+    } else if (result === "blocked-by-consultation") {
+      toast({
+        title: "Agendamento vinculado a uma consulta",
+        description: "O prontuário associado foi preservado. Para manter o histórico clínico, este agendamento não pode ser apagado.",
+        variant: "destructive",
+      });
     } else {
       toast({ title: "Erro ao excluir agendamento.", variant: "destructive" });
     }

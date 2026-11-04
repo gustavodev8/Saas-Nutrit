@@ -1872,13 +1872,19 @@ export async function updateBookingGroup(
   return true;
 }
 
-export async function deleteBookingGroup(bookingGroupId: string): Promise<boolean> {
+export type DeleteBookingGroupResult = "deleted" | "blocked-by-consultation" | "failed";
+
+export async function deleteBookingGroup(bookingGroupId: string): Promise<DeleteBookingGroupResult> {
   const { error } = await supabaseAdmin
     .from('bookings')
     .delete()
     .eq('booking_group_id', bookingGroupId);
-  if (error) { console.error('deleteBookingGroup error:', error.message); return false; }
-  return true;
+  if (!error) return "deleted";
+  if (error.code === "23503" && error.message.includes("consultation_records_booking_id_fkey")) {
+    return "blocked-by-consultation";
+  }
+  console.error('deleteBookingGroup error:', error.message);
+  return "failed";
 }
 
 /** Filtra bookings com status 'pending' criados há mais de 30 minutos (client-side, sem delete via anon key) */

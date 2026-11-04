@@ -1,5 +1,16 @@
 # Continuidade Codex
 
+## Entrega de proteção de exclusão — 2026-11-04
+
+- **Escopo:** impedir que a exclusão de um agendamento apague ou deixe sem vínculo um prontuário clínico; informar claramente o administrador quando a FK `consultation_records_booking_id_fkey` bloquear a operação.
+- **Supabase de origem:** `qwwltjaoftnsuvpgrsmm`. A migration autorizada `20261103010000_consultation_booking_delete_guard_candidate.sql` foi aplicada e verificada anteriormente: FK com `ON DELETE RESTRICT` presente e `NOT VALID` por causa de 20 registros órfãos preservados; constraint CHECK validada. Nenhum dado foi removido ou reassociado.
+- **Código local:** patch isolado em `src/lib/supabase.ts` e `src/pages/admin/agendamentos/useBookingStatusActions.ts`, com testes focados nos mesmos fluxos. O bloqueio diferencia somente SQLSTATE `23503` com o nome esperado da FK; outros erros mantêm mensagem genérica.
+- **Validações reportadas:** 99 testes, TypeScript, ESLint, build e `git diff --check` passaram; teste de concorrência em banco Docker local com fixtures sintéticas cobriu inserção concorrente e exclusão prévia, com limpeza confirmada. O build ainda reporta avisos existentes de chunk grande/importação dinâmica.
+- **QA:** agente independente emitiu `QA_PASS` para os quatro arquivos de código/teste; sem achados bloqueadores.
+- **Publicação:** ainda sem commit, push ou deploy no início desta atualização. Worktree limpo baseado em `origin/main` (`6195138c874215e5ceaee8cdea055965cca3fd66`); nenhuma alteração SaaS adicional incluída. Após QA, publicar somente o patch focado e confirmar o resultado do deploy Vercel.
+- **Limitações:** o smoke PostgREST com a mensagem real não foi executado porque `docker ps` deixou de responder. O caminho continua protegido pela FK; se a mensagem do servidor diferir, a aplicação permanece no aviso genérico.
+- **Próximo passo:** receber resultado do QA, revisar o diff staged, criar commit focado e fazer push normal para `main` conforme pedido de produção; não aplicar migrations adicionais nem reabrir agendamento público neste pacote.
+
 ## Estado atual
 
 - Branch local: `main`, sincronizada com `origin/main` apos os commits `6808cd6`, `22a6d1b`, `d481a8a` e `dd282be`.
