@@ -1,5 +1,14 @@
 # Continuidade Codex
 
+## Fundação SaaS — sincronização de histórico — 2026-11-04
+
+- **Estado:** o Supabase de origem `qwwltjaoftnsuvpgrsmm` já tem fundações de workspace/convites e migrations de expansão clínica aplicadas, conforme `supabase migration list --linked` executado pelo CLI 2.111.0; o ledger retornou `local=remote` até `20261103010000` e 19 versões posteriores pendentes (`20261104000000` a `20261124000000`) no checkout legado.
+- **Fonte:** nove migrations previamente aplicadas, mas ausentes do `main`, foram portadas para este worktree a partir do checkout legado, sem alteração de conteúdo. QA confirmou igualdade byte a byte entre as cópias local e fonte. O ledger remoto guarda versões, não checksum do SQL; portanto, a identidade desses bytes com o SQL historicamente executado não foi comprovada de forma independente. A migration `20261103010000` já rastreada também permanece intacta.
+- **Escopo excluído:** nenhuma das 19 migrations pendentes foi copiada, aplicada ou publicada; nenhum SQL remoto foi executado nesta etapa.
+- **Prontidão SaaS:** ainda **NO-GO para cadastro público/trial**. O `main` contém o painel legado do Fillipe, sem onboarding SaaS/workspace clínico; o isolamento RLS para o fluxo clínico continua uma dependência antes de liberar profissionais.
+- **QA:** `QA_CONDITIONAL`; condição registrada: a proveniência remota das versões copiadas é baseada em ledger/checkout e não em checksum remoto.
+- **Próximo passo:** auditoria remota somente leitura do catálogo/ACL efetivo e das constraints de workspace no projeto de origem; em paralelo, preparar um piloto fechado mínimo com RLS por workspace e testes A/B/C. Não aplicar migrations pendentes em lote nem habilitar trial público.
+
 ## Entrega de proteção de exclusão — 2026-11-04
 
 - **Escopo:** impedir que a exclusão de um agendamento apague ou deixe sem vínculo um prontuário clínico; informar claramente o administrador quando a FK `consultation_records_booking_id_fkey` bloquear a operação.
