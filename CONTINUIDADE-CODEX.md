@@ -4,12 +4,13 @@
 
 - **Escopo:** impedir que a exclusão de um agendamento apague ou deixe sem vínculo um prontuário clínico; informar claramente o administrador quando a FK `consultation_records_booking_id_fkey` bloquear a operação.
 - **Supabase de origem:** `qwwltjaoftnsuvpgrsmm`. A migration autorizada `20261103010000_consultation_booking_delete_guard_candidate.sql` foi aplicada e verificada anteriormente: FK com `ON DELETE RESTRICT` presente e `NOT VALID` por causa de 20 registros órfãos preservados; constraint CHECK validada. Nenhum dado foi removido ou reassociado.
+- **Fonte versionada da migration:** arquivo portado do checkout de trabalho para este worktree limpo, byte idêntico ao artefato aplicado (SHA-256 `D464E71B406FE4F5F8009889AAAE90F3FEE97A75D832A05914998C68AEC35FBF`, 4.333 bytes); QA independente `QA_PASS`. O arquivo será apenas registrado no Git, nunca reaplicado ao Supabase.
 - **Código local:** patch isolado em `src/lib/supabase.ts` e `src/pages/admin/agendamentos/useBookingStatusActions.ts`, com testes focados nos mesmos fluxos. O bloqueio diferencia somente SQLSTATE `23503` com o nome esperado da FK; outros erros mantêm mensagem genérica.
 - **Validações reportadas:** 99 testes, TypeScript, ESLint, build e `git diff --check` passaram; teste de concorrência em banco Docker local com fixtures sintéticas cobriu inserção concorrente e exclusão prévia, com limpeza confirmada. O build ainda reporta avisos existentes de chunk grande/importação dinâmica.
 - **QA:** agente independente emitiu `QA_PASS` para os quatro arquivos de código/teste; sem achados bloqueadores.
 - **Publicação:** commit `58553fa` publicado por fast-forward em `main`; somente os quatro arquivos focados e este handoff foram incluídos. `origin/main` confirmou o commit. O site `https://fillipedavidnutri.online/` respondeu HTTP 200 e o bundle servido contém o texto específico do bloqueio.
 - **Limitações:** o smoke PostgREST com a mensagem real não foi executado porque `docker ps` deixou de responder. O caminho continua protegido pela FK; se a mensagem do servidor diferir, a aplicação permanece no aviso genérico.
-- **Próximo passo:** validar visualmente a mensagem no painel sem tentar excluir registros reais; acompanhar e planejar, separadamente, a reconciliação segura dos 20 órfãos. Não aplicar migrations adicionais nem reabrir agendamento público neste pacote.
+- **Próximo passo:** validar visualmente a mensagem no painel sem tentar excluir registros reais; acompanhar e planejar, separadamente, a reconciliação segura dos 20 órfãos. Antes de qualquer migration remota futura, confirmar a FK e o CHECK por catálogo read-only. Não reaplicar esta migration nem reabrir agendamento público neste pacote.
 
 ## Estado atual
 
