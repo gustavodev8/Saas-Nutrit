@@ -82,9 +82,11 @@ import WorkspacePatientsPage from "./pages/workspace/WorkspacePatientsPage";
 import WorkspaceAcceptInvitationPage from "./pages/workspace/WorkspaceAcceptInvitationPage";
 import PlatformInvitationsPage from "./pages/platform/PlatformInvitationsPage";
 import WorkspaceProtectedRoute from "@/components/workspace/WorkspaceProtectedRoute";
+import PublicSaaSLandingPage from "./pages/PublicSaaSLandingPage";
 
 const queryClient = new QueryClient();
 const isSaaSPilotMode = isSaaSPilotModeEnabled(import.meta.env.VITE_SAAS_PILOT_MODE);
+const isSaaSAccessRequestsEnabled = import.meta.env.VITE_SAAS_ACCESS_REQUESTS_ENABLED === "true";
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -124,10 +126,10 @@ const App = () => (
                   <Route path="patients" element={<WorkspacePatientsPage />} />
                 </Route>
               </Route>
-              <Route path="/platform/invitations" element={<PlatformInvitationsPage />} />
+              <Route path="/platform/invitations" element={<PlatformInvitationsPage accessRequestsEnabled={isSaaSAccessRequestsEnabled} />} />
 
               {/* Legacy Fillipe site and application routes */}
-              <Route path="/" element={<Index />} />
+              <Route path="/" element={isSaaSPilotMode ? <PublicSaaSLandingPage accessRequestsEnabled={isSaaSAccessRequestsEnabled} /> : <Index />} />
               {/* Public pages */}
               <Route path="/consultas" element={<ConsultasPage />} />
               <Route path="/resultados" element={<ResultadosPage />} />

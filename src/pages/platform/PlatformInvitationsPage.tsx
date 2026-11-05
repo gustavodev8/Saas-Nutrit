@@ -4,15 +4,21 @@ import { KeyRound, Leaf, Loader2, LogOut, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import WorkspaceAccessRequestsPanel, { type WorkspaceAccessRequestRecord } from "@/components/saas/WorkspaceAccessRequestsPanel";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
 
-export default function PlatformInvitationsPage() {
+type PlatformInvitationsPageProps = {
+  accessRequestsEnabled?: boolean;
+};
+
+export default function PlatformInvitationsPage({ accessRequestsEnabled = false }: PlatformInvitationsPageProps) {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
+  const [preparedRequestId, setPreparedRequestId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [messageKind, setMessageKind] = useState<"error" | "success">("error");
@@ -73,6 +79,7 @@ export default function PlatformInvitationsPage() {
         setMessage("Convite enviado. O link expira em sete dias e pode ser usado uma vez.");
         setInviteEmail("");
         setWorkspaceName("");
+        setPreparedRequestId(null);
       }
     } catch {
       setMessageKind("error");
@@ -85,6 +92,13 @@ export default function PlatformInvitationsPage() {
   const handleLogout = async () => {
     await workspaceSupabase.auth.signOut().catch(() => null);
     setSession(null);
+    setMessage("");
+  };
+
+  const prepareApprovedRequest = (request: WorkspaceAccessRequestRecord) => {
+    setPreparedRequestId(request.id);
+    setInviteEmail(request.professional_email);
+    setWorkspaceName(request.applicant_name);
     setMessage("");
   };
 
@@ -113,13 +127,28 @@ export default function PlatformInvitationsPage() {
             <Button className="w-full" type="submit" disabled={busy}>{busy && <Loader2 className="animate-spin" aria-hidden="true" />}Entrar</Button>
           </form>
         ) : (
-          <form className="space-y-5" onSubmit={handleInvite}>
-            <p className="text-sm text-muted-foreground">A permissão para emitir convites é conferida pelo servidor.</p>
-            <div className="space-y-2"><Label htmlFor="invitee-email">E-mail do profissional</Label><Input id="invitee-email" type="email" autoComplete="off" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} required /></div>
-            <div className="space-y-2"><Label htmlFor="invite-workspace-name">Nome do workspace</Label><Input id="invite-workspace-name" autoComplete="organization" maxLength={120} value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} required /></div>
-            {message && <p role={messageKind === "success" ? "status" : "alert"} className={`text-sm ${messageKind === "success" ? "text-foreground" : "text-destructive"}`}>{message}</p>}
-            <Button className="w-full" type="submit" disabled={busy}>{busy && <Loader2 className="animate-spin" aria-hidden="true" />}Enviar convite</Button>
-          </form>
+          <div className="space-y-8">
+            {accessRequestsEnabled && <WorkspaceAccessRequestsPanel onPrepareInvite={prepareApprovedRequest} />}
+            {accessRequestsEnabled && messageKind === "success" && message && <p role="status" className="text-sm text-foreground">{message}</p>}
+            {(!accessRequestsEnabled || preparedRequestId) && (
+              <form className="space-y-5" onSubmit={handleInvite}>
+                <div>
+                  {accessRequestsEnabled ? (
+                    <>
+                      <h2 className="font-semibold">Convite para pedido aprovado</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">Confira o e-mail e defina o nome do workspace antes de enviar.</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">A permissão para emitir convites é conferida pelo servidor.</p>
+                  )}
+                </div>
+                <div className="space-y-2"><Label htmlFor="invitee-email">E-mail do profissional</Label><Input id="invitee-email" type="email" autoComplete="off" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} required /></div>
+                <div className="space-y-2"><Label htmlFor="invite-workspace-name">Nome do workspace</Label><Input id="invite-workspace-name" autoComplete="organization" maxLength={120} value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} required /></div>
+                {message && <p role={messageKind === "success" ? "status" : "alert"} className={`text-sm ${messageKind === "success" ? "text-foreground" : "text-destructive"}`}>{message}</p>}
+                <Button className="w-full" type="submit" disabled={busy}>{busy && <Loader2 className="animate-spin" aria-hidden="true" />}Enviar convite</Button>
+              </form>
+            )}
+          </div>
         )}
       </section>
     </main>

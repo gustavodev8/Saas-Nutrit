@@ -11,11 +11,12 @@ function CurrentRoute() {
 }
 
 function renderRoutes(flag: string | undefined, initialPath: string) {
+  const enabled = isSaaSPilotModeEnabled(flag);
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
-      <SaaSPilotRouteGate enabled={isSaaSPilotModeEnabled(flag)}>
+      <SaaSPilotRouteGate enabled={enabled}>
         <Routes>
-          <Route path="/" element={<p>Landing legada</p>} />
+          <Route path="/" element={<p>{enabled ? "Landing SaaS" : "Landing legada"}</p>} />
           <Route path="/consultas" element={<p>Consultas legadas</p>} />
           <Route path="/workspace/*" element={<CurrentRoute />} />
           <Route path="/platform/invitations" element={<CurrentRoute />} />
@@ -27,17 +28,17 @@ function renderRoutes(flag: string | undefined, initialPath: string) {
 }
 
 describe("SaaS pilot route gate", () => {
-  it("allows workspace and platform invitation routes and redirects root and unknown paths", () => {
+  it("allows the SaaS landing, workspace, and platform invitation routes and redirects unknown paths", () => {
     expect(isSaaSPilotModeEnabled("true")).toBe(true);
 
-    const allowedRoutes = ["/workspace/login", "/workspace/accept", "/platform/invitations"];
+    const allowedRoutes = ["/", "/workspace/login", "/workspace/accept", "/platform/invitations"];
     for (const path of allowedRoutes) {
       const { unmount } = renderRoutes("true", path);
-      expect(screen.getByText(`Rota: ${path}`)).toBeInTheDocument();
+      expect(path === "/" ? screen.getByText("Landing SaaS") : screen.getByText(`Rota: ${path}`)).toBeInTheDocument();
       unmount();
     }
 
-    for (const path of ["/", "/unknown", "/consultas"]) {
+    for (const path of ["/unknown", "/consultas"]) {
       const { unmount } = renderRoutes("true", path);
       expect(screen.getByText("Rota: /workspace/login")).toBeInTheDocument();
       unmount();

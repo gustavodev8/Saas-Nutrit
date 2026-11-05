@@ -13,7 +13,8 @@ export function SaaSPilotRouteGate({ enabled, children }: SaaSPilotRouteGateProp
     if (enabled) document.title = "Acesso profissional | Nutri SaaS";
   }, [enabled]);
 
-  const allowedInPilot = pathname === "/workspace"
+  const allowedInPilot = pathname === "/"
+    || pathname === "/workspace"
     || pathname.startsWith("/workspace/")
     || pathname === "/platform/invitations";
 

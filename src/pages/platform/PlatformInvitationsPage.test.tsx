@@ -24,6 +24,26 @@ vi.mock("@/lib/workspaceSupabase", () => ({
 }));
 
 const session = { access_token: "access-token", user: { email: "platform@example.test" } };
+const approvedRequest = {
+  id: "00000000-0000-4000-8000-000000000511",
+  applicant_name: "Ana Nutricionista",
+  professional_email: "invitee@example.test",
+  phone: null,
+  crn: null,
+  need_category: "meal_planning",
+  status: "approved",
+  created_at: "2026-11-05T10:00:00Z",
+  reviewed_at: "2026-11-05T11:00:00Z",
+};
+
+const mockApprovedQueue = () => {
+  mocks.invoke.mockImplementation(async (functionName: string, options: { body: { action?: string } }) => {
+    if (functionName === "workspace-access-request-admin" && options.body.action === "list") {
+      return { data: { ok: true, requests: [approvedRequest] }, error: null };
+    }
+    return { data: { ok: true }, error: null };
+  });
+};
 
 describe("PlatformInvitationsPage", () => {
   beforeEach(() => {
@@ -32,15 +52,28 @@ describe("PlatformInvitationsPage", () => {
     mocks.onAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
     mocks.signInWithPassword.mockResolvedValue({ data: { session }, error: null });
     mocks.signOut.mockResolvedValue({ error: null });
-    mocks.invoke.mockResolvedValue({ data: { ok: true }, error: null });
+    mockApprovedQueue();
   });
 
-  it("authenticates then invokes the platform invitation function with normalized fields", async () => {
-    render(<PlatformInvitationsPage />);
+  it("authenticates and loads the invitation queue", async () => {
+    render(<PlatformInvitationsPage accessRequestsEnabled />);
     fireEvent.change(await screen.findByLabelText("E-mail"), { target: { value: "admin@example.test" } });
     fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "password123" } });
     fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
 
+    await screen.findByText("Ana Nutricionista");
+    expect(mocks.signInWithPassword).toHaveBeenCalledWith({ email: "admin@example.test", password: "password123" });
+    fireEvent.click(screen.getByRole("button", { name: "Preparar convite" }));
+    expect(await screen.findByLabelText("E-mail do profissional")).toHaveValue("invitee@example.test");
+    expect(screen.getByLabelText("Nome do workspace")).toHaveValue("Ana Nutricionista");
+  });
+
+  it("sends an invitation for an approved request with normalized fields", async () => {
+    mocks.getSession.mockResolvedValue({ data: { session }, error: null });
+    render(<PlatformInvitationsPage accessRequestsEnabled />);
+
+    await screen.findByText("Ana Nutricionista");
+    fireEvent.click(screen.getByRole("button", { name: "Preparar convite" }));
     fireEvent.change(await screen.findByLabelText("E-mail do profissional"), { target: { value: "  Invitee@Example.Test " } });
     fireEvent.change(screen.getByLabelText("Nome do workspace"), { target: { value: "  Consultório Novo  " } });
     fireEvent.click(screen.getByRole("button", { name: "Enviar convite" }));
@@ -53,13 +86,34 @@ describe("PlatformInvitationsPage", () => {
 
   it("shows a generic error when the server rejects or cannot send an invitation", async () => {
     mocks.getSession.mockResolvedValue({ data: { session }, error: null });
-    mocks.invoke.mockResolvedValue({ data: null, error: new Error("forbidden") });
-    render(<PlatformInvitationsPage />);
+    mocks.invoke.mockImplementation(async (functionName: string, options: { body: { action?: string } }) => {
+      if (functionName === "workspace-access-request-admin") {
+        return { data: { ok: true, requests: [approvedRequest] }, error: null };
+      }
+      return options.body.action ? { data: { ok: true }, error: null } : { data: null, error: new Error("forbidden") };
+    });
+    render(<PlatformInvitationsPage accessRequestsEnabled />);
 
+    await screen.findByText("Ana Nutricionista");
+    fireEvent.click(screen.getByRole("button", { name: "Preparar convite" }));
     fireEvent.change(await screen.findByLabelText("E-mail do profissional"), { target: { value: "invitee@example.test" } });
     fireEvent.change(screen.getByLabelText("Nome do workspace"), { target: { value: "Workspace" } });
     fireEvent.click(screen.getByRole("button", { name: "Enviar convite" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível enviar o convite");
+  });
+
+  it("keeps manual invitations available without loading the request queue when intake is disabled", async () => {
+    mocks.getSession.mockResolvedValue({ data: { session }, error: null });
+    render(<PlatformInvitationsPage />);
+
+    fireEvent.change(await screen.findByLabelText("E-mail do profissional"), { target: { value: "manual@example.test" } });
+    fireEvent.change(screen.getByLabelText("Nome do workspace"), { target: { value: "Consultório Manual" } });
+    expect(mocks.invoke).not.toHaveBeenCalledWith("workspace-access-request-admin", expect.anything());
+
+    fireEvent.click(screen.getByRole("button", { name: "Enviar convite" }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("workspace-invitation", {
+      body: { email: "manual@example.test", workspaceName: "Consultório Manual" },
+    }));
   });
 });
