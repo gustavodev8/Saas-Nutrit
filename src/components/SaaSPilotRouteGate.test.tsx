@@ -55,4 +55,16 @@ describe("SaaS pilot route gate", () => {
     renderRoutes("false", "/consultas");
     expect(screen.getByText("Consultas legadas")).toBeInTheDocument();
   });
+
+  it("sets a SaaS title only when pilot mode is enabled", () => {
+    document.title = "Título legado";
+    const { unmount: unmountPilot } = renderRoutes("true", "/workspace/login");
+    expect(document.title).toBe("Acesso profissional | Nutri SaaS");
+    unmountPilot();
+
+    document.title = "Nutricionista Clínica e Esportiva";
+    const { unmount: unmountLegacy } = renderRoutes(undefined, "/consultas");
+    expect(document.title).toBe("Nutricionista Clínica e Esportiva");
+    unmountLegacy();
+  });
 });
