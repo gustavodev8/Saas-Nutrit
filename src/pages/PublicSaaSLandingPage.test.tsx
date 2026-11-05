@@ -14,21 +14,26 @@ describe("PublicSaaSLandingPage", () => {
     render(<MemoryRouter><PublicSaaSLandingPage /></MemoryRouter>);
 
     expect(screen.getByRole("link", { name: "Entrar" })).toHaveAttribute("href", "/workspace/login");
-    expect(screen.getAllByText(/solicitações.*fechadas/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Sua prática nutricional, em um só lugar." })).toBeInTheDocument();
+    expect(screen.getByLabelText("Prévia ilustrativa do painel")).toBeInTheDocument();
+    expect(screen.getByText("Prévia ilustrativa · dados fictícios")).toBeInTheDocument();
+    expect(screen.getByText(/solicitações públicas estão temporariamente fechadas/i)).toBeInTheDocument();
     expect(screen.queryByLabelText("Nome")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Solicitar acesso" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Solicitar acesso" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Pedir acesso" })).not.toBeInTheDocument();
     expect(submitWorkspaceAccessRequest).not.toHaveBeenCalled();
   });
 
   it("connects the SaaS invitation flow without unsupported pricing or trial claims", () => {
     render(<MemoryRouter><PublicSaaSLandingPage accessRequestsEnabled /></MemoryRouter>);
 
-    expect(screen.getByRole("heading", { name: /gestão pensado para nutricionistas/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Sua prática nutricional, em um só lugar." })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Entrar" })).toHaveAttribute("href", "/workspace/login");
-    expect(screen.getByRole("link", { name: /pedir acesso/i })).toHaveAttribute("href", "#solicitar-acesso");
+    expect(screen.getByRole("link", { name: "Solicitar acesso" })).toHaveAttribute("href", "#solicitar-acesso");
     expect(screen.getByText(/pedido não cria usuário nem workspace/i)).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /Autorizo o uso dos dados profissionais/ })).toBeRequired();
     expect(screen.getByLabelText("Nome")).toBeInTheDocument();
+    expect(screen.getByLabelText("Prévia ilustrativa do painel")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Contato para privacidade" })).toHaveAttribute("href", "mailto:gustavu.dev@gmail.com");
     expect(screen.queryByText(/grátis|teste gratuito|R\$/i)).not.toBeInTheDocument();
   });
