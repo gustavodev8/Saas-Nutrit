@@ -79,6 +79,7 @@ describe("WorkspaceAcceptInvitationPage", () => {
     renderPage("/workspace/accept");
     expect(screen.getByRole("alert")).toHaveTextContent("Não foi possível validar este convite");
     expect(screen.queryByRole("button", { name: "Criar conta e aceitar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Voltar ao site" })).not.toBeInTheDocument();
     expect(mocks.signUp).not.toHaveBeenCalled();
   });
 

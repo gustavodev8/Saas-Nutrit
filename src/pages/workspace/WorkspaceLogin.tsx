@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { KeyRound, Leaf, Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +46,6 @@ export default function WorkspaceLogin() {
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <Button className="w-full" type="submit" disabled={loading}>{loading && <Loader2 className="animate-spin" />}Entrar no workspace</Button>
         </form>
-        <Link className="mt-6 block text-center text-sm text-muted-foreground underline-offset-4 hover:underline" to="/">Voltar ao site</Link>
       </section>
     </main>
   );

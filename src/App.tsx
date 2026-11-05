@@ -11,6 +11,8 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { PatientPortalAuthProvider } from "@/contexts/PatientPortalAuthContext";
 import { PatientPortalSettingsProvider } from "@/contexts/PatientPortalSettingsContext";
 import { WorkspaceAuthProvider } from "@/contexts/WorkspaceAuthContext";
+import { SaaSPilotRouteGate } from "@/components/SaaSPilotRouteGate";
+import { isSaaSPilotModeEnabled } from "@/lib/saasPilotMode";
 
 // Public pages
 import Index from "./pages/Index";
@@ -82,6 +84,7 @@ import PlatformInvitationsPage from "./pages/platform/PlatformInvitationsPage";
 import WorkspaceProtectedRoute from "@/components/workspace/WorkspaceProtectedRoute";
 
 const queryClient = new QueryClient();
+const isSaaSPilotMode = isSaaSPilotModeEnabled(import.meta.env.VITE_SAAS_PILOT_MODE);
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -110,11 +113,21 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
-              <ScrollToTop />
-              <Routes>
-              {/* Landing page */}
-              <Route path="/" element={<Index />} />
+              <SaaSPilotRouteGate enabled={isSaaSPilotMode}>
+                <ScrollToTop />
+                <Routes>
+              <Route path="/workspace" element={<WorkspaceRoot />}>
+                <Route path="accept" element={<WorkspaceAcceptInvitationPage />} />
+                <Route path="login" element={<WorkspaceLogin />} />
+                <Route element={<WorkspaceProtectedRoute><Outlet /></WorkspaceProtectedRoute>}>
+                  <Route index element={<Navigate to="patients" replace />} />
+                  <Route path="patients" element={<WorkspacePatientsPage />} />
+                </Route>
+              </Route>
+              <Route path="/platform/invitations" element={<PlatformInvitationsPage />} />
 
+              {/* Legacy Fillipe site and application routes */}
+              <Route path="/" element={<Index />} />
               {/* Public pages */}
               <Route path="/consultas" element={<ConsultasPage />} />
               <Route path="/resultados" element={<ResultadosPage />} />
@@ -145,19 +158,6 @@ const App = () => (
                   <Route path="documentos" element={<PatientPortalDocuments />} />
                 </Route>
               </Route>
-
-              {/* Closed workspace pilot */}
-              <Route path="/workspace" element={<WorkspaceRoot />}>
-                <Route path="accept" element={<WorkspaceAcceptInvitationPage />} />
-                <Route path="login" element={<WorkspaceLogin />} />
-                <Route element={<WorkspaceProtectedRoute><Outlet /></WorkspaceProtectedRoute>}>
-                  <Route index element={<Navigate to="patients" replace />} />
-                  <Route path="patients" element={<WorkspacePatientsPage />} />
-                </Route>
-              </Route>
-
-              {/* Platform provisioning: authorization is enforced by the Edge Function allowlist */}
-              <Route path="/platform/invitations" element={<PlatformInvitationsPage />} />
 
               {/* Payment status pages */}
               <Route path="/pagamento/sucesso" element={<PaymentSuccess />} />
@@ -219,8 +219,9 @@ const App = () => (
               </Route>
 
               {/* 404 */}
-              <Route path="*" element={<NotFound />} />
-              </Routes>
+              <Route path="*" element={isSaaSPilotMode ? <Navigate to="/workspace/login" replace /> : <NotFound />} />
+                </Routes>
+              </SaaSPilotRouteGate>
             </BrowserRouter>
           </TooltipProvider>
         </AuthProvider>

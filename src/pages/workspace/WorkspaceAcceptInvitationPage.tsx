@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { KeyRound, Leaf, Loader2, Mail } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
@@ -217,7 +217,6 @@ export default function WorkspaceAcceptInvitationPage() {
             </button>
           </>
         )}
-        <Link className="mt-6 block text-center text-sm text-muted-foreground underline-offset-4 hover:underline" to="/">Voltar ao site</Link>
       </section>
     </main>
   );
