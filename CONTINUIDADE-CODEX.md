@@ -1,5 +1,14 @@
 # Continuidade Codex
 
+## Vercel isolado para o piloto — 2026-11-05
+
+- **Projeto:** `nutri-saas-pilot`, separado dos projetos existentes `nutri-ladingpage` e `nutri-saas`; conectado ao repositório `gustavodev8/Saas-Nutrit`.
+- **Origem Supabase:** `qwwltjaoftnsuvpgrsmm`; somente `VITE_SUPABASE_URL` e chave pública `VITE_SUPABASE_ANON_KEY` configuradas no projeto Vercel. Nenhuma chave privilegiada copiada.
+- **Produção Vercel:** tracking salvo para `codex/saas-closed-pilot-release`; único domínio associado é `nutri-saas-pilot.vercel.app`. Nenhum deployment foi criado ainda; o dashboard informa “No Production Deployment”.
+- **Preservação:** domínio `fillipedavidnutri.online`, projeto Vercel `nutri-ladingpage` e o projeto legado `nutri-saas` não foram alterados. O domínio de produção do Fillipe não foi vinculado ao novo projeto.
+- **Próximo passo:** criar um commit de documentação isolado na branch do piloto para acionar o primeiro build Vercel; validar deployment/rotas. Antes de convites reais, alinhar `SAAS_SITE_URL` e Auth redirect allowlist com o domínio do piloto. Não enviar convites nesta etapa.
+- **Limites:** lançamento é piloto fechado de workspaces/convites e pacientes, não SaaS clínico completo. Não publicar pagamentos, fluxo de agendamento ou migrations candidatas. Pendências locais não relacionadas permanecem fora do commit.
+
 ## Enforcement de cadastro por convite via Auth Hook — migration aplicada — 2026-11-04
 
 - **Estado:** migration `20261104050000_validate_workspace_invitation_before_signup.sql` aplicada isoladamente no projeto de origem `qwwltjaoftnsuvpgrsmm`, após `migration list` e dry-run mostrarem exatamente uma migration pendente e nenhum seed/role. SHA-256 local/release: `F8F404A891322C6AD32C9F4A54CB5CCE0CF7528457633A6863AC6ACCA5559A8B`.
