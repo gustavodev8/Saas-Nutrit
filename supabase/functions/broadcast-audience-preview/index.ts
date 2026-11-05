@@ -29,6 +29,7 @@ serve(async (req) => {
       supabaseUrl: auth.supabaseUrl,
       serviceKey: auth.serviceKey,
       filters: body.filters,
+      scope: "legacy-fillipe",
     });
 
     return jsonResponse(audience.summary, 200, corsHeaders);

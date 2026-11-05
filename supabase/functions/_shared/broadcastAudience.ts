@@ -69,11 +69,17 @@ export async function resolveBroadcastAudience({
   supabaseUrl,
   serviceKey,
   filters,
+  scope,
 }: {
   supabaseUrl: string;
   serviceKey: string;
   filters?: BroadcastFilters;
+  /** This helper is intentionally limited to the original Fillipe operation. */
+  scope: "legacy-fillipe";
 }): Promise<BroadcastAudienceResult> {
+  if (scope !== "legacy-fillipe") {
+    throw new Error("Broadcast audience helper is restricted to the legacy Fillipe scope");
+  }
   const sources = normalizeSources(filters?.sources);
   const periodDays = typeof filters?.periodDays === "number" && filters.periodDays > 0
     ? filters.periodDays
@@ -105,31 +111,41 @@ export async function resolveBroadcastAudience({
   };
 
   if (sources.includes("ebooks")) {
-    let url = `${supabaseUrl}/rest/v1/payment_logs?select=${EMAIL_FIELDS.ebooks}&status=eq.approved`;
-    if (since) url += `&created_at=gte.${since}`;
-    if (productName) url += `&product_name=ilike.*${encodeURIComponent(productName)}*`;
+    const url = new URL(`${supabaseUrl}/rest/v1/payment_logs`);
+    url.searchParams.set("select", EMAIL_FIELDS.ebooks);
+    url.searchParams.set("status", "eq.approved");
+    url.searchParams.set("workspace_id", "is.null");
+    if (since) url.searchParams.set("created_at", `gte.${since}`);
+    if (productName) url.searchParams.set("product_name", `ilike.*${productName}*`);
 
-    const rows = await fetchRows(url, headers);
+    const rows = await fetchRows(url.toString(), headers);
     for (const row of rows) addEmail(row[EMAIL_FIELDS.ebooks], "ebooks");
   }
 
   if (sources.includes("bookings")) {
-    let url = `${supabaseUrl}/rest/v1/bookings?select=${EMAIL_FIELDS.bookings}&status=neq.cancelled`;
-    if (since) url += `&created_at=gte.${since}`;
+    const url = new URL(`${supabaseUrl}/rest/v1/bookings`);
+    url.searchParams.set("select", EMAIL_FIELDS.bookings);
+    url.searchParams.set("status", "neq.cancelled");
+    url.searchParams.set("workspace_id", "is.null");
+    if (since) url.searchParams.set("created_at", `gte.${since}`);
 
-    const rows = await fetchRows(url, headers);
+    const rows = await fetchRows(url.toString(), headers);
     for (const row of rows) addEmail(row[EMAIL_FIELDS.bookings], "bookings");
   }
 
   if (sources.includes("patients")) {
-    let url = `${supabaseUrl}/rest/v1/patients?select=${EMAIL_FIELDS.patients}`;
-    if (since) url += `&created_at=gte.${since}`;
+    const url = new URL(`${supabaseUrl}/rest/v1/patients`);
+    url.searchParams.set("select", EMAIL_FIELDS.patients);
+    url.searchParams.set("workspace_id", "is.null");
+    if (since) url.searchParams.set("created_at", `gte.${since}`);
 
     const rows = await fetchRows(url, headers);
     for (const row of rows) addEmail(row[EMAIL_FIELDS.patients], "patients");
   }
 
   if (sources.includes("leads")) {
+    // Leads have no workspace ownership. This explicitly legacy-only function
+    // must never be reused for a tenant audience.
     let url = `${supabaseUrl}/rest/v1/leads?select=${EMAIL_FIELDS.leads}`;
     if (since) url += `&created_at=gte.${since}`;
 

@@ -1,6 +1,9 @@
-export function buildCorsHeaders(allowedMethods = "POST, OPTIONS") {
+export function buildCorsHeaders(
+  allowedMethods = "POST, OPTIONS",
+  configuredSiteUrl = Deno.env.get("SITE_URL"),
+) {
   return {
-    "Access-Control-Allow-Origin": Deno.env.get("SITE_URL") || "*",
+    "Access-Control-Allow-Origin": configuredSiteUrl || "*",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": allowedMethods,
   };
@@ -44,8 +47,8 @@ function normalizeOrigin(value: string) {
 export function assertAllowedOrigin(
   req: Request,
   corsHeaders: Record<string, string>,
+  configuredSiteUrl = Deno.env.get("SITE_URL")?.trim(),
 ) {
-  const configuredSiteUrl = Deno.env.get("SITE_URL")?.trim();
   if (!configuredSiteUrl) return null;
 
   const allowedOrigin = normalizeOrigin(configuredSiteUrl);
@@ -80,6 +83,24 @@ export async function sha256Hex(value: string) {
     .join("");
 }
 
+async function hmacSha256Hex(key: string, value: string) {
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    cryptoKey,
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export async function getClientFingerprint(req: Request, extraKey = "") {
   const ip = getClientIp(req);
   const userAgent = req.headers.get("user-agent") ?? "unknown";
@@ -98,6 +119,14 @@ interface RateLimitInput {
   limit: number;
   windowSeconds: number;
   extraKey?: string;
+  identityKey?: string;
+}
+
+export async function getRateLimitIdentityHash(endpoint: string, identityKey: string) {
+  const hmacSecret = Deno.env.get("SAAS_RATE_LIMIT_HMAC_SECRET")?.trim();
+  if (!hmacSecret) throw new Error("SAAS_RATE_LIMIT_HMAC_SECRET is required");
+
+  return hmacSha256Hex(hmacSecret, `${endpoint}|${identityKey.trim().toLowerCase()}`);
 }
 
 export async function enforceRateLimit({
@@ -107,6 +136,7 @@ export async function enforceRateLimit({
   limit,
   windowSeconds,
   extraKey = "",
+  identityKey,
 }: RateLimitInput) {
   const unavailableResponse = () =>
     jsonResponse({ error: "Servico temporariamente indisponivel." }, 503, corsHeaders);
@@ -121,7 +151,9 @@ export async function enforceRateLimit({
       Math.floor(Date.now() / (windowSeconds * 1000)) * windowSeconds * 1000,
     ).toISOString();
 
-    const fingerprintHash = await getClientFingerprint(req, `${endpoint}|${extraKey}`);
+    const fingerprintHash = identityKey
+      ? await getRateLimitIdentityHash(endpoint, identityKey)
+      : await getClientFingerprint(req, `${endpoint}|${extraKey}`);
     const commonHeaders = {
       apikey: serviceKey,
       Authorization: `Bearer ${serviceKey}`,
@@ -137,6 +169,7 @@ export async function enforceRateLimit({
         p_bucket_start: bucketStart,
         p_hit_limit: limit,
       }),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!rateLimitRes.ok) return unavailableResponse();
 

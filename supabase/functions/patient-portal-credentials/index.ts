@@ -66,6 +66,7 @@ serve(async (req) => {
       .from("patients")
       .select("id, name, email")
       .eq("id", patientId)
+      .is("workspace_id", null)
       .maybeSingle();
 
     if (patientError || !patient) {

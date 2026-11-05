@@ -10,6 +10,7 @@ import { ContentProvider } from "@/contexts/ContentContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PatientPortalAuthProvider } from "@/contexts/PatientPortalAuthContext";
 import { PatientPortalSettingsProvider } from "@/contexts/PatientPortalSettingsContext";
+import { WorkspaceAuthProvider } from "@/contexts/WorkspaceAuthContext";
 
 // Public pages
 import Index from "./pages/Index";
@@ -74,6 +75,11 @@ import PatientPortalHome from "./pages/portal/PatientPortalHome";
 import PatientPortalPlan from "./pages/portal/PatientPortalPlan";
 import PatientPortalConsultas from "./pages/portal/PatientPortalConsultas";
 import PatientPortalDocuments from "./pages/portal/PatientPortalDocuments";
+import WorkspaceLogin from "./pages/workspace/WorkspaceLogin";
+import WorkspacePatientsPage from "./pages/workspace/WorkspacePatientsPage";
+import WorkspaceAcceptInvitationPage from "./pages/workspace/WorkspaceAcceptInvitationPage";
+import PlatformInvitationsPage from "./pages/platform/PlatformInvitationsPage";
+import WorkspaceProtectedRoute from "@/components/workspace/WorkspaceProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -87,6 +93,12 @@ const PatientPortalRoot = () => (
   <PatientPortalAuthProvider>
     <Outlet />
   </PatientPortalAuthProvider>
+);
+
+const WorkspaceRoot = () => (
+  <WorkspaceAuthProvider>
+    <Outlet />
+  </WorkspaceAuthProvider>
 );
 
 const App = () => (
@@ -133,6 +145,19 @@ const App = () => (
                   <Route path="documentos" element={<PatientPortalDocuments />} />
                 </Route>
               </Route>
+
+              {/* Closed workspace pilot */}
+              <Route path="/workspace" element={<WorkspaceRoot />}>
+                <Route path="accept" element={<WorkspaceAcceptInvitationPage />} />
+                <Route path="login" element={<WorkspaceLogin />} />
+                <Route element={<WorkspaceProtectedRoute><Outlet /></WorkspaceProtectedRoute>}>
+                  <Route index element={<Navigate to="patients" replace />} />
+                  <Route path="patients" element={<WorkspacePatientsPage />} />
+                </Route>
+              </Route>
+
+              {/* Platform provisioning: authorization is enforced by the Edge Function allowlist */}
+              <Route path="/platform/invitations" element={<PlatformInvitationsPage />} />
 
               {/* Payment status pages */}
               <Route path="/pagamento/sucesso" element={<PaymentSuccess />} />

@@ -49,6 +49,7 @@ serve(async (req) => {
       supabaseUrl: auth.supabaseUrl,
       serviceKey: auth.serviceKey,
       filters: body.filters,
+      scope: "legacy-fillipe",
     });
     const recipients = audience.recipients;
     if (recipients.length === 0) {

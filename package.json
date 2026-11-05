@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "foods:seed": "node scripts/import-foods-csv.mjs --input alimentos.csv --output supabase/seeds/master_foods_seed.sql",
     "test": "vitest run",
+    "test:workspace": "vitest run src/contexts/WorkspaceAuthContext.test.tsx src/lib/workspaceAuth.test.ts src/pages/workspace/WorkspacePatientsPage.test.tsx --maxWorkers=1 --minWorkers=1",
     "test:watch": "vitest"
   },
   "dependencies": {
