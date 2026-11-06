@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   onAuthStateChange: vi.fn(),
   signInWithPassword: vi.fn(),
+  resetPasswordForEmail: vi.fn(),
   signOut: vi.fn(),
   invoke: vi.fn(),
 }));
@@ -17,6 +18,7 @@ vi.mock("@/lib/workspaceSupabase", () => ({
       getSession: mocks.getSession,
       onAuthStateChange: mocks.onAuthStateChange,
       signInWithPassword: mocks.signInWithPassword,
+      resetPasswordForEmail: mocks.resetPasswordForEmail,
       signOut: mocks.signOut,
     },
     functions: { invoke: mocks.invoke },
@@ -51,6 +53,7 @@ describe("PlatformInvitationsPage", () => {
     mocks.getSession.mockResolvedValue({ data: { session: null }, error: null });
     mocks.onAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
     mocks.signInWithPassword.mockResolvedValue({ data: { session }, error: null });
+    mocks.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
     mocks.signOut.mockResolvedValue({ error: null });
     mockApprovedQueue();
   });
@@ -66,6 +69,27 @@ describe("PlatformInvitationsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preparar convite" }));
     expect(await screen.findByLabelText("E-mail do profissional")).toHaveValue("invitee@example.test");
     expect(screen.getByLabelText("Nome do workspace")).toHaveValue("Ana Nutricionista");
+  });
+
+  it("requests password recovery with the pilot reset route", async () => {
+    render(<PlatformInvitationsPage />);
+    fireEvent.change(await screen.findByLabelText("E-mail"), { target: { value: " Admin@Example.Test " } });
+    fireEvent.click(screen.getByRole("button", { name: "Esqueci minha senha" }));
+
+    await waitFor(() => expect(mocks.resetPasswordForEmail).toHaveBeenCalledWith(
+      "admin@example.test",
+      { redirectTo: `${window.location.origin}/platform/reset-password` },
+    ));
+    expect(await screen.findByRole("status")).toHaveTextContent("Se o e-mail estiver associado a uma conta");
+  });
+
+  it("validates the recovery email without calling Supabase", async () => {
+    render(<PlatformInvitationsPage />);
+    await screen.findByLabelText("E-mail");
+    fireEvent.click(screen.getByRole("button", { name: "Esqueci minha senha" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Informe um e-mail válido");
+    expect(mocks.resetPasswordForEmail).not.toHaveBeenCalled();
   });
 
   it("sends an invitation for an approved request with normalized fields", async () => {

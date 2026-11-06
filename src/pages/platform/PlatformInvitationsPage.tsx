@@ -20,6 +20,7 @@ export default function PlatformInvitationsPage({ accessRequestsEnabled = false 
   const [workspaceName, setWorkspaceName] = useState("");
   const [preparedRequestId, setPreparedRequestId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resetRequestBusy, setResetRequestBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [messageKind, setMessageKind] = useState<"error" | "success">("error");
 
@@ -59,6 +60,36 @@ export default function PlatformInvitationsPage({ accessRequestsEnabled = false 
       setMessage("Não foi possível autenticar. Tente novamente.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setMessageKind("error");
+      setMessage("Informe um e-mail válido para solicitar a recuperação.");
+      return;
+    }
+    if (busy || resetRequestBusy) return;
+
+    setResetRequestBusy(true);
+    setMessage("");
+    try {
+      const { error } = await workspaceSupabase.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: `${window.location.origin}/platform/reset-password`,
+      });
+      if (error) {
+        setMessageKind("error");
+        setMessage("Não foi possível solicitar a recuperação agora. Tente novamente.");
+      } else {
+        setMessageKind("success");
+        setMessage("Se o e-mail estiver associado a uma conta, você receberá as instruções para redefinir a senha.");
+      }
+    } catch {
+      setMessageKind("error");
+      setMessage("Não foi possível solicitar a recuperação agora. Tente novamente.");
+    } finally {
+      setResetRequestBusy(false);
     }
   };
 
@@ -123,8 +154,12 @@ export default function PlatformInvitationsPage({ accessRequestsEnabled = false 
             <p className="text-sm text-muted-foreground">Entre com sua conta da plataforma para continuar.</p>
             <div className="space-y-2"><Label htmlFor="platform-admin-email">E-mail</Label><div className="relative"><Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" /><Input id="platform-admin-email" className="pl-9" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></div>
             <div className="space-y-2"><Label htmlFor="platform-admin-password">Senha</Label><div className="relative"><KeyRound className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" /><Input id="platform-admin-password" className="pl-9" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></div></div>
-            {message && <p role="alert" className="text-sm text-destructive">{message}</p>}
+            {message && <p role={messageKind === "success" ? "status" : "alert"} className={`text-sm ${messageKind === "success" ? "text-foreground" : "text-destructive"}`}>{message}</p>}
             <Button className="w-full" type="submit" disabled={busy}>{busy && <Loader2 className="animate-spin" aria-hidden="true" />}Entrar</Button>
+            <Button className="w-full" type="button" variant="link" disabled={busy || resetRequestBusy} onClick={() => void handlePasswordReset()}>
+              {resetRequestBusy && <Loader2 className="animate-spin" aria-hidden="true" />}
+              Esqueci minha senha
+            </Button>
           </form>
         ) : (
           <div className="space-y-8">

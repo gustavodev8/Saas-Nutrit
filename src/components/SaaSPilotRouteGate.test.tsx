@@ -20,6 +20,7 @@ function renderRoutes(flag: string | undefined, initialPath: string) {
           <Route path="/consultas" element={<p>Consultas legadas</p>} />
           <Route path="/workspace/*" element={<CurrentRoute />} />
           <Route path="/platform/invitations" element={<CurrentRoute />} />
+          <Route path="/platform/reset-password" element={<CurrentRoute />} />
           <Route path="*" element={<p>Não encontrado legado</p>} />
         </Routes>
       </SaaSPilotRouteGate>
@@ -31,7 +32,7 @@ describe("SaaS pilot route gate", () => {
   it("allows the SaaS landing, workspace, and platform invitation routes and redirects unknown paths", () => {
     expect(isSaaSPilotModeEnabled("true")).toBe(true);
 
-    const allowedRoutes = ["/", "/workspace/login", "/workspace/accept", "/platform/invitations"];
+    const allowedRoutes = ["/", "/workspace/login", "/workspace/accept", "/platform/invitations", "/platform/reset-password"];
     for (const path of allowedRoutes) {
       const { unmount } = renderRoutes("true", path);
       expect(path === "/" ? screen.getByText("Landing SaaS") : screen.getByText(`Rota: ${path}`)).toBeInTheDocument();

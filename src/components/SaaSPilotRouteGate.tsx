@@ -16,7 +16,8 @@ export function SaaSPilotRouteGate({ enabled, children }: SaaSPilotRouteGateProp
   const allowedInPilot = pathname === "/"
     || pathname === "/workspace"
     || pathname.startsWith("/workspace/")
-    || pathname === "/platform/invitations";
+    || pathname === "/platform/invitations"
+    || pathname === "/platform/reset-password";
 
   if (enabled && !allowedInPilot) {
     return <Navigate to="/workspace/login" replace />;

@@ -81,6 +81,7 @@ import WorkspaceLogin from "./pages/workspace/WorkspaceLogin";
 import WorkspacePatientsPage from "./pages/workspace/WorkspacePatientsPage";
 import WorkspaceAcceptInvitationPage from "./pages/workspace/WorkspaceAcceptInvitationPage";
 import PlatformInvitationsPage from "./pages/platform/PlatformInvitationsPage";
+import PlatformResetPasswordPage from "./pages/platform/PlatformResetPasswordPage";
 import WorkspaceProtectedRoute from "@/components/workspace/WorkspaceProtectedRoute";
 import PublicSaaSLandingPage from "./pages/PublicSaaSLandingPage";
 
@@ -127,6 +128,7 @@ const App = () => (
                 </Route>
               </Route>
               <Route path="/platform/invitations" element={<PlatformInvitationsPage accessRequestsEnabled={isSaaSAccessRequestsEnabled} />} />
+              <Route path="/platform/reset-password" element={<PlatformResetPasswordPage />} />
 
               {/* Legacy Fillipe site and application routes */}
               <Route path="/" element={isSaaSPilotMode ? <PublicSaaSLandingPage accessRequestsEnabled={isSaaSAccessRequestsEnabled} /> : <Index />} />
