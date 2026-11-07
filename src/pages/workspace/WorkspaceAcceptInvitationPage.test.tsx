@@ -108,6 +108,7 @@ describe("WorkspaceAcceptInvitationPage", () => {
     authCallback("SIGNED_IN", confirmedSession);
     await screen.findByText("Destino: /workspace/patients");
     expect(mocks.acceptInvitation).toHaveBeenCalledWith("accept_workspace_invitation", { p_token: "a".repeat(64) });
+    expect(mocks.validateInvitation).toHaveBeenCalledWith({ p_token: "a".repeat(64), p_email: "invitee@example.test" });
     expect(mocks.refreshMembership).toHaveBeenCalledTimes(1);
     expect(window.sessionStorage.getItem("workspace-invitation-token")).toBeNull();
   });
@@ -133,6 +134,7 @@ describe("WorkspaceAcceptInvitationPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível validar este convite");
     expect(mocks.signUp).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBe("f".repeat(64));
   });
 
   it("accepts an existing account after login", async () => {
@@ -144,7 +146,7 @@ describe("WorkspaceAcceptInvitationPage", () => {
 
     await screen.findByText("Destino: /workspace/patients");
     expect(mocks.signInWithPassword).toHaveBeenCalledWith({ email: "invitee@example.test", password: "strong-password" });
-    expect(mocks.validateInvitation).not.toHaveBeenCalled();
+    expect(mocks.validateInvitation).toHaveBeenCalledWith({ p_token: "b".repeat(64), p_email: "invitee@example.test" });
     expect(mocks.acceptInvitation).toHaveBeenCalledWith("accept_workspace_invitation", { p_token: "b".repeat(64) });
     expect(mocks.refreshMembership).toHaveBeenCalledTimes(1);
   });
@@ -158,6 +160,36 @@ describe("WorkspaceAcceptInvitationPage", () => {
     expect(window.location.search).toBe("");
     expect(mocks.acceptInvitation).toHaveBeenCalledWith("accept_workspace_invitation", { p_token: "d".repeat(64) });
     expect(window.sessionStorage.getItem("workspace-invitation-token")).toBeNull();
+  });
+
+  it("does not consume an invitation when the current session does not match it", async () => {
+    const otherSession = {
+      ...confirmedSession,
+      user: { ...confirmedSession.user, id: "other-user", email: "different@example.test" },
+    };
+    const token = "9".repeat(64);
+    mocks.getSession.mockResolvedValue({ data: { session: otherSession }, error: null });
+    mocks.validateInvitation.mockResolvedValue({ data: false, error: null });
+    renderPage(`/workspace/accept?token=${token}`);
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("associar esta sessão a um convite válido ou pendente");
+    expect(status).toHaveTextContent("Confira se está usando o e-mail do convite ou solicite um novo convite");
+    expect(status).toHaveTextContent("o link foi mantido");
+    expect(mocks.validateInvitation).toHaveBeenCalledWith({ p_token: token, p_email: "different@example.test" });
+    expect(mocks.acceptInvitation).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBe(token);
+  });
+
+  it("keeps the invitation when server validation for an existing session fails", async () => {
+    const token = "8".repeat(64);
+    mocks.getSession.mockResolvedValue({ data: { session: confirmedSession }, error: null });
+    mocks.validateInvitation.mockResolvedValue({ data: null, error: { message: "validation unavailable" } });
+    renderPage(`/workspace/accept?token=${token}`);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Não foi possível verificar o convite agora");
+    expect(mocks.acceptInvitation).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBe(token);
   });
 
   it("shows a neutral failure when the invitation is expired or rejected", async () => {

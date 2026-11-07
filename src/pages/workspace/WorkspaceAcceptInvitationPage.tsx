@@ -12,6 +12,8 @@ type FormMode = "signup" | "login";
 const INVITATION_TOKEN_STORAGE_KEY = "workspace-invitation-token";
 
 const INVALID_INVITATION_MESSAGE = "Não foi possível validar este convite. Verifique o link ou solicite um novo.";
+const SESSION_INVITATION_MESSAGE = "Não foi possível associar esta sessão a um convite válido ou pendente. Confira se está usando o e-mail do convite ou solicite um novo convite; o link foi mantido.";
+const INVITATION_CHECK_MESSAGE = "Não foi possível verificar o convite agora. Tente novamente com o e-mail associado a ele; o link foi mantido.";
 
 export default function WorkspaceAcceptInvitationPage() {
   const navigate = useNavigate();
@@ -75,10 +77,32 @@ export default function WorkspaceAcceptInvitationPage() {
       return;
     }
 
+    const normalizedEmail = session.user.email?.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setMessageKind("info");
+      setMessage(SESSION_INVITATION_MESSAGE);
+      return;
+    }
+
     inFlight.current.add(attemptKey);
     setBusy(true);
     setMessage("");
     try {
+      const { data: invitationMatchesSession, error: validationError } = await workspaceSupabase.rpc(
+        "validate_workspace_invitation_before_signup",
+        { p_token: token, p_email: normalizedEmail },
+      );
+      if (validationError) {
+        setMessageKind("info");
+        setMessage(INVITATION_CHECK_MESSAGE);
+        return;
+      }
+      if (invitationMatchesSession !== true) {
+        setMessageKind("info");
+        setMessage(SESSION_INVITATION_MESSAGE);
+        return;
+      }
+
       const { data, error } = await workspaceSupabase.rpc("accept_workspace_invitation", { p_token: token });
       if (error || !data) {
         if (!error) window.sessionStorage.removeItem(INVITATION_TOKEN_STORAGE_KEY);
@@ -95,8 +119,8 @@ export default function WorkspaceAcceptInvitationPage() {
       accepted.current.add(attemptKey);
       navigate("/workspace/patients", { replace: true });
     } catch {
-      setMessageKind("error");
-      setMessage(INVALID_INVITATION_MESSAGE);
+      setMessageKind("info");
+      setMessage(INVITATION_CHECK_MESSAGE);
     } finally {
       inFlight.current.delete(attemptKey);
       setBusy(false);
