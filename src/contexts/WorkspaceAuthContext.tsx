@@ -27,6 +27,7 @@ async function resolveCurrentMembership(): Promise<ValidWorkspaceMembership | nu
 export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const isInvitationRoute = location.pathname === "/workspace/accept";
+  const preserveUnassignedSession = isInvitationRoute || location.pathname === "/workspace/login";
   const [authReady, setAuthReady] = useState(false);
   const [membershipReady, setMembershipReady] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -48,7 +49,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
     try {
       const nextMembership = await resolveCurrentMembership();
       setMembership(nextMembership);
-      if (!nextMembership && !isInvitationRoute) await workspaceSupabase.auth.signOut();
+      if (!nextMembership && !preserveUnassignedSession) await workspaceSupabase.auth.signOut();
     } catch (error) {
       console.error("[WorkspaceAuth] membership lookup failed:", error);
       setMembership(null);
@@ -56,7 +57,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setMembershipReady(true);
     }
-  }, [isInvitationRoute]);
+  }, [isInvitationRoute, preserveUnassignedSession]);
 
   const refreshMembership = useCallback(async () => {
     const { data } = await workspaceSupabase.auth.getSession();
@@ -101,7 +102,14 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
     try {
       const nextMembership = await resolveCurrentMembership();
       if (!nextMembership) {
-        await workspaceSupabase.auth.signOut();
+        if (preserveUnassignedSession) {
+          setUserEmail(normalizedEmail);
+          setMembership(null);
+          setAuthReady(true);
+          setMembershipReady(true);
+        } else {
+          await workspaceSupabase.auth.signOut();
+        }
         return { ok: false, message: "Este usuario nao possui uma membership workspace valida." };
       }
       setUserEmail(normalizedEmail);
@@ -114,7 +122,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
       await workspaceSupabase.auth.signOut().catch(() => null);
       return { ok: false, message: "Nao foi possivel validar o acesso workspace." };
     }
-  }, []);
+  }, [preserveUnassignedSession]);
 
   const logout = useCallback(async () => {
     await workspaceSupabase.auth.signOut().catch(() => null);
