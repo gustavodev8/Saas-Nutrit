@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { KeyRound, Leaf, Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ export default function WorkspaceLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [platformAdminGuidance, setPlatformAdminGuidance] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -23,13 +24,18 @@ export default function WorkspaceLogin() {
     event.preventDefault();
     setLoading(true);
     setError("");
+    setPlatformAdminGuidance(false);
     const result = await login(email, password);
     setLoading(false);
     if (result.ok) {
       const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
       navigate(from?.startsWith("/workspace") ? from : "/workspace/patients", { replace: true });
     } else {
-      setError(result.message ?? "Nao foi possivel entrar.");
+      const membershipMissing = result.message === "Este usuario nao possui uma membership workspace valida.";
+      setPlatformAdminGuidance(membershipMissing);
+      setError(membershipMissing
+        ? "O login profissional é para nutricionistas convidados e exige uma membership ativa. Se você é administrador da plataforma, use a área de convites."
+        : result.message ?? "Nao foi possivel entrar.");
     }
   };
 
@@ -43,7 +49,18 @@ export default function WorkspaceLogin() {
         <form className="space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2"><Label htmlFor="workspace-email">E-mail</Label><div className="relative"><Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input id="workspace-email" className="pl-9" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></div>
           <div className="space-y-2"><Label htmlFor="workspace-password">Senha</Label><div className="relative"><KeyRound className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input id="workspace-password" className="pl-9" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></div></div>
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {error && (
+            <div role="alert" className="space-y-2 text-sm text-destructive">
+              <p>{error}</p>
+              {platformAdminGuidance && (
+                <p>
+                  <Link className="font-medium underline underline-offset-2" to="/platform/invitations">
+                    Abrir convites da plataforma
+                  </Link>
+                </p>
+              )}
+            </div>
+          )}
           <Button className="w-full" type="submit" disabled={loading}>{loading && <Loader2 className="animate-spin" />}Entrar no workspace</Button>
         </form>
       </section>
