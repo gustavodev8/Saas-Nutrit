@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorkspaceAcceptInvitationPage from "./WorkspaceAcceptInvitationPage";
@@ -7,7 +7,7 @@ import WorkspaceAcceptInvitationPage from "./WorkspaceAcceptInvitationPage";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   onAuthStateChange: vi.fn(),
-  signUp: vi.fn(),
+  invokeSignup: vi.fn(),
   signInWithPassword: vi.fn(),
   validateInvitation: vi.fn(),
   acceptInvitation: vi.fn(),
@@ -19,9 +19,9 @@ vi.mock("@/lib/workspaceSupabase", () => ({
     auth: {
       getSession: mocks.getSession,
       onAuthStateChange: mocks.onAuthStateChange,
-      signUp: mocks.signUp,
       signInWithPassword: mocks.signInWithPassword,
     },
+    functions: { invoke: mocks.invokeSignup },
     rpc: (functionName: string, args: Record<string, unknown>) => {
       if (functionName === "validate_workspace_invitation_before_signup") {
         return mocks.validateInvitation(args);
@@ -68,7 +68,7 @@ describe("WorkspaceAcceptInvitationPage", () => {
     window.history.replaceState({}, "", "/");
     mocks.getSession.mockResolvedValue({ data: { session: null }, error: null });
     mocks.onAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
-    mocks.signUp.mockResolvedValue({ data: { session: null }, error: null });
+    mocks.invokeSignup.mockResolvedValue({ data: { ok: true }, error: null });
     mocks.signInWithPassword.mockResolvedValue({ data: { session: confirmedSession }, error: null });
     mocks.validateInvitation.mockResolvedValue({ data: true, error: null });
     mocks.acceptInvitation.mockResolvedValue({ data: "workspace-1", error: null });
@@ -80,61 +80,161 @@ describe("WorkspaceAcceptInvitationPage", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Não foi possível validar este convite");
     expect(screen.queryByRole("button", { name: "Criar conta e aceitar" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Voltar ao site" })).not.toBeInTheDocument();
-    expect(mocks.signUp).not.toHaveBeenCalled();
+    expect(mocks.invokeSignup).not.toHaveBeenCalled();
   });
 
-  it("removes the token from browser history, keeps it in session storage, and accepts after confirmation", async () => {
+  it("creates the account server-side, signs in, and accepts the pending invitation", async () => {
     const replaceState = vi.spyOn(window.history, "replaceState");
     renderPage("/workspace/accept?token=" + "a".repeat(64));
     fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "invitee@example.test" } });
     fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "strong-password" } });
     fireEvent.click(screen.getByRole("button", { name: "Criar conta e aceitar" }));
 
-    await waitFor(() => expect(mocks.signUp).toHaveBeenCalledTimes(1));
+    await screen.findByText("Destino: /workspace/patients");
+    expect(mocks.invokeSignup).toHaveBeenCalledWith("workspace-invitation-signup", {
+      body: { token: "a".repeat(64), email: "invitee@example.test", password: "strong-password" },
+    });
+    expect(mocks.signInWithPassword).toHaveBeenCalledWith({ email: "invitee@example.test", password: "strong-password" });
     expect(mocks.validateInvitation).toHaveBeenCalledWith({ p_token: "a".repeat(64), p_email: "invitee@example.test" });
-    expect(mocks.validateInvitation.mock.invocationCallOrder[0]).toBeLessThan(mocks.signUp.mock.invocationCallOrder[0]);
     expect(window.location.search).toBe("");
     expect(replaceState).toHaveBeenCalledWith(expect.anything(), "", "/workspace/accept");
-    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBe("a".repeat(64));
-    const signUpOptions = mocks.signUp.mock.calls[0][0].options;
-    const redirect = new URL(signUpOptions.emailRedirectTo);
-    expect(redirect.pathname).toBe("/workspace/accept");
-    expect(redirect.searchParams.get("token")).toBe("a".repeat(64));
-    expect(signUpOptions.data).toEqual({ workspace_invitation_token: "a".repeat(64) });
-    expect(await screen.findByRole("status")).toHaveTextContent("Enviamos um link para confirmar seu e-mail");
-    expect(mocks.acceptInvitation).not.toHaveBeenCalled();
-
-    const authCallback = mocks.onAuthStateChange.mock.calls[0][0] as (_event: string, session: typeof confirmedSession) => void;
-    authCallback("SIGNED_IN", confirmedSession);
-    await screen.findByText("Destino: /workspace/patients");
     expect(mocks.acceptInvitation).toHaveBeenCalledWith("accept_workspace_invitation", { p_token: "a".repeat(64) });
-    expect(mocks.validateInvitation).toHaveBeenCalledWith({ p_token: "a".repeat(64), p_email: "invitee@example.test" });
     expect(mocks.refreshMembership).toHaveBeenCalledTimes(1);
     expect(window.sessionStorage.getItem("workspace-invitation-token")).toBeNull();
   });
 
+  it("removes the session token when signup returns a definitive invalid-invitation result", async () => {
+    mocks.invokeSignup.mockResolvedValue({ data: { ok: false, code: "invitation_invalid" }, error: null });
+    const token = "5".repeat(64);
+    renderPage(`/workspace/accept?token=${token}`);
+    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBe(token);
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "invitee@example.test" } });
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "strong-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Criar conta e aceitar" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível validar este convite");
+    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBeNull();
+    expect(mocks.signInWithPassword).not.toHaveBeenCalled();
+  });
+
+  it("switches to login after invitation acceptance when membership refresh fails", async () => {
+    mocks.refreshMembership.mockResolvedValue(false);
+    renderPage("/workspace/accept?token=" + "1".repeat(64));
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "invitee@example.test" } });
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "new-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Criar conta e aceitar" }));
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Convite aceito, mas seu acesso não carregou");
+    expect(status).toHaveTextContent("Atualize a página ou entre novamente com esta conta");
+    expect(status).toHaveTextContent("Não crie outra conta");
+    expect(screen.getByRole("button", { name: "Entrar e aceitar convite" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Criar conta e aceitar" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Senha")).toHaveValue("");
+    expect(mocks.acceptInvitation).toHaveBeenCalledWith("accept_workspace_invitation", { p_token: "1".repeat(64) });
+  });
+
   it("does not create an account when the server rejects the token/email pair", async () => {
-    mocks.validateInvitation.mockResolvedValue({ data: false, error: null });
+    mocks.invokeSignup.mockResolvedValue({ data: { ok: false, code: "invitation_invalid" }, error: null });
     renderPage("/workspace/accept?token=" + "e".repeat(64));
     fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "other@example.test" } });
     fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "strong-password" } });
     fireEvent.click(screen.getByRole("button", { name: "Criar conta e aceitar" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível validar este convite");
-    expect(mocks.validateInvitation).toHaveBeenCalledWith({ p_token: "e".repeat(64), p_email: "other@example.test" });
-    expect(mocks.signUp).not.toHaveBeenCalled();
+    expect(mocks.invokeSignup).toHaveBeenCalledWith("workspace-invitation-signup", {
+      body: { token: "e".repeat(64), email: "other@example.test", password: "strong-password" },
+    });
+    expect(mocks.signInWithPassword).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBeNull();
   });
 
-  it("fails closed and does not create an account when server validation errors", async () => {
-    mocks.validateInvitation.mockResolvedValue({ data: null, error: { message: "validation unavailable" } });
+  it("fails closed and preserves the invitation when the signup endpoint errors", async () => {
+    mocks.invokeSignup.mockResolvedValue({ data: null, error: { message: "signup unavailable" } });
     renderPage("/workspace/accept?token=" + "f".repeat(64));
     fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "invitee@example.test" } });
     fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "strong-password" } });
     fireEvent.click(screen.getByRole("button", { name: "Criar conta e aceitar" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível validar este convite");
-    expect(mocks.signUp).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível criar a conta agora");
+    expect(mocks.signInWithPassword).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem("workspace-invitation-token")).toBe("f".repeat(64));
+  });
+
+  it("switches to login for an existing account without changing its password", async () => {
+    mocks.invokeSignup.mockResolvedValue({ data: { ok: false, code: "account_exists" }, error: null });
+    renderPage("/workspace/accept?token=" + "7".repeat(64));
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "invitee@example.test" } });
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "existing-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Criar conta e aceitar" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Já existe uma conta para este e-mail");
+    expect(screen.getByRole("button", { name: "Entrar e aceitar convite" })).toBeInTheDocument();
+    expect(mocks.signInWithPassword).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBe("7".repeat(64));
+  });
+
+  it("keeps acceptance recoverable when account creation succeeds but immediate sign-in fails", async () => {
+    mocks.signInWithPassword.mockResolvedValueOnce({ data: { session: null }, error: { message: "temporary auth failure" } });
+    renderPage("/workspace/accept?token=" + "6".repeat(64));
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "invitee@example.test" } });
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "new-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Criar conta e aceitar" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("A conta foi criada, mas não foi possível entrar automaticamente");
+    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBe("6".repeat(64));
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "new-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Entrar e aceitar convite" }));
+
+    await screen.findByText("Destino: /workspace/patients");
+    expect(mocks.signInWithPassword).toHaveBeenCalledTimes(2);
+    expect(mocks.acceptInvitation).toHaveBeenCalledWith("accept_workspace_invitation", { p_token: "6".repeat(64) });
+  });
+
+  it("explains a revoked invitation after account creation and accepts a resent invite with the same account", async () => {
+    const originalToken = "2".repeat(64);
+    const resentToken = "3".repeat(64);
+    mocks.acceptInvitation
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: "workspace-1", error: null });
+    const firstRender = renderPage(`/workspace/accept?token=${originalToken}`);
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "invitee@example.test" } });
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "new-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Criar conta e aceitar" }));
+
+    const recovery = await screen.findByRole("status");
+    expect(recovery).toHaveTextContent("Sua conta foi criada, mas o acesso ao workspace não foi concluído");
+    expect(recovery).toHaveTextContent("Não crie outra conta");
+    expect(recovery).toHaveTextContent("reenviar o convite para este mesmo e-mail");
+    expect(recovery).toHaveTextContent("não pode ser recuperado");
+    expect(screen.getByRole("button", { name: "Entrar e aceitar convite" })).toBeInTheDocument();
+    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBeNull();
+    expect(mocks.invokeSignup).toHaveBeenCalledTimes(1);
+
+    firstRender.unmount();
+    mocks.getSession.mockResolvedValue({ data: { session: confirmedSession }, error: null });
+    renderPage(`/workspace/accept?token=${resentToken}`);
+
+    await screen.findByText("Destino: /workspace/patients");
+    expect(mocks.acceptInvitation).toHaveBeenNthCalledWith(2, "accept_workspace_invitation", { p_token: resentToken });
+    expect(mocks.invokeSignup).toHaveBeenCalledTimes(1);
+    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBeNull();
+  });
+
+  it("keeps a post-creation invite token on transient acceptance RPC errors and directs recovery", async () => {
+    const token = "4".repeat(64);
+    mocks.acceptInvitation.mockResolvedValue({ data: null, error: { message: "temporary RPC error" } });
+    renderPage(`/workspace/accept?token=${token}`);
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "invitee@example.test" } });
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "new-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Criar conta e aceitar" }));
+
+    const recovery = await screen.findByRole("status");
+    expect(recovery).toHaveTextContent("Sua conta foi criada, mas não foi possível concluir o acesso ao workspace");
+    expect(recovery).toHaveTextContent("Não crie outra conta");
+    expect(recovery).toHaveTextContent("peça ao administrador para reenviá-lo");
+    expect(window.sessionStorage.getItem("workspace-invitation-token")).toBe(token);
+    expect(mocks.invokeSignup).toHaveBeenCalledTimes(1);
   });
 
   it("accepts an existing account after login", async () => {

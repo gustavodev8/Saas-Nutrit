@@ -14,6 +14,8 @@ const INVITATION_TOKEN_STORAGE_KEY = "workspace-invitation-token";
 const INVALID_INVITATION_MESSAGE = "Não foi possível validar este convite. Verifique o link ou solicite um novo.";
 const SESSION_INVITATION_MESSAGE = "Não foi possível associar esta sessão a um convite válido ou pendente. Confira se está usando o e-mail do convite ou solicite um novo convite; o link foi mantido.";
 const INVITATION_CHECK_MESSAGE = "Não foi possível verificar o convite agora. Tente novamente com o e-mail associado a ele; o link foi mantido.";
+const CREATED_ACCOUNT_INVITATION_MESSAGE = "Sua conta foi criada, mas o acesso ao workspace não foi concluído. Não crie outra conta. Peça ao administrador para reenviar o convite para este mesmo e-mail e abra o novo link; um convite expirado ou cancelado não pode ser recuperado.";
+const CREATED_ACCOUNT_RETRY_MESSAGE = "Sua conta foi criada, mas não foi possível concluir o acesso ao workspace. Não crie outra conta. Tente novamente; se o convite expirou ou foi cancelado, peça ao administrador para reenviá-lo para este mesmo e-mail e abra o novo link.";
 
 export default function WorkspaceAcceptInvitationPage() {
   const navigate = useNavigate();
@@ -30,6 +32,7 @@ export default function WorkspaceAcceptInvitationPage() {
   const [messageKind, setMessageKind] = useState<"error" | "info">("error");
   const inFlight = useRef(new Set<string>());
   const accepted = useRef(new Set<string>());
+  const createdAccountEmail = useRef<string | null>(null);
 
   useEffect(() => {
     const currentUrl = new URL(window.location.href);
@@ -83,6 +86,7 @@ export default function WorkspaceAcceptInvitationPage() {
       setMessage(SESSION_INVITATION_MESSAGE);
       return;
     }
+    const accountWasCreatedHere = createdAccountEmail.current === normalizedEmail;
 
     inFlight.current.add(attemptKey);
     setBusy(true);
@@ -94,10 +98,19 @@ export default function WorkspaceAcceptInvitationPage() {
       );
       if (validationError) {
         setMessageKind("info");
-        setMessage(INVITATION_CHECK_MESSAGE);
+        setMessage(accountWasCreatedHere ? CREATED_ACCOUNT_RETRY_MESSAGE : INVITATION_CHECK_MESSAGE);
+        if (accountWasCreatedHere) setMode("login");
         return;
       }
       if (invitationMatchesSession !== true) {
+        if (accountWasCreatedHere) {
+          window.sessionStorage.removeItem(INVITATION_TOKEN_STORAGE_KEY);
+          setMode("login");
+          setPassword("");
+          setMessageKind("info");
+          setMessage(CREATED_ACCOUNT_INVITATION_MESSAGE);
+          return;
+        }
         setMessageKind("info");
         setMessage(SESSION_INVITATION_MESSAGE);
         return;
@@ -105,22 +118,34 @@ export default function WorkspaceAcceptInvitationPage() {
 
       const { data, error } = await workspaceSupabase.rpc("accept_workspace_invitation", { p_token: token });
       if (error || !data) {
-        if (!error) window.sessionStorage.removeItem(INVITATION_TOKEN_STORAGE_KEY);
-        setMessageKind("error");
-        setMessage(INVALID_INVITATION_MESSAGE);
+        if (accountWasCreatedHere) {
+          if (!error) window.sessionStorage.removeItem(INVITATION_TOKEN_STORAGE_KEY);
+          setMode("login");
+          setPassword("");
+          setMessageKind("info");
+          setMessage(error ? CREATED_ACCOUNT_RETRY_MESSAGE : CREATED_ACCOUNT_INVITATION_MESSAGE);
+        } else {
+          if (!error) window.sessionStorage.removeItem(INVITATION_TOKEN_STORAGE_KEY);
+          setMessageKind("error");
+          setMessage(INVALID_INVITATION_MESSAGE);
+        }
         return;
       }
       if (!await refreshMembership()) {
-        setMessageKind("error");
-        setMessage("Convite aceito, mas não foi possível carregar seu acesso. Atualize a página para tentar novamente.");
+        setMode("login");
+        setPassword("");
+        setMessageKind("info");
+        setMessage("Convite aceito, mas seu acesso não carregou. Atualize a página ou entre novamente com esta conta. Não crie outra conta.");
         return;
       }
       window.sessionStorage.removeItem(INVITATION_TOKEN_STORAGE_KEY);
+      if (accountWasCreatedHere) createdAccountEmail.current = null;
       accepted.current.add(attemptKey);
       navigate("/workspace/patients", { replace: true });
     } catch {
       setMessageKind("info");
-      setMessage(INVITATION_CHECK_MESSAGE);
+      setMessage(accountWasCreatedHere ? CREATED_ACCOUNT_RETRY_MESSAGE : INVITATION_CHECK_MESSAGE);
+      if (accountWasCreatedHere) setMode("login");
     } finally {
       inFlight.current.delete(attemptKey);
       setBusy(false);
@@ -155,34 +180,44 @@ export default function WorkspaceAcceptInvitationPage() {
     const normalizedEmail = email.trim().toLowerCase();
     try {
       if (mode === "signup") {
-        const { data: invitationIsValid, error: validationError } = await workspaceSupabase.rpc(
-          "validate_workspace_invitation_before_signup",
-          { p_token: token, p_email: normalizedEmail },
-        );
-        if (validationError || invitationIsValid !== true) {
-          setMessageKind("error");
-          setMessage(INVALID_INVITATION_MESSAGE);
-          return;
-        }
-
-        const redirect = new URL("/workspace/accept", window.location.origin);
-        redirect.searchParams.set("token", token);
-        const { data, error } = await workspaceSupabase.auth.signUp({
-          email: normalizedEmail,
-          password,
-          options: {
-            emailRedirectTo: redirect.toString(),
-            data: { workspace_invitation_token: token },
-          },
+        const submittedPassword = password;
+        const { data, error } = await workspaceSupabase.functions.invoke("workspace-invitation-signup", {
+          body: { token, email: normalizedEmail, password: submittedPassword },
         });
         if (error) {
           setMessageKind("error");
-          setMessage("Não foi possível concluir a solicitação. Confira os dados ou tente entrar com sua conta.");
-        } else if (data.session) {
-          await acceptInvitation(data.session);
-        } else {
+          setMessage("Não foi possível criar a conta agora. O convite foi mantido; tente novamente.");
+          return;
+        }
+
+        const signupResult = data as { ok?: unknown; code?: unknown } | null;
+        if (signupResult?.code === "account_exists") {
+          setMode("login");
+          setPassword("");
           setMessageKind("info");
-          setMessage("Enviamos um link para confirmar seu e-mail. Abra-o e volte a esta página para concluir o convite.");
+          setMessage("Já existe uma conta para este e-mail. Entre com sua senha; ela não será alterada.");
+        } else if (signupResult?.ok !== true) {
+          if (signupResult?.code === "invitation_invalid") {
+            window.sessionStorage.removeItem(INVITATION_TOKEN_STORAGE_KEY);
+          }
+          setMessageKind("error");
+          setMessage(signupResult?.code === "invitation_invalid"
+            ? INVALID_INVITATION_MESSAGE
+            : "Não foi possível criar a conta. Confira os dados e tente novamente.");
+        } else {
+          createdAccountEmail.current = normalizedEmail;
+          const { data: loginData, error: loginError } = await workspaceSupabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password: submittedPassword,
+          });
+          setPassword("");
+          if (loginError || !loginData.session) {
+            setMode("login");
+            setMessageKind("info");
+            setMessage("A conta foi criada, mas não foi possível entrar automaticamente. Faça login para concluir o convite.");
+          } else {
+            await acceptInvitation(loginData.session);
+          }
         }
       } else {
         const { data, error } = await workspaceSupabase.auth.signInWithPassword({ email: normalizedEmail, password });
