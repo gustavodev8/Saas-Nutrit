@@ -225,7 +225,7 @@ interface AnthropometryWizardProps {
     protocol: SkinfoldProtocol,
     officialSource: OfficialAnthropometrySource,
     editingId?: number,
-  ) => Promise<void>;
+  ) => Promise<boolean | void>;
   onCancelEdit?: () => void;
   saving: boolean;
 }
@@ -340,7 +340,8 @@ export function AnthropometryWizard({
       bioAvailable && !sfAvailable ? "bio" : null);
 
   const handleSave = async () => {
-    await onSave(form, protocol, effectiveOfficial, editingMeasurement?.id);
+    const saved = await onSave(form, protocol, effectiveOfficial, editingMeasurement?.id);
+    if (saved === false) return;
     if (!editingMeasurement) {
       setFormState({ assessment_date: todayISO(), four_component_reference: initialReference });
       setProtocol("JP3M");

@@ -17,6 +17,7 @@ import type { Measurement } from "@/lib/supabase";
 interface PatientMeasurementDetailViewProps {
   measurement: Measurement;
   onBack: () => void;
+  workspacePrintMode?: boolean;
 }
 
 const formatDate = (dateStr: string) =>
@@ -125,6 +126,7 @@ function MeasureRow({
 export function PatientMeasurementDetailView({
   measurement,
   onBack,
+  workspacePrintMode = false,
 }: PatientMeasurementDetailViewProps) {
   const bmi = calcBMI(measurement.weight, measurement.height);
   const bmiInfo = bmi ? getBmiClass(parseFloat(bmi)) : null;
@@ -145,8 +147,8 @@ export function PatientMeasurementDetailView({
     : null;
 
   return (
-    <div className="min-h-screen animate-in fade-in slide-in-from-bottom-4 bg-background pb-20 duration-500">
-      <div className="sticky top-0 z-30 mb-8 flex items-center justify-between border-b border-border/60 bg-background/80 px-8 py-4 shadow-sm backdrop-blur-xl">
+    <div data-testid="patient-measurement-detail-view" className={cn(workspacePrintMode ? "min-h-0 pb-8 print:min-h-0 print:pb-0" : "min-h-screen pb-20", "animate-in fade-in slide-in-from-bottom-4 bg-background duration-500")}>
+      <div className={cn("sticky top-0 z-30 mb-8 flex items-center justify-between border-b border-border/60 bg-background/80 px-8 py-4 shadow-sm backdrop-blur-xl", workspacePrintMode && "print:hidden")}>
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"

@@ -13,18 +13,18 @@ import {
   PROTOCOLS,
   SKINFOLD_LABELS,
   classifyBodyFat,
-  calcArmAnthropometry,
-  classifyAmbc,
   type SkinfoldKey,
 } from "@/lib/anthropometryUtils";
-import { calculateFourComponentAnthropometry } from "@/lib/fourComponentAnthropometry";
+import {
+  ANTHROPOMETRY_COMPARISON_PRINT_MAX,
+  calculateAnthropometryReportValues,
+  getAnthropometryComparisonIds,
+  getReportBmiLabel,
+  getReportSkinfoldValue,
+  selectAnthropometryComparisonMeasurements,
+} from "@/lib/anthropometricComparison";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const calcBMI = (m: Measurement): number | null => {
-  if (!m.weight || !m.height) return null;
-  return parseFloat((m.weight / Math.pow(m.height / 100, 2)).toFixed(1));
-};
 
 const calcAge = (birthDate: string): number => {
   const today = new Date();
@@ -32,17 +32,6 @@ const calcAge = (birthDate: string): number => {
   let age = today.getFullYear() - birth.getFullYear();
   const mo = today.getMonth() - birth.getMonth();
   if (mo < 0 || (mo === 0 && today.getDate() < birth.getDate())) age--;
-  return age;
-};
-
-const calcAgeAt = (birthDate: string, assessmentDate: string): number => {
-  const birth = new Date(`${birthDate}T12:00:00`);
-  const assessment = new Date(`${assessmentDate}T12:00:00`);
-  let age = assessment.getFullYear() - birth.getFullYear();
-  const monthDelta = assessment.getMonth() - birth.getMonth();
-  if (monthDelta < 0 || (monthDelta === 0 && assessment.getDate() < birth.getDate())) {
-    age--;
-  }
   return age;
 };
 
@@ -66,13 +55,6 @@ const formatDateShort = (dateStr?: string) =>
 
 const initials = (name: string) =>
   name.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase();
-
-const bmiLabel = (bmi: number) => {
-  if (bmi < 18.5) return "Abaixo do peso";
-  if (bmi < 25)   return "Normal";
-  if (bmi < 30)   return "Sobrepeso";
-  return "Obesidade";
-};
 
 // ─── renderDelta ──────────────────────────────────────────────────────────────
 
@@ -400,7 +382,7 @@ function DeltaGuide({ colsCount }: { colsCount: number }) {
 
 // ─── Date Selector ────────────────────────────────────────────────────────────
 
-const PRINT_MAX = 5;
+const PRINT_MAX = ANTHROPOMETRY_COMPARISON_PRINT_MAX;
 
 function DateSelector({
   measurements,
@@ -535,29 +517,6 @@ const ALL_SF_KEYS: SkinfoldKey[] = [
   "sf_subscapular", "sf_suprailiac", "sf_abdominal", "sf_thigh_sf", "sf_calf_sf",
 ];
 
-const getSkinfoldValue = (measurement: Measurement, key: SkinfoldKey): number | null =>
-  measurement[key] ?? null;
-
-const getFourComponentEstimate = (measurement: Measurement) => {
-  if (
-    measurement.weight == null ||
-    measurement.height == null ||
-    measurement.body_fat == null ||
-    measurement.biestyloid_diameter_mm == null ||
-    measurement.biepicondylar_femur_diameter_mm == null ||
-    !measurement.four_component_reference
-  ) return null;
-
-  return calculateFourComponentAnthropometry({
-    weightKg: measurement.weight,
-    heightCm: measurement.height,
-    bodyFatPct: measurement.body_fat,
-    biestyloidDiameterMm: measurement.biestyloid_diameter_mm,
-    biepicondylarFemurDiameterMm: measurement.biepicondylar_femur_diameter_mm,
-    reference: measurement.four_component_reference,
-  }).result;
-};
-
 export default function AdminRelatorioAntropometrico() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
@@ -576,7 +535,7 @@ export default function AdminRelatorioAntropometrico() {
         const requestedMeasurement = ms.find((m) => m.id === requestedMeasurementId);
         const defaults = requestedMeasurement
           ? [requestedMeasurement.id!]
-          : ms.slice(0, 2).map((m) => m.id!).filter(Boolean);
+          : getAnthropometryComparisonIds(ms, "latest-two");
         setSelectedIds(defaults);
       })
       .catch(() => toast.error("Erro ao carregar dados."))
@@ -591,38 +550,24 @@ export default function AdminRelatorioAntropometrico() {
     });
 
   const selectAll = () => {
-    setSelectedIds(measurements.map((m) => m.id!).filter(Boolean));
+    setSelectedIds(getAnthropometryComparisonIds(measurements, "all"));
   };
 
-  const selectLatestTwo = () =>
-    setSelectedIds(measurements.slice(0, 2).map((m) => m.id!).filter(Boolean));
+  const selectLatestTwo = () => setSelectedIds(getAnthropometryComparisonIds(measurements, "latest-two"));
 
-  const selectLatestThree = () =>
-    setSelectedIds(measurements.slice(0, 3).map((m) => m.id!).filter(Boolean));
+  const selectLatestThree = () => setSelectedIds(getAnthropometryComparisonIds(measurements, "latest-three"));
 
-  const selectLatestFive = () =>
-    setSelectedIds(measurements.slice(0, PRINT_MAX).map((m) => m.id!).filter(Boolean));
+  const selectLatestFive = () => setSelectedIds(getAnthropometryComparisonIds(measurements, "latest-five"));
 
-  const selectBaselineAndLatest = () => {
-    const latest = measurements[0]?.id;
-    const baseline = measurements[measurements.length - 1]?.id;
-    setSelectedIds(
-      latest != null && baseline != null
-        ? Array.from(new Set([latest, baseline]))
-        : measurements.slice(0, 1).map((m) => m.id!).filter(Boolean),
-    );
-  };
+  const selectBaselineAndLatest = () => setSelectedIds(getAnthropometryComparisonIds(measurements, "baseline-latest"));
 
   const clearAll = () => setSelectedIds([]);
 
   // ── Derive columns: filter + sort oldest → newest ──────────────────────────
-  const cols = useMemo(() => {
-    return measurements
-      .filter((m) => m.id != null && selectedIds.includes(m.id))
-      .sort((a, b) =>
-        (a.assessment_date ?? "").localeCompare(b.assessment_date ?? "")
-      );
-  }, [measurements, selectedIds]);
+  const cols = useMemo(
+    () => selectAnthropometryComparisonMeasurements(measurements, selectedIds),
+    [measurements, selectedIds],
+  );
 
   // ── Early returns ───────────────────────────────────────────────────────────
 
@@ -665,33 +610,14 @@ export default function AdminRelatorioAntropometrico() {
   const colSpan = N + 1;
 
   // ── Pre-compute derived values per selected column ──────────────────────────
-  const derived = cols.map((m) => ({
-    bmi: calcBMI(m),
-    fatMass:
-      m.weight != null && m.body_fat != null
-        ? parseFloat((m.weight * (m.body_fat / 100)).toFixed(1))
-        : null,
-    arm:
-      gender && m.arm_relax_r != null && m.sf_triceps != null
-        ? calcArmAnthropometry(m.arm_relax_r, m.sf_triceps, gender)
-        : null,
-    fourComponent: getFourComponentEstimate(m),
-  }));
-
-  const sfSums = cols.map((m) => {
-    if (!m.sf_protocol) return null;
-    const info = PROTOCOLS.find((p) => p.id === m.sf_protocol);
-    if (!info) return null;
-    if (info.skinfolds.some((k) => getSkinfoldValue(m, k) == null)) return null;
-    const sum = info.skinfolds.reduce((acc, k) => acc + (getSkinfoldValue(m, k) ?? 0), 0);
-    return sum > 0 ? sum : null;
-  });
+  const derived = cols.map((measurement) => calculateAnthropometryReportValues(measurement, gender, patient.birth_date));
+  const sfSums = derived.map((values) => values.skinfoldSum);
 
   const hasArmData = derived.some((d) => d.arm != null);
   const hasTronco  = cols.some((m) => [m.neck, m.shoulder, m.chest, m.waist, m.abdomen, m.hip].some((v) => v != null));
   const hasSup     = cols.some((m) => [m.arm_relax_r, m.arm_relax_l, m.arm_contract_r, m.arm_contract_l, m.forearm_r, m.forearm_l, m.wrist_r, m.wrist_l].some((v) => v != null));
   const hasInf     = cols.some((m) => [m.thigh_prox_r, m.thigh_prox_l, m.thigh_r, m.thigh_l, m.calf_r, m.calf_l].some((v) => v != null));
-  const hasDobras  = cols.some((m) => ALL_SF_KEYS.some((k) => getSkinfoldValue(m, k) != null));
+  const hasDobras  = cols.some((m) => ALL_SF_KEYS.some((k) => getReportSkinfoldValue(m, k) != null));
   const hasFourComponent = derived.some((d) => d.fourComponent != null);
 
   const mostRecent = cols[cols.length - 1];
@@ -921,7 +847,7 @@ export default function AdminRelatorioAntropometrico() {
                   unit="kg/m²"
                   suffix={(val) => (
                     <span className="ml-1.5 text-[10px] text-muted-foreground print:hidden">
-                      ({bmiLabel(val)})
+                      ({getReportBmiLabel(val)})
                     </span>
                   )}
                 />
@@ -1025,19 +951,7 @@ export default function AdminRelatorioAntropometrico() {
                     />
                     <StringRow
                       label="Adequação AMBc (Frisancho, 1990)"
-                      values={derived.map((d) => {
-                        if (!d.arm) return null;
-                        const colIndex = derived.indexOf(d);
-                        if (!gender || !patient.birth_date || !cols[colIndex]?.assessment_date) {
-                          return null;
-                        }
-                        const assessmentAge = calcAgeAt(
-                          patient.birth_date,
-                          cols[colIndex].assessment_date,
-                        );
-                        const cl = classifyAmbc(d.arm.ambc, gender, assessmentAge);
-                        return `${cl.pct}% — ${cl.label}`;
-                      })}
+                      values={derived.map((value) => value.ambcAdequacy ? `${value.ambcAdequacy.pct}% — ${value.ambcAdequacy.label}` : null)}
                     />
                   </>
                 )}
@@ -1112,7 +1026,7 @@ export default function AdminRelatorioAntropometrico() {
                       <MetricRow
                         key={key}
                         label={SKINFOLD_LABELS[key]}
-                        values={cols.map((m) => getSkinfoldValue(m, key))}
+                        values={cols.map((m) => getReportSkinfoldValue(m, key))}
                         unit="mm"
                         decimals={1}
                       />

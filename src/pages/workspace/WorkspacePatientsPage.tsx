@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { ChevronLeft, ChevronRight, LogOut, Mail, MapPin, Pencil, Plus, Save, Users, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Activity, ChevronLeft, ChevronRight, LogOut, Mail, MapPin, Pencil, Plus, Save, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
+import { workspaceSupabase } from "@/lib/workspaceSupabase";
+import { PatientAnthropometryTab } from "@/components/admin/patient/PatientAnthropometryTab";
 import {
   createWorkspacePatient,
   fetchWorkspacePatients,
@@ -45,8 +47,9 @@ function genderLabel(value: WorkspacePatient["gender"]): string {
 
 export default function WorkspacePatientsPage() {
   const { membership, userEmail, logout } = useWorkspaceAuth();
-  const [patients, setPatients] = useState<WorkspacePatient[]>([]);
+  const [patientSnapshot, setPatientSnapshot] = useState<{ workspaceId: string | null; items: WorkspacePatient[] }>({ workspaceId: null, items: [] });
   const [form, setForm] = useState<WorkspacePatientInput>(emptyForm);
+  const [formWorkspaceId, setFormWorkspaceId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [gender, setGender] = useState<WorkspacePatientGenderFilter>("all");
@@ -56,27 +59,79 @@ export default function WorkspacePatientsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [chartSelection, setChartSelection] = useState<{ workspaceId: string; patientId: number } | null>(null);
+  const [workspaceNameSnapshot, setWorkspaceNameSnapshot] = useState<{ workspaceId: string | null; name: string | null }>({ workspaceId: null, name: null });
+  const patientRequestRef = useRef(0);
+
+  const currentWorkspaceId = membership?.workspaceId ?? null;
+  const currentWorkspaceName = workspaceNameSnapshot.workspaceId === currentWorkspaceId ? workspaceNameSnapshot.name : null;
+  const patientSnapshotMatches = patientSnapshot.workspaceId === currentWorkspaceId;
+  const patients = useMemo(
+    () => patientSnapshotMatches ? patientSnapshot.items : [],
+    [patientSnapshot, patientSnapshotMatches],
+  );
+  const listLoading = loading || Boolean(currentWorkspaceId && !patientSnapshotMatches);
+  const formMatchesWorkspace = formWorkspaceId === currentWorkspaceId;
+  const visibleForm = formMatchesWorkspace ? form : emptyForm;
+  const visibleEditingId = formMatchesWorkspace ? editingId : null;
 
   const loadPatients = useCallback(async () => {
+    const requestId = ++patientRequestRef.current;
     if (!membership) {
-      setPatients([]);
+      setPatientSnapshot({ workspaceId: null, items: [] });
       setLoading(false);
       return;
     }
+    const workspaceId = membership.workspaceId;
     setLoading(true);
-    setPatients([]);
     try {
-      setPatients(await fetchWorkspacePatients(membership.workspaceId));
-      setError("");
+      const items = await fetchWorkspacePatients(workspaceId);
+      if (requestId === patientRequestRef.current) {
+        setPatientSnapshot({ workspaceId, items });
+        setError("");
+      }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar pacientes.");
+      if (requestId === patientRequestRef.current) {
+        setPatientSnapshot({ workspaceId, items: [] });
+        setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar pacientes.");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === patientRequestRef.current) setLoading(false);
     }
   }, [membership]);
 
   useEffect(() => { void loadPatients(); }, [loadPatients]);
+  useEffect(() => {
+    let active = true;
+    if (!currentWorkspaceId) {
+      setWorkspaceNameSnapshot({ workspaceId: null, name: null });
+      return () => { active = false; };
+    }
+    setWorkspaceNameSnapshot({ workspaceId: currentWorkspaceId, name: null });
+    void workspaceSupabase
+      .from("workspaces")
+      .select("name")
+      .eq("id", currentWorkspaceId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setWorkspaceNameSnapshot({ workspaceId: currentWorkspaceId, name: data?.name ?? null });
+      })
+      .catch(() => {
+        if (active) setWorkspaceNameSnapshot({ workspaceId: currentWorkspaceId, name: null });
+      });
+    return () => { active = false; };
+  }, [currentWorkspaceId]);
   useEffect(() => { setPage(1); }, [search, gender, city, sort]);
+  useEffect(() => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setFormWorkspaceId(currentWorkspaceId);
+    setError("");
+  }, [currentWorkspaceId]);
+
+  const chartPatient = chartSelection?.workspaceId === currentWorkspaceId
+    ? patients.find((patient) => patient.id === chartSelection.patientId) ?? null
+    : null;
 
   const cities = useMemo(() => getWorkspacePatientCities(patients), [patients]);
   const filteredPatients = useMemo(
@@ -94,11 +149,12 @@ export default function WorkspacePatientsPage() {
   const resetForm = () => {
     setForm(emptyForm);
     setEditingId(null);
+    setFormWorkspaceId(currentWorkspaceId);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!membership) return;
+    if (!membership || !formMatchesWorkspace) return;
     setSaving(true);
     setError("");
     try {
@@ -115,7 +171,9 @@ export default function WorkspacePatientsPage() {
   };
 
   const editPatient = (patient: WorkspacePatient) => {
+    if (!membership) return;
     setEditingId(patient.id);
+    setFormWorkspaceId(membership.workspaceId);
     setForm({
       name: patient.name,
       email: patient.email ?? "",
@@ -177,7 +235,7 @@ export default function WorkspacePatientsPage() {
 
             {error && <p role="alert" className="rounded-md border border-destructive/30 bg-background p-3 text-sm text-destructive">{error}</p>}
             <div className="overflow-hidden rounded-md border bg-background">
-              {loading ? (
+              {listLoading ? (
                 <p className="p-6 text-sm text-muted-foreground">Carregando pacientes...</p>
               ) : filteredPatients.length === 0 ? (
                 <div className="p-8 text-center">
@@ -199,7 +257,7 @@ export default function WorkspacePatientsPage() {
                             <td className="px-4 py-3">{genderLabel(patient.gender)}</td>
                             <td className="px-4 py-3">{patient.city || "Não informada"}</td>
                             <td className="px-4 py-3">{formatDate(patient.created_at)}</td>
-                            <td className="px-4 py-3 text-right"><Button aria-label={`Editar ${patient.name}`} size="icon" variant="ghost" onClick={() => editPatient(patient)}><Pencil aria-hidden="true" /></Button></td>
+                            <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1"><Button aria-label={`Abrir prontuário antropométrico de ${patient.name}`} title="Prontuário antropométrico" size="icon" variant="ghost" onClick={() => setChartSelection({ workspaceId: patient.workspace_id, patientId: patient.id })}><Activity aria-hidden="true" /></Button><Button aria-label={`Editar ${patient.name}`} title="Editar cadastro" size="icon" variant="ghost" onClick={() => editPatient(patient)}><Pencil aria-hidden="true" /></Button></div></td>
                           </tr>
                         ))}
                       </tbody>
@@ -219,21 +277,43 @@ export default function WorkspacePatientsPage() {
 
           <form className="space-y-4 rounded-md border bg-background p-5" onSubmit={handleSubmit}>
             <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold">{editingId == null ? "Novo paciente" : "Editar paciente"}</h2>
-              {editingId != null && <Button aria-label="Cancelar edição" size="icon" type="button" variant="ghost" onClick={resetForm}><X aria-hidden="true" /></Button>}
+              <h2 className="font-semibold">{visibleEditingId == null ? "Novo paciente" : "Editar paciente"}</h2>
+              {visibleEditingId != null && <Button aria-label="Cancelar edição" size="icon" type="button" variant="ghost" onClick={resetForm}><X aria-hidden="true" /></Button>}
             </div>
-            <div className="space-y-2"><Label htmlFor="patient-name">Nome</Label><Input id="patient-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></div>
+            <div className="space-y-2"><Label htmlFor="patient-name">Nome</Label><Input id="patient-name" value={visibleForm.name} onChange={(event) => setForm({ ...visibleForm, name: event.target.value })} required /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label htmlFor="patient-birth-date">Nascimento</Label><Input id="patient-birth-date" type="date" value={form.birth_date} onChange={(event) => setForm({ ...form, birth_date: event.target.value })} /></div>
-              <div className="space-y-2"><Label htmlFor="patient-gender">Sexo</Label><select id="patient-gender" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value as WorkspacePatientInput["gender"] })}><option value="">Não informado</option><option value="M">Masculino</option><option value="F">Feminino</option><option value="outro">Outro</option></select></div>
+              <div className="space-y-2"><Label htmlFor="patient-birth-date">Nascimento</Label><Input id="patient-birth-date" type="date" value={visibleForm.birth_date} onChange={(event) => setForm({ ...visibleForm, birth_date: event.target.value })} /></div>
+              <div className="space-y-2"><Label htmlFor="patient-gender">Sexo</Label><select id="patient-gender" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={visibleForm.gender} onChange={(event) => setForm({ ...visibleForm, gender: event.target.value as WorkspacePatientInput["gender"] })}><option value="">Não informado</option><option value="M">Masculino</option><option value="F">Feminino</option><option value="outro">Outro</option></select></div>
             </div>
-            <div className="space-y-2"><Label htmlFor="patient-email">E-mail</Label><Input id="patient-email" type="email" autoComplete="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></div>
-            <div className="space-y-2"><Label htmlFor="patient-phone">Telefone</Label><Input id="patient-phone" type="tel" autoComplete="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></div>
-            <div className="space-y-2"><Label htmlFor="patient-occupation">Ocupação</Label><Input id="patient-occupation" value={form.occupation} onChange={(event) => setForm({ ...form, occupation: event.target.value })} /></div>
-            <div className="space-y-2"><Label htmlFor="patient-city">Cidade</Label><Input id="patient-city" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} /></div>
-            <Button className="w-full" type="submit" disabled={saving}>{editingId == null ? <Plus aria-hidden="true" /> : <Save aria-hidden="true" />}{saving ? "Salvando..." : editingId == null ? "Adicionar paciente" : "Salvar alterações"}</Button>
+            <div className="space-y-2"><Label htmlFor="patient-email">E-mail</Label><Input id="patient-email" type="email" autoComplete="email" value={visibleForm.email} onChange={(event) => setForm({ ...visibleForm, email: event.target.value })} /></div>
+            <div className="space-y-2"><Label htmlFor="patient-phone">Telefone</Label><Input id="patient-phone" type="tel" autoComplete="tel" value={visibleForm.phone} onChange={(event) => setForm({ ...visibleForm, phone: event.target.value })} /></div>
+            <div className="space-y-2"><Label htmlFor="patient-occupation">Ocupação</Label><Input id="patient-occupation" value={visibleForm.occupation} onChange={(event) => setForm({ ...visibleForm, occupation: event.target.value })} /></div>
+            <div className="space-y-2"><Label htmlFor="patient-city">Cidade</Label><Input id="patient-city" value={visibleForm.city} onChange={(event) => setForm({ ...visibleForm, city: event.target.value })} /></div>
+            <Button className="w-full" type="submit" disabled={saving || !formMatchesWorkspace}>{visibleEditingId == null ? <Plus aria-hidden="true" /> : <Save aria-hidden="true" />}{saving ? "Salvando..." : visibleEditingId == null ? "Adicionar paciente" : "Salvar alterações"}</Button>
           </form>
         </section>
+
+        {chartPatient && membership && (
+          <section aria-labelledby="workspace-anthropometry-title" className="space-y-5 border-t pt-6">
+            <header className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Prontuário do workspace</p>
+                <h2 id="workspace-anthropometry-title" className="text-xl font-semibold">Avaliação antropométrica · {chartPatient.name}</h2>
+                <p className="text-sm text-muted-foreground">Medidas registradas exclusivamente neste workspace.</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setChartSelection(null)}><X aria-hidden="true" />Fechar prontuário</Button>
+            </header>
+
+            <PatientAnthropometryTab
+              key={`${membership.workspaceId}:${chartPatient.id}`}
+              patientId={String(chartPatient.id)}
+              patient={{ ...chartPatient }}
+              workspaceId={membership.workspaceId}
+              workspaceName={currentWorkspaceName ?? "Workspace"}
+              workspacePatient={chartPatient}
+            />
+          </section>
+        )}
       </div>
     </main>
   );
