@@ -18,6 +18,10 @@ const mocks = vi.hoisted(() => ({
   legacyInsertMeasurement: vi.fn(),
   legacyUpdateMeasurement: vi.fn(),
   legacyDeleteMeasurement: vi.fn(),
+  workspaceFrom: vi.fn(),
+  workspaceSelect: vi.fn(),
+  workspaceEq: vi.fn(),
+  workspaceMaybeSingle: vi.fn(),
 }));
 
 vi.mock("@/contexts/WorkspaceAuthContext", () => ({ useWorkspaceAuth: mocks.auth }));
@@ -29,11 +33,7 @@ vi.mock("@/lib/supabase", () => ({
 }));
 vi.mock("@/lib/workspaceSupabase", () => ({
   workspaceSupabase: {
-    from: vi.fn(() => ({
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { name: "Workspace Piloto" }, error: null }) })),
-      })),
-    })),
+    from: mocks.workspaceFrom,
   },
 }));
 vi.mock("@/lib/workspacePatients", async (importOriginal) => {
@@ -111,6 +111,18 @@ describe("WorkspacePatientsPage", () => {
     mocks.fetchMeasurements.mockResolvedValue([makeMeasurement()]);
     mocks.createMeasurement.mockResolvedValue(makeMeasurement({ id: 11, assessment_date: "2026-11-07", weight: 72 }));
     mocks.updateMeasurement.mockResolvedValue(makeMeasurement({ id: 10, weight: 71, sf_triceps: 12 }));
+    mocks.workspaceFrom.mockReturnValue({ select: mocks.workspaceSelect });
+    mocks.workspaceSelect.mockReturnValue({ eq: mocks.workspaceEq });
+    mocks.workspaceEq.mockReturnValue({ maybeSingle: mocks.workspaceMaybeSingle });
+    mocks.workspaceMaybeSingle.mockResolvedValue({ data: { name: "Workspace Piloto" }, error: null });
+  });
+
+  it("shows the active workspace name from the current membership scope", async () => {
+    render(<WorkspacePatientsPage />);
+
+    expect(await screen.findByTestId("active-workspace-name")).toHaveTextContent("Workspace: Workspace Piloto");
+    expect(mocks.workspaceFrom).toHaveBeenCalledWith("workspaces");
+    expect(mocks.workspaceEq).toHaveBeenCalledWith("id", "workspace-a");
   });
 
   it("creates a patient with the complete supported profile fields", async () => {

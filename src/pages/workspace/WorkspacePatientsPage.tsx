@@ -193,6 +193,11 @@ export default function WorkspacePatientsPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Cadastro workspace</p>
             <h1 className="text-2xl font-semibold">Pacientes</h1>
             <p className="text-sm text-muted-foreground">{userEmail} · {membership?.role === "owner" ? "Owner" : "Nutricionista"}</p>
+            {currentWorkspaceName && (
+              <p data-testid="active-workspace-name" className="mt-1 text-sm font-medium text-foreground">
+                Workspace: {currentWorkspaceName}
+              </p>
+            )}
           </div>
           <Button variant="outline" onClick={() => void logout()}><LogOut aria-hidden="true" />Sair</Button>
         </header>
