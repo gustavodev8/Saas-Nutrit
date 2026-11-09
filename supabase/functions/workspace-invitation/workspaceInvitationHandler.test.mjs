@@ -30,7 +30,21 @@ function request({ method = "POST", body, headers = {} } = {}) {
   });
 }
 
-function setup({ user, rpcStatus = 200, resendStatus = 200, rateLimitResult = null } = {}) {
+async function responseCode(response) {
+  return (await response.json()).code;
+}
+
+function assertSafeLogs(logs) {
+  for (const log of logs) {
+    assert.match(log, /^workspace-invitation stage=[a-z_]+ status=\d{3} error_class=[A-Za-z_]+$/);
+  }
+  const serialized = logs.join(" ");
+  for (const privateValue of [USER_TOKEN, SERVICE_KEY, ADMIN_EMAIL, "a@example.test", "dietitian@example.test", "resend-secret", "private provider detail", "raw-token", "private-secret"]) {
+    assert.equal(serialized.includes(privateValue), false);
+  }
+}
+
+function setup({ user, rpcStatus = 200, resendStatus = 200, resendBody = {}, rateLimitResult = null } = {}) {
   const calls = [];
   const limiterCalls = [];
   const logs = [];
@@ -48,7 +62,7 @@ function setup({ user, rpcStatus = 200, resendStatus = 200, rateLimitResult = nu
       return rpcStatus === 200 ? Response.json("invitation-id") : Response.json({}, { status: rpcStatus });
     }
     if (url === "https://api.resend.com/emails") {
-      return Response.json({}, { status: resendStatus });
+      return Response.json(resendBody, { status: resendStatus });
     }
     throw new Error(`Unexpected network request: ${url}`);
   };
@@ -57,7 +71,7 @@ function setup({ user, rpcStatus = 200, resendStatus = 200, rateLimitResult = nu
     fetch,
     rateLimit: async (input) => {
       limiterCalls.push(input);
-      return rateLimitResult;
+      return typeof rateLimitResult === "function" ? rateLimitResult(input) : rateLimitResult;
     },
     logError: (message) => logs.push(message),
   });
@@ -83,6 +97,7 @@ function pendingFetchUntilAbort(calls) {
 
 function timeoutScenario(timeoutPath) {
   const calls = [];
+  const logs = [];
   const handler = createWorkspaceInvitationHandler({
     env: (name) => BASE_ENV[name],
     fetch: (input, init = {}) => {
@@ -103,9 +118,9 @@ function timeoutScenario(timeoutPath) {
     },
     rateLimit: async () => null,
     timeoutMs: 15,
-    logError: () => {},
+    logError: (message) => logs.push(message),
   });
-  return { handler, calls };
+  return { handler, calls, logs };
 }
 
 test("success authenticates with the caller bearer, rate-limits both identities and sends only the raw token by email", async () => {
@@ -154,7 +169,9 @@ test("success authenticates with the caller bearer, rate-limits both identities 
 
 test("rejects non-POST methods and handles CORS preflight before authentication", async () => {
   const methodScenario = setup();
-  assert.equal((await methodScenario.handler(request({ method: "GET" }))).status, 405);
+  const methodResponse = await methodScenario.handler(request({ method: "GET" }));
+  assert.equal(methodResponse.status, 405);
+  assert.equal(await responseCode(methodResponse), "method_not_allowed");
   assert.equal(methodScenario.calls.length, 0);
 
   const optionsScenario = setup();
@@ -168,61 +185,89 @@ test("rejects a foreign origin before authentication", async () => {
   const scenario = setup();
   const response = await scenario.handler(request({ headers: { Origin: "https://attacker.example" } }));
   assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { ok: false, code: "origin_not_allowed" });
+  assert.equal(response.headers.get("Access-Control-Allow-Origin"), BASE_ENV.SAAS_SITE_URL);
+  assert.notEqual(response.headers.get("Access-Control-Allow-Origin"), "https://attacker.example");
   assert.equal(scenario.calls.length, 0);
 });
 
 test("fails closed when the dedicated SaaS site URL is absent or invalid", async () => {
   for (const siteUrl of [undefined, "http://legacy.example.test", "not-a-url"]) {
     let fetchCalls = 0;
+    const logs = [];
     const handler = createWorkspaceInvitationHandler({
       env: (name) => name === "SAAS_SITE_URL" ? siteUrl : BASE_ENV[name],
       fetch: async () => { fetchCalls += 1; throw new Error("must not fetch"); },
+      logError: (message) => logs.push(message),
     });
     const response = await handler(request());
     assert.equal(response.status, 503);
+    assert.equal(await responseCode(response), "service_unavailable");
+    assert.deepEqual(logs, ["workspace-invitation stage=configuration status=503 error_class=invalid_config"]);
+    assertSafeLogs(logs);
     assert.equal(fetchCalls, 0);
   }
 });
 
 test("requires a bearer token and returns unavailable when required configuration is missing", async () => {
   const missingBearer = setup();
-  assert.equal((await missingBearer.handler(request({ headers: { Authorization: "" } }))).status, 503);
+  const authResponse = await missingBearer.handler(request({ headers: { Authorization: "" } }));
+  assert.equal(authResponse.status, 401);
+  assert.equal(await responseCode(authResponse), "unauthorized");
   assert.equal(missingBearer.calls.length, 0);
 
+  const missingConfigLogs = [];
   const missingConfig = createWorkspaceInvitationHandler({
-    env: () => undefined,
+    env: (name) => name === "SAAS_SITE_URL" ? BASE_ENV.SAAS_SITE_URL : undefined,
     fetch: async () => { throw new Error("must not fetch"); },
+    logError: (message) => missingConfigLogs.push(message),
   });
-  assert.equal((await missingConfig(request())).status, 503);
+  const configResponse = await missingConfig(request());
+  assert.equal(configResponse.status, 503);
+  assert.equal(await responseCode(configResponse), "service_unavailable");
+  assert.deepEqual(missingConfigLogs, ["workspace-invitation stage=configuration status=503 error_class=missing_config"]);
+  assertSafeLogs(missingConfigLogs);
 });
 
 test("rejects an unconfirmed account and a confirmed account outside the platform allowlist", async () => {
   const unconfirmed = setup({ user: { email: ADMIN_EMAIL, email_confirmed_at: null } });
-  assert.equal((await unconfirmed.handler(request({ body: { email: "a@example.test", workspaceName: "A" } }))).status, 401);
+  const unconfirmedResponse = await unconfirmed.handler(request({ body: { email: "a@example.test", workspaceName: "A" } }));
+  assert.equal(unconfirmedResponse.status, 401);
+  assert.equal(await responseCode(unconfirmedResponse), "unauthorized");
   assert.equal(unconfirmed.limiterCalls.length, 0);
 
   const notAllowlisted = setup({ user: { email: "other@example.test", email_confirmed_at: "2026-01-01T00:00:00Z" } });
-  assert.equal((await notAllowlisted.handler(request({ body: { email: "a@example.test", workspaceName: "A" } }))).status, 403);
+  const notAllowlistedResponse = await notAllowlisted.handler(request({ body: { email: "a@example.test", workspaceName: "A" } }));
+  assert.equal(notAllowlistedResponse.status, 403);
+  assert.equal(await responseCode(notAllowlistedResponse), "forbidden");
   assert.equal(notAllowlisted.limiterCalls.length, 0);
 });
 
 test("returns 401 when Supabase Auth rejects the user bearer", async () => {
   const calls = [];
+  const logs = [];
   const handler = createWorkspaceInvitationHandler({
     env: (name) => BASE_ENV[name],
     fetch: async (input, init) => {
       calls.push({ url: String(input), init });
       return new Response("unauthorized", { status: 401 });
     },
+    logError: (message) => logs.push(message),
   });
-  assert.equal((await handler(request())).status, 401);
+  const response = await handler(request());
+  assert.equal(response.status, 401);
+  assert.equal(await responseCode(response), "unauthorized");
   assert.equal(calls.length, 1);
+  assert.deepEqual(logs, ["workspace-invitation stage=auth_lookup status=401 error_class=http_response"]);
+  assertSafeLogs(logs);
 });
 
 test("rejects invalid JSON payloads and invalid invitation fields before recipient limit or RPC", async () => {
   for (const body of ["{", { email: "bad", workspaceName: "Workspace" }, { email: "ok@example.test", workspaceName: " " }]) {
     const scenario = setup();
-    assert.equal((await scenario.handler(request({ body }))).status, 400);
+    const response = await scenario.handler(request({ body }));
+    assert.equal(response.status, 400);
+    assert.equal(await responseCode(response), "invalid_input");
     assert.equal(scenario.limiterCalls.length, 1);
     assert.equal(scenario.calls.some(({ url }) => url.endsWith("/rpc/create_workspace_invitation")), false);
   }
@@ -244,10 +289,35 @@ test("fails closed when either administrator or recipient rate limit denies the 
         limiterCalls.push(input);
         return input.endpoint === deniedEndpoint ? new Response("denied", { status: 429 }) : null;
       },
+      logError: (message) => scenario.logs.push(message),
     });
-    assert.equal((await handler(request({ body: { email: "a@example.test", workspaceName: "A" } }))).status, 429);
+    const response = await handler(request({ body: { email: "a@example.test", workspaceName: "A" } }));
+    assert.equal(response.status, 429);
+    assert.equal(await responseCode(response), "rate_limited");
+    assert.deepEqual(scenario.logs, [
+      `workspace-invitation stage=${deniedEndpoint === "workspace-invitation-admin" ? "admin_rate_limit" : "recipient_rate_limit"} status=429 error_class=http_response`,
+    ]);
+    assertSafeLogs(scenario.logs);
     assert.equal(limiterCalls.length, deniedEndpoint === "workspace-invitation-admin" ? 1 : 2);
     assert.equal(scenario.calls.some(({ url }) => url.endsWith("/rpc/create_workspace_invitation")), false);
+  }
+});
+
+test("logs administrator and recipient rate-limit service failures by stage only", async () => {
+  for (const deniedEndpoint of ["workspace-invitation-admin", "workspace-invitation-recipient"]) {
+    const scenario = setup({
+      rateLimitResult: (input) => input.endpoint === deniedEndpoint
+        ? new Response(JSON.stringify({ email: "private@example.test", token: "private-token" }), { status: 503 })
+        : null,
+    });
+    const response = await scenario.handler(request({ body: { email: "a@example.test", workspaceName: "A" } }));
+
+    assert.equal(response.status, 503);
+    assert.equal(await responseCode(response), "service_unavailable");
+    assert.deepEqual(scenario.logs, [
+      `workspace-invitation stage=${deniedEndpoint === "workspace-invitation-admin" ? "admin_rate_limit" : "recipient_rate_limit"} status=503 error_class=http_response`,
+    ]);
+    assertSafeLogs(scenario.logs);
   }
 });
 
@@ -255,14 +325,53 @@ test("returns 503 for a non-2xx invitation RPC response and does not send email"
   const scenario = setup({ rpcStatus: 409 });
   const response = await scenario.handler(request({ body: { email: "a@example.test", workspaceName: "A" } }));
   assert.equal(response.status, 503);
+  assert.equal(await responseCode(response), "invitation_not_created");
+  assert.deepEqual(scenario.logs, ["workspace-invitation stage=create_rpc status=409 error_class=http_response"]);
+  assertSafeLogs(scenario.logs);
   assert.equal(scenario.calls.some(({ url }) => url === "https://api.resend.com/emails"), false);
 });
 
-test("returns 503 and logs a generic message when Resend fails after the RPC", async () => {
-  const scenario = setup({ resendStatus: 500 });
+test("treats an invitation RPC server error as ambiguous and does not send email", async () => {
+  const scenario = setup({ rpcStatus: 500 });
   const response = await scenario.handler(request({ body: { email: "a@example.test", workspaceName: "A" } }));
   assert.equal(response.status, 503);
-  assert.deepEqual(scenario.logs, ["workspace-invitation: email delivery failed"]);
+  assert.equal(await responseCode(response), "invitation_status_unknown");
+  assert.deepEqual(scenario.logs, ["workspace-invitation stage=create_rpc status=500 error_class=http_response"]);
+  assertSafeLogs(scenario.logs);
+  assert.equal(scenario.calls.some(({ url }) => url === "https://api.resend.com/emails"), false);
+});
+
+test("returns email_delivery_failed for a confirmed Resend rejection without leaking provider details", async () => {
+  const scenario = setup({
+    resendStatus: 400,
+    resendBody: { message: "private provider detail", email: "recipient@example.test", token: "raw-token", secret: "private-secret" },
+  });
+  const response = await scenario.handler(request({ body: { email: "a@example.test", workspaceName: "A" } }));
+  assert.equal(response.status, 503);
+  const responseBody = await response.json();
+  assert.deepEqual(responseBody, { ok: false, code: "email_delivery_failed" });
+  for (const privateValue of ["private provider detail", "recipient@example.test", "raw-token", "private-secret"]) {
+    assert.equal(JSON.stringify(responseBody).includes(privateValue), false);
+  }
+  assert.deepEqual(scenario.logs, ["workspace-invitation stage=resend status=400 error_class=http_response"]);
+  assertSafeLogs(scenario.logs);
+  assert.equal(scenario.calls.some(({ url }) => url.endsWith("/rpc/create_workspace_invitation")), true);
+});
+
+test("treats a Resend server error as ambiguous without claiming delivery failed", async () => {
+  const scenario = setup({
+    resendStatus: 500,
+    resendBody: { message: "private provider detail", email: "recipient@example.test", token: "raw-token", secret: "private-secret" },
+  });
+  const response = await scenario.handler(request({ body: { email: "a@example.test", workspaceName: "A" } }));
+  assert.equal(response.status, 503);
+  const responseBody = await response.json();
+  assert.deepEqual(responseBody, { ok: false, code: "invitation_status_unknown" });
+  for (const privateValue of ["private provider detail", "recipient@example.test", "raw-token", "private-secret"]) {
+    assert.equal(JSON.stringify(responseBody).includes(privateValue), false);
+  }
+  assert.deepEqual(scenario.logs, ["workspace-invitation stage=resend status=500 error_class=http_response"]);
+  assertSafeLogs(scenario.logs);
   assert.equal(scenario.calls.some(({ url }) => url.endsWith("/rpc/create_workspace_invitation")), true);
 });
 
@@ -276,6 +385,11 @@ test("Auth, invitation RPC, and Resend timeouts abort promptly and fail closed",
     const elapsedMs = Date.now() - startedAt;
 
     assert.equal(response.status, 503, `${timeoutPath} timeout status`);
+    assert.equal(await responseCode(response), timeoutPath === "auth" ? "service_unavailable" : "invitation_status_unknown");
+    assert.deepEqual(scenario.logs, [
+      `workspace-invitation stage=outer_exception_${timeoutPath === "auth" ? "auth_lookup" : timeoutPath === "rpc" ? "create_rpc" : "resend"} status=503 error_class=TimeoutError`,
+    ]);
+    assertSafeLogs(scenario.logs);
     assert.ok(elapsedMs < 1_000, `${timeoutPath} timeout should not wait for the production deadline`);
     const timedOutCall = scenario.calls.find(({ url }) => (
       timeoutPath === "auth" ? url.endsWith("/auth/v1/user")

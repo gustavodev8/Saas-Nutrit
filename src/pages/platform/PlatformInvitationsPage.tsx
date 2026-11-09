@@ -11,6 +11,49 @@ type PlatformInvitationsPageProps = {
   accessRequestsEnabled?: boolean;
 };
 
+const INVITATION_ERROR_MESSAGES = {
+  invalid_input: "Confira o e-mail e o nome do workspace e tente novamente.",
+  unauthorized: "Sua sessão não foi autorizada. Entre novamente com a conta da plataforma.",
+  forbidden: "Esta conta não tem permissão para emitir convites. Use uma conta autorizada da plataforma.",
+  rate_limited: "Muitas tentativas em sequência. Aguarde um pouco antes de tentar novamente.",
+  origin_not_allowed: "Esta página não está autorizada a emitir convites. Abra o endereço oficial da plataforma.",
+  method_not_allowed: "Não foi possível enviar o convite por esta solicitação. Atualize a página e tente novamente.",
+  service_unavailable: "O serviço de convites está indisponível. Tente novamente mais tarde.",
+  invitation_not_created: "Não foi possível registrar o convite. Confira os dados e a permissão da conta antes de tentar novamente.",
+  email_delivery_failed: "O convite foi registrado, mas o e-mail não foi enviado. Confira o endereço e verifique o convite pendente antes de tentar novamente.",
+  invitation_status_unknown: "Não foi possível confirmar o status do convite. Verifique se há um convite pendente antes de tentar novamente.",
+} as const;
+
+const UNKNOWN_INVITATION_ERROR_MESSAGE = INVITATION_ERROR_MESSAGES.invitation_status_unknown;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getInvitationErrorCode(value: unknown): keyof typeof INVITATION_ERROR_MESSAGES | null {
+  if (!isRecord(value) || typeof value.code !== "string") return null;
+  return Object.prototype.hasOwnProperty.call(INVITATION_ERROR_MESSAGES, value.code)
+    ? value.code as keyof typeof INVITATION_ERROR_MESSAGES
+    : null;
+}
+
+async function getInvitationErrorMessage(data: unknown, error: unknown): Promise<string> {
+  const dataCode = getInvitationErrorCode(data);
+  if (dataCode) return INVITATION_ERROR_MESSAGES[dataCode];
+
+  if (isRecord(error) && error.context instanceof Response) {
+    try {
+      const responseBody = await error.context.clone().json();
+      const responseCode = getInvitationErrorCode(responseBody);
+      if (responseCode) return INVITATION_ERROR_MESSAGES[responseCode];
+    } catch {
+      return UNKNOWN_INVITATION_ERROR_MESSAGE;
+    }
+  }
+
+  return UNKNOWN_INVITATION_ERROR_MESSAGE;
+}
+
 export default function PlatformInvitationsPage({ accessRequestsEnabled = false }: PlatformInvitationsPageProps) {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -104,7 +147,7 @@ export default function PlatformInvitationsPage({ accessRequestsEnabled = false 
       });
       if (error || data?.ok !== true) {
         setMessageKind("error");
-        setMessage("Não foi possível enviar o convite. Verifique os dados ou a autorização da conta.");
+        setMessage(await getInvitationErrorMessage(data, error));
       } else {
         setMessageKind("success");
         setMessage("Convite enviado. O link expira em sete dias e pode ser usado uma vez.");
@@ -114,7 +157,7 @@ export default function PlatformInvitationsPage({ accessRequestsEnabled = false 
       }
     } catch {
       setMessageKind("error");
-      setMessage("Não foi possível enviar o convite. Tente novamente.");
+      setMessage(UNKNOWN_INVITATION_ERROR_MESSAGE);
     } finally {
       setBusy(false);
     }

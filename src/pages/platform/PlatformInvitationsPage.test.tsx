@@ -108,7 +108,7 @@ describe("PlatformInvitationsPage", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Convite enviado");
   });
 
-  it("shows a generic error when the server rejects or cannot send an invitation", async () => {
+  it("uses a safe fallback when the server error has no recognized code", async () => {
     mocks.getSession.mockResolvedValue({ data: { session }, error: null });
     mocks.invoke.mockImplementation(async (functionName: string, options: { body: { action?: string } }) => {
       if (functionName === "workspace-access-request-admin") {
@@ -124,7 +124,58 @@ describe("PlatformInvitationsPage", () => {
     fireEvent.change(screen.getByLabelText("Nome do workspace"), { target: { value: "Workspace" } });
     fireEvent.click(screen.getByRole("button", { name: "Enviar convite" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível enviar o convite");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Não foi possível confirmar o status do convite");
+    expect(alert).not.toHaveTextContent("forbidden");
+  });
+
+  it("explains email delivery failure without exposing recipient, workspace, token, or upstream details", async () => {
+    mocks.getSession.mockResolvedValue({ data: { session }, error: null });
+    const upstreamBody = {
+      ok: false,
+      code: "email_delivery_failed",
+      recipient: "kaguei3.com@gmail.com",
+      workspace: "3333",
+      token: "raw-invitation-token",
+      secret: "resend-private-detail",
+    };
+    const error = Object.assign(new Error("raw Resend failure details"), {
+      context: new Response(JSON.stringify(upstreamBody), { status: 400 }),
+    });
+    mocks.invoke.mockResolvedValue({ data: null, error });
+    render(<PlatformInvitationsPage />);
+
+    fireEvent.change(await screen.findByLabelText("E-mail do profissional"), { target: { value: "kaguei3.com@gmail.com" } });
+    fireEvent.change(screen.getByLabelText("Nome do workspace"), { target: { value: "3333" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar convite" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("O convite foi registrado, mas o e-mail não foi enviado");
+    expect(alert).toHaveTextContent("verifique o convite pendente");
+    for (const privateValue of ["kaguei3.com@gmail.com", "3333", "raw-invitation-token", "resend-private-detail", "raw Resend failure details"]) {
+      expect(alert).not.toHaveTextContent(privateValue);
+    }
+  });
+
+  it("uses neutral pending-status guidance when Resend outcome is ambiguous", async () => {
+    mocks.getSession.mockResolvedValue({ data: { session }, error: null });
+    mocks.invoke.mockImplementation(async (functionName: string, options: { body: { action?: string } }) => {
+      if (functionName === "workspace-access-request-admin") {
+        return { data: { ok: true, requests: [] }, error: null };
+      }
+      if (options.body.action) return { data: { ok: true }, error: null };
+      return { data: { ok: false, code: "invitation_status_unknown" }, error: null };
+    });
+    render(<PlatformInvitationsPage />);
+
+    fireEvent.change(await screen.findByLabelText("E-mail do profissional"), { target: { value: "invitee@example.test" } });
+    fireEvent.change(screen.getByLabelText("Nome do workspace"), { target: { value: "Workspace" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar convite" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Não foi possível confirmar o status do convite");
+    expect(alert).toHaveTextContent("Verifique se há um convite pendente");
+    expect(alert).not.toHaveTextContent("o e-mail não foi enviado");
   });
 
   it("keeps manual invitations available without loading the request queue when intake is disabled", async () => {
