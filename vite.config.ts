@@ -1,8 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import { createBuildInfoPlugin } from "./vite.buildInfo";
 
-export default defineConfig({
+export default defineConfig(({ command, mode }) => ({
   server: {
     host: "127.0.0.1",
     port: 8080,
@@ -10,7 +11,12 @@ export default defineConfig({
       overlay: false,
     },
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    ...(command === "build"
+      ? [createBuildInfoPlugin({ mode, envDir: __dirname })]
+      : []),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -28,4 +34,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
