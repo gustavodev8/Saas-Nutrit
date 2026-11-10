@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Activity,
   BookOpen,
+  Dumbbell,
   FileText,
   LayoutDashboard,
   Loader2,
@@ -21,6 +22,7 @@ import {
 } from "@/components/admin/patient/ClinicalCentralTab";
 import { PatientAnthropometryTab } from "@/components/admin/patient/PatientAnthropometryTab";
 import { PatientMealPlansTab } from "@/components/admin/patient/PatientMealPlansTab";
+import { PatientTrainingTab } from "@/components/admin/patient/PatientTrainingTab";
 import { PatientProfileTab } from "@/components/admin/patient/PatientProfileTab";
 import { PatientReportsTab } from "@/components/admin/patient/PatientReportsTab";
 import type { PatientAdminTabKey } from "@/components/admin/patient/patientAdminTypes";
@@ -63,6 +65,7 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: "relatorio",    label: "Relatório",            icon: <FileText size={16} /> },
   { key: "antropometria",label: "Medidas",               icon: <Activity size={16} /> },
   { key: "planos",       label: "Planos",                icon: <BookOpen size={16} /> },
+  { key: "treinos",      label: "Treinos",               icon: <Dumbbell size={16} /> },
   { key: "protocolos",   label: "Exames",                icon: <ClipboardList size={16} /> },
   { key: "prescricao",   label: "Prescrição",            icon: <BookOpen size={16} /> },
 ];
@@ -238,6 +241,7 @@ export default function AdminPaciente() {
             {activeTab === "planos" && (
               <PatientMealPlansTab patientId={id!} patientRouteId={id!} patient={patient} />
             )}
+            {activeTab === "treinos" && <PatientTrainingTab patientId={Number(id)} />}
             {activeTab === "protocolos" && (
               <ExamProtocolsTab
                 patientId={Number(id)}

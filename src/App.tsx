@@ -72,6 +72,7 @@ import PatientPortalLogin from "./pages/portal/PatientPortalLogin";
 import PatientPortalLayout from "./pages/portal/PatientPortalLayout";
 import PatientPortalHome from "./pages/portal/PatientPortalHome";
 import PatientPortalPlan from "./pages/portal/PatientPortalPlan";
+import PatientPortalTraining from "./pages/portal/PatientPortalTraining";
 import PatientPortalConsultas from "./pages/portal/PatientPortalConsultas";
 import PatientPortalDocuments from "./pages/portal/PatientPortalDocuments";
 
@@ -129,6 +130,7 @@ const App = () => (
                 >
                   <Route index element={<PatientPortalHome />} />
                   <Route path="plano" element={<PatientPortalPlan />} />
+                  <Route path="treinos" element={<PatientPortalTraining />} />
                   <Route path="consultas" element={<PatientPortalConsultas />} />
                   <Route path="documentos" element={<PatientPortalDocuments />} />
                 </Route>

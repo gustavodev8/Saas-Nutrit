@@ -31,6 +31,7 @@ type ToggleConfig = {
 const navigationToggles: ToggleConfig[] = [
   { key: "navigation.home", label: "Inicio", description: "Mantem a central principal do paciente visivel." },
   { key: "navigation.plan", label: "Plano", description: "Mostra a aba com plano alimentar e refeicoes." },
+  { key: "navigation.training", label: "Treinos", description: "Mostra fichas de treino publicadas ao paciente." },
   { key: "navigation.consultations", label: "Consultas", description: "Mostra a agenda e o historico de atendimentos." },
   { key: "navigation.documents", label: "Documentos", description: "Mostra exames, relatorios e materiais anexados." },
 ];
@@ -38,6 +39,7 @@ const navigationToggles: ToggleConfig[] = [
 const homeToggles: ToggleConfig[] = [
   { key: "home.nextConsultation", label: "Proxima consulta", description: "Card com o proximo atendimento pendente ou confirmado." },
   { key: "home.currentPlan", label: "Plano atual", description: "Card com o plano alimentar mais recente liberado." },
+  { key: "home.currentTraining", label: "Treino atual", description: "Atalho para a ficha de treino mais recente liberada." },
   { key: "home.latestAssessment", label: "Ultima avaliacao", description: "Resumo da avaliacao corporal mais recente." },
   { key: "home.pendingExams", label: "Exames pendentes", description: "Contador de solicitacoes de exame abertas." },
   { key: "home.reports", label: "Relatorios", description: "Contador de relatorios clinicos disponiveis." },

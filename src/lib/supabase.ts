@@ -1914,7 +1914,7 @@ export interface RecordFile {
 
 export interface ConsultationRecord {
   id?: number;
-  booking_id?: number;
+  booking_id?: number | null;
   booking_group_id?: string;
   session_number?: number;
   client_name?: string;

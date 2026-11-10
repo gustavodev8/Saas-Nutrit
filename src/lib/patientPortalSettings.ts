@@ -1,6 +1,7 @@
 export type PatientPortalNavigationSettings = {
   home: boolean;
   plan: boolean;
+  training: boolean;
   consultations: boolean;
   documents: boolean;
 };
@@ -8,6 +9,7 @@ export type PatientPortalNavigationSettings = {
 export type PatientPortalHomeCardSettings = {
   nextConsultation: boolean;
   currentPlan: boolean;
+  currentTraining: boolean;
   latestAssessment: boolean;
   pendingExams: boolean;
   reports: boolean;
@@ -59,12 +61,14 @@ export const DEFAULT_PATIENT_PORTAL_SETTINGS: PatientPortalSettings = {
   navigation: {
     home: true,
     plan: true,
+    training: true,
     consultations: true,
     documents: true,
   },
   home: {
     nextConsultation: true,
     currentPlan: true,
+    currentTraining: true,
     latestAssessment: true,
     pendingExams: true,
     reports: true,

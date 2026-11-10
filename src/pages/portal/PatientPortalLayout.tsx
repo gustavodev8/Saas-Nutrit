@@ -1,4 +1,4 @@
-import { CalendarDays, FileText, Home, LogOut, Soup } from "lucide-react";
+import { CalendarDays, Dumbbell, FileText, Home, LogOut, Soup } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ const navItems: Array<{
 }> = [
   { to: "/portal", icon: Home, label: "Inicio", end: true, route: "home" },
   { to: "/portal/plano", icon: Soup, label: "Plano", route: "plan" },
+  { to: "/portal/treinos", icon: Dumbbell, label: "Treinos", route: "training" },
   { to: "/portal/consultas", icon: CalendarDays, label: "Consultas", route: "consultations" },
   { to: "/portal/documentos", icon: FileText, label: "Documentos", route: "documents" },
 ];

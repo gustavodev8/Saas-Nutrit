@@ -1,5 +1,12 @@
 import { patientPortalSupabase } from "@/lib/patientPortalSupabase";
 import type {
+  PortalTrainingLog,
+  PortalTrainingLogInput,
+  PortalTrainingPlan,
+  PortalTrainingSession,
+  PortalTrainingExercise,
+} from "@/lib/portalTrainingTypes";
+import type {
   Booking,
   ConsultationRecord,
   Meal,
@@ -9,6 +16,124 @@ import type {
   PatientExamRequest,
   PatientReport,
 } from "@/lib/supabase";
+
+export async function fetchPortalTrainingPlans(patientId: number): Promise<PortalTrainingPlan[]> {
+  const { data: planData, error: planError } = await patientPortalSupabase
+    .from("workout_plans")
+    .select("*")
+    .eq("patient_id", patientId)
+    .order("created_at", { ascending: false });
+
+  if (planError) throw new Error(`Nao foi possivel carregar as fichas de treino: ${planError.message}`);
+
+  const planRows = planData ?? [];
+  if (planRows.length === 0) return [];
+
+  const { data: versionsData, error: versionsError } = await patientPortalSupabase
+    .from("workout_plan_versions")
+    .select("*")
+    .in("workout_plan_id", planRows.map((plan) => plan.id))
+    .eq("status", "published")
+    .order("published_at", { ascending: false });
+
+  if (versionsError) throw new Error(`Nao foi possivel carregar as fichas de treino: ${versionsError.message}`);
+  const versions = (versionsData ?? []) as PortalTrainingPlan[];
+  if (versions.length === 0) return [];
+
+  const { data: sessionData, error: sessionError } = await patientPortalSupabase
+    .from("workout_sessions")
+    .select("*")
+    .in("version_id", versions.map((version) => version.id))
+    .order("sort_order", { ascending: true });
+
+  if (sessionError) throw new Error(`Nao foi possivel carregar as sessoes: ${sessionError.message}`);
+
+  const sessions = (sessionData ?? []) as PortalTrainingSession[];
+  const sessionIds = sessions.map((session) => session.id);
+  let exercises: PortalTrainingExercise[] = [];
+
+  if (sessionIds.length > 0) {
+    const { data: exerciseData, error: exerciseError } = await patientPortalSupabase
+      .from("workout_plan_exercises")
+      .select("*")
+      .in("session_id", sessionIds)
+      .order("sort_order", { ascending: true });
+
+    if (exerciseError) throw new Error(`Nao foi possivel carregar os exercicios: ${exerciseError.message}`);
+    exercises = (exerciseData ?? []) as PortalTrainingExercise[];
+  }
+
+  const sessionsByVersion = new Map<number, PortalTrainingSession[]>();
+  sessions.forEach((session) => {
+    const current = sessionsByVersion.get(session.version_id) ?? [];
+    current.push({
+      ...session,
+      exercises: exercises.filter((exercise) => exercise.session_id === session.id),
+    });
+    sessionsByVersion.set(session.version_id, current);
+  });
+
+  return versions.map((version) => ({
+    ...version,
+    sessions: sessionsByVersion.get(version.id) ?? [],
+  }));
+}
+
+export async function fetchPortalTrainingLogs(
+  patientId: number,
+  planIds: number[],
+): Promise<PortalTrainingLog[]> {
+  if (planIds.length === 0) return [];
+
+  const { data, error } = await patientPortalSupabase
+    .from("workout_session_logs")
+    .select("*")
+    .eq("patient_id", patientId)
+    .in("version_id", planIds)
+    .order("performed_at", { ascending: false });
+
+  if (error) throw new Error(`Nao foi possivel carregar o historico: ${error.message}`);
+  const logs = (data ?? []) as PortalTrainingLog[];
+  if (logs.length === 0) return [];
+
+  const logIds = logs.map((log) => log.id);
+  const { data: exerciseData, error: exerciseError } = await patientPortalSupabase
+    .from("workout_exercise_logs")
+    .select("*")
+    .in("session_log_id", logIds);
+
+  if (exerciseError) throw new Error(`Nao foi possivel carregar as cargas registradas: ${exerciseError.message}`);
+  const exerciseLogs = (exerciseData ?? []) as PortalTrainingLog["exercises"];
+
+  return logs.map((log) => ({
+    ...log,
+    exercises: exerciseLogs.filter((item) => item.session_log_id === log.id),
+  }));
+}
+
+export async function createPortalTrainingLog(input: PortalTrainingLogInput): Promise<boolean> {
+  const difficulty = { easy: 1, moderate: 2, hard: 3 }[input.difficulty];
+  const { error } = await patientPortalSupabase.rpc("create_workout_session_log", {
+    p_workout_session_id: input.sessionId,
+    p_performed_at: input.performedAt,
+    p_difficulty: difficulty,
+    p_notes: input.notes.trim() || null,
+    p_exercises: input.loads
+      .filter((load) => load.loadUsed.trim().length > 0)
+      .map((load) => ({
+        exercise_id: load.exerciseId,
+        exercise_name: load.exerciseName,
+        load_used: load.loadUsed.trim(),
+        notes: load.notes?.trim() || null,
+      })),
+  });
+
+  if (error) {
+    console.error("[PatientPortal] createPortalTrainingLog:", error.message);
+    return false;
+  }
+  return true;
+}
 
 export async function fetchCurrentPortalPatient(): Promise<Patient | null> {
   const {
