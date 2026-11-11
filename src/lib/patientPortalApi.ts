@@ -144,6 +144,49 @@ export async function fetchCurrentPortalPatient(): Promise<Patient | null> {
     return null;
   }
 
+  const { data: linkHistory, error: historyError } = await patientPortalSupabase.rpc(
+    "has_my_patient_portal_workspace_link_history",
+  );
+  if (historyError || typeof linkHistory !== "boolean") return null;
+
+  if (linkHistory) {
+    const { data: links, error: linksError } = await patientPortalSupabase.rpc(
+      "list_my_active_patient_portal_workspace_links",
+    );
+    if (linksError || !Array.isArray(links) || links.length !== 1) return null;
+
+    const link = links[0];
+    const workspaceId = link?.workspace_id;
+    const patientIdText = link?.patient_id;
+    if (typeof workspaceId !== "string"
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(workspaceId)
+      || typeof patientIdText !== "string"
+      || !/^\d+$/.test(patientIdText)) return null;
+
+    const patientId = Number(patientIdText);
+    if (!Number.isSafeInteger(patientId)) return null;
+
+    const { data: profiles, error: profileError } = await patientPortalSupabase.rpc(
+      "get_my_linked_patient_profile",
+      { p_workspace_id: workspaceId, p_patient_id: patientId },
+    );
+    if (profileError || !Array.isArray(profiles) || profiles.length !== 1) return null;
+
+    const profile = profiles[0];
+    if (profile?.patient_id !== patientId
+      || typeof profile.patient_name !== "string"
+      || (profile.patient_email !== null && typeof profile.patient_email !== "string")
+      || (profile.patient_phone !== null && typeof profile.patient_phone !== "string")) return null;
+
+    return {
+      id: patientId,
+      workspace_id: workspaceId,
+      name: profile.patient_name,
+      email: profile.patient_email ?? undefined,
+      phone: profile.patient_phone ?? undefined,
+    };
+  }
+
   const { data, error } = await patientPortalSupabase
     .from("patients")
     .select("*")
