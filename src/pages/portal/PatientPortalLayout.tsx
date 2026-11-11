@@ -38,8 +38,8 @@ export default function PatientPortalLayout() {
 
   return (
     <div className={`min-h-screen bg-muted/20 ${visibleNavItems.length > 0 ? "pb-[calc(6rem_+_env(safe-area-inset-bottom))]" : ""}`}>
-      <header className="sticky top-0 z-30 border-b border-border/60 bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+      <header className="sticky top-0 z-30 border-b border-border/60 bg-background/95 shadow-sm backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3.5">
           <div className="flex min-w-0 items-center gap-3">
             <Avatar className="h-11 w-11 border border-border/60">
               <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
@@ -67,12 +67,12 @@ export default function PatientPortalLayout() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-5">
+      <main className="mx-auto max-w-5xl px-4 py-6 sm:py-7">
         <Outlet />
       </main>
 
       {visibleNavItems.length > 0 ? (
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_-20px_hsl(var(--foreground)/0.35)] backdrop-blur">
           <div className={`mx-auto grid max-w-5xl ${navGridClass}`}>
             {visibleNavItems.map(({ to, icon: Icon, label, end }) => (
               <NavLink
@@ -80,8 +80,8 @@ export default function PatientPortalLayout() {
                 to={to}
                 end={end}
                 className={({ isActive }) =>
-                  `flex min-w-0 flex-col items-center justify-center gap-1 px-1 py-2 text-xs font-medium transition-colors ${
-                    isActive ? "text-primary" : "text-muted-foreground"
+                  `mx-1 my-1 flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-xs font-medium transition-colors ${
+                    isActive ? "bg-primary/[0.08] text-primary" : "text-muted-foreground hover:bg-muted/60"
                   }`
                 }
               >

@@ -170,7 +170,7 @@ export default function PatientPortalTraining() {
 
   return (
     <div className="space-y-5 pb-2">
-      <section className="overflow-hidden rounded-3xl bg-primary px-5 py-6 text-primary-foreground shadow-sm max-[390px]:px-3.5 max-[390px]:py-5 sm:px-6">
+      <section className="relative overflow-hidden rounded-3xl border border-primary/20 bg-primary px-5 py-6 text-primary-foreground shadow-lg shadow-primary/10 max-[390px]:px-3.5 max-[390px]:py-5 sm:px-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-xl">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-80">Acompanhamento</p>
@@ -222,7 +222,7 @@ export default function PatientPortalTraining() {
       ) : null}
 
       {plans.length > 1 ? (
-        <section aria-labelledby="training-plan-list-title" className="space-y-3">
+        <section aria-labelledby="training-plan-list-title" className="space-y-4 rounded-3xl border border-border/60 bg-card/70 p-4 sm:p-5">
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Suas fichas</p>
@@ -243,10 +243,10 @@ export default function PatientPortalTraining() {
                     setActiveSessionId(null);
                     resetForm();
                   }}
-                  className={`rounded-3xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 max-[390px]:p-3.5 ${
+                    className={`rounded-3xl border p-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 max-[390px]:p-3.5 ${
                     isSelected
-                      ? "border-primary bg-primary/[0.04] shadow-sm ring-1 ring-primary/20"
-                      : "border-border/60 bg-card hover:border-primary/30 hover:bg-muted/20"
+                      ? "border-primary bg-primary/[0.05] shadow-md shadow-primary/5 ring-1 ring-primary/20"
+                      : "border-border/60 bg-background hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.02] hover:shadow-md"
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -275,8 +275,8 @@ export default function PatientPortalTraining() {
 
       {selectedPlan ? (
         <>
-          <Card className="overflow-hidden rounded-3xl border-border/60 shadow-sm">
-            <CardHeader className="border-b border-border/50 bg-muted/20 p-5 sm:p-6">
+          <Card className="overflow-hidden rounded-3xl border-primary/15 shadow-sm">
+            <CardHeader className="border-b border-border/50 bg-primary/[0.035] p-5 sm:p-6">
               <div className="flex items-start gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                   <Activity aria-hidden="true" size={20} />
@@ -309,7 +309,7 @@ export default function PatientPortalTraining() {
             ) : null}
           </Card>
 
-          <section aria-labelledby="training-sessions-title" className="space-y-3">
+          <section aria-labelledby="training-sessions-title" className="space-y-4">
             <div className="flex items-end justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Programa</p>
@@ -324,7 +324,7 @@ export default function PatientPortalTraining() {
                   const sessionLogs = logs.filter((log) => log.version_id === selectedPlan.id && log.workout_session_id === session.id);
                   const isActive = activeSessionId === session.id;
                   return (
-                    <Card key={session.id} className={`overflow-hidden rounded-3xl border-border/60 shadow-sm ${isActive ? "ring-1 ring-primary/25" : ""}`}>
+                    <Card key={session.id} className={`overflow-hidden rounded-3xl border-border/60 shadow-sm transition-shadow ${isActive ? "ring-1 ring-primary/25 shadow-md shadow-primary/5" : ""}`}>
                       <CardHeader className="p-5 pb-4 sm:p-6 sm:pb-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="flex items-start gap-3">
@@ -345,8 +345,8 @@ export default function PatientPortalTraining() {
 
                       <CardContent className="space-y-4 p-5 pt-0 max-[390px]:px-3.5 max-[390px]:pb-3.5 sm:p-6 sm:pt-0">
                         {session.exercises.length > 0 ? (
-                          <details defaultOpen={sessionIndex === 0} className="rounded-2xl border border-border/60 bg-muted/10">
-                            <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden max-[390px]:px-3">
+                          <details defaultOpen={sessionIndex === 0} className="rounded-2xl border border-border/60 bg-muted/[0.08]">
+                            <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-semibold text-foreground outline-none transition-colors hover:bg-muted/20 focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden max-[390px]:px-3">
                               <Dumbbell aria-hidden="true" size={15} className="shrink-0 text-primary" />
                               <span>Exercícios</span>
                               <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">{session.exercises.length}</span>
@@ -354,7 +354,7 @@ export default function PatientPortalTraining() {
                             </summary>
                             <ol className="space-y-2 border-t border-border/60 p-3 max-[390px]:p-2.5">
                             {session.exercises.map((exercise, exerciseIndex) => (
-                              <li key={exercise.id} className="rounded-2xl border border-border/60 bg-background/80 p-4 max-[390px]:p-3">
+                              <li key={exercise.id} className="rounded-2xl border border-border/60 bg-background p-4 shadow-sm max-[390px]:p-3">
                                 <div className="flex items-start gap-3">
                                   <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-background text-[11px] font-semibold text-muted-foreground">
                                     {exerciseIndex + 1}
@@ -404,7 +404,7 @@ export default function PatientPortalTraining() {
                         </Button>
 
                         {isActive ? (
-                          <form id={`training-log-form-${session.id}`} onSubmit={(event) => void handleSubmit(event)} className="space-y-5 rounded-2xl border border-primary/20 bg-primary/[0.035] p-4 max-[390px]:p-3.5 sm:p-5">
+                          <form id={`training-log-form-${session.id}`} onSubmit={(event) => void handleSubmit(event)} className="space-y-5 rounded-2xl border border-primary/20 bg-primary/[0.035] p-4 shadow-sm max-[390px]:p-3.5 sm:p-5">
                             <div className="flex items-start gap-3">
                               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                                 <CheckCircle2 aria-hidden="true" size={17} />
@@ -459,8 +459,8 @@ export default function PatientPortalTraining() {
                         ) : null}
 
                         {sessionLogs.length > 0 ? (
-                          <details className="group rounded-2xl border border-border/60 bg-muted/10">
-                            <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                          <details className="group rounded-2xl border border-border/60 bg-muted/[0.08]">
+                            <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-semibold text-foreground outline-none transition-colors hover:bg-muted/20 focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
                               <History aria-hidden="true" size={16} className="text-primary" />
                               <span>Histórico de treinos</span>
                               <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">{sessionLogs.length}</span>

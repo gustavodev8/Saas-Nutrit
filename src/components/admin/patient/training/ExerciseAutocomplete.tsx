@@ -89,15 +89,15 @@ export function ExerciseAutocomplete({
         className="rounded-xl"
       />
       {open && suggestions.length > 0 ? (
-        <div id={`${id}-suggestions`} role="region" aria-label="Sugestões de exercícios" className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-border bg-popover p-1 shadow-lg">
+        <div id={`${id}-suggestions`} role="listbox" aria-label="Sugestões de exercícios" className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-2xl border border-primary/15 bg-popover/95 p-1.5 shadow-xl shadow-foreground/10 backdrop-blur-sm">
           {suggestions.map((item, index) => {
             return (
-              <div key={item.id} className={`flex items-center rounded-lg ${index === activeIndex ? "bg-accent" : ""}`}>
+              <div key={item.id} role="option" aria-selected={index === activeIndex} className={`flex items-center rounded-xl ${index === activeIndex ? "bg-primary/[0.08]" : ""}`}>
                 <button
                   type="button"
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => { onSelect(item); setOpen(false); }}
-                  className="min-h-10 min-w-0 flex-1 rounded-lg px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="min-h-11 min-w-0 flex-1 rounded-xl px-3 py-2 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="block truncate text-sm font-medium text-foreground">{item.name}</span>
                   {(item.category || item.equipment) ? <span className="block truncate text-xs text-muted-foreground">{[item.category, item.equipment].filter(Boolean).join(" · ")}</span> : null}

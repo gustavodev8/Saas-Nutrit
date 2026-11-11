@@ -392,10 +392,15 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
     );
   }
 
+  const publishedPlanCount = plans.filter((plan) => plan.status === "published").length;
+  const sessionCount = plans.reduce((total, plan) => total + (plan.sessions?.length ?? 0), 0);
+
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 rounded-3xl border border-border/60 bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
-        <div className="flex items-start gap-4">
+      <header className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-5 shadow-sm sm:p-6">
+        <span className="absolute inset-y-0 left-0 w-1 bg-primary/80" aria-hidden="true" />
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <Dumbbell className="h-5 w-5" aria-hidden="true" />
           </span>
@@ -406,10 +411,23 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
               Organize as sessões e compartilhe a ficha publicada no portal do paciente.
             </p>
           </div>
+          </div>
+          <Button onClick={() => setShowCreateFlow(true)} className="w-full shrink-0 rounded-xl sm:w-auto">
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Nova ficha
+          </Button>
         </div>
-        <Button onClick={() => setShowCreateFlow(true)} className="w-full shrink-0 rounded-xl sm:w-auto">
-          <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Nova ficha
-        </Button>
+        <div className="mt-5 grid grid-cols-3 gap-2 border-t border-border/60 pt-4 sm:max-w-xl sm:grid-cols-3">
+          {[
+            ["Fichas", plans.length],
+            ["Publicadas", publishedPlanCount],
+            ["Sessões", sessionCount],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-2xl border border-border/60 bg-muted/25 px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{value}</p>
+            </div>
+          ))}
+        </div>
       </header>
 
       {error ? (
@@ -433,7 +451,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       ) : null}
 
       {plans.length > 0 ? (
-        <section aria-labelledby="training-plan-list-heading" className="space-y-3">
+        <section aria-labelledby="training-plan-list-heading" className="space-y-4 rounded-3xl border border-border/60 bg-card/70 p-4 sm:p-5">
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Biblioteca do paciente</p>
@@ -452,7 +470,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                   type="button"
                   aria-pressed={active}
                   onClick={() => void refresh(plan.id)}
-                  className={`group min-w-0 rounded-2xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${active ? "border-primary/40 bg-primary/[0.04] shadow-sm" : "border-border/60 bg-card hover:border-primary/30 hover:bg-muted/20"}`}
+                  className={`group min-w-0 rounded-2xl border p-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${active ? "border-primary/40 bg-primary/[0.05] shadow-md shadow-primary/5" : "border-border/60 bg-background hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.02] hover:shadow-md"}`}
                 >
                   <span className="flex items-start justify-between gap-3">
                     <span className="min-w-0">
@@ -486,7 +504,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       )}
 
       {selected ? (
-        <section className="overflow-hidden rounded-3xl border border-border/60 bg-card shadow-sm" aria-labelledby="training-editor-heading">
+        <section className="overflow-hidden rounded-3xl border border-primary/15 bg-card shadow-sm" aria-labelledby="training-editor-heading">
           <div className="flex flex-col gap-4 border-b border-border/60 bg-muted/10 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -580,34 +598,41 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
           ) : null}
 
           <div className="space-y-7 p-5 sm:p-6">
-            <fieldset disabled={selected.status !== "draft"} className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor={`training-title-${selected.id}`}>Título da ficha</Label>
-                <Input id={`training-title-${selected.id}`} value={selected.title} onChange={(event) => update({ title: event.target.value })} className="h-11 rounded-xl" />
+            <div className="overflow-hidden rounded-2xl border border-border/60 bg-muted/[0.08]">
+              <div className="border-b border-border/60 px-4 py-3 sm:px-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Configuração</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">Detalhes da ficha</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Defina o contexto que o paciente verá antes de iniciar a sessão.</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor={`training-goal-${selected.id}`}>Objetivo</Label>
-                <Input id={`training-goal-${selected.id}`} value={selected.goal} onChange={(event) => update({ goal: event.target.value })} className="rounded-xl" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor={`training-frequency-${selected.id}`}>Frequência</Label>
-                <Input id={`training-frequency-${selected.id}`} value={selected.frequency} onChange={(event) => update({ frequency: event.target.value })} placeholder="Ex.: 3 vezes por semana" className="rounded-xl" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor={`training-start-${selected.id}`}>Data de início</Label>
-                <Input id={`training-start-${selected.id}`} type="date" value={selected.valid_from ?? ""} onChange={(event) => update({ valid_from: event.target.value || null })} className="rounded-xl" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor={`training-end-${selected.id}`}>Data de término</Label>
-                <Input id={`training-end-${selected.id}`} type="date" value={selected.valid_until ?? ""} onChange={(event) => update({ valid_until: event.target.value || null })} className="rounded-xl" />
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor={`training-notes-${selected.id}`}>Orientações gerais</Label>
-                <Textarea id={`training-notes-${selected.id}`} value={selected.general_notes} onChange={(event) => update({ general_notes: event.target.value })} placeholder="Observações para a ficha completa" className="min-h-24 resize-y rounded-xl" />
-              </div>
-            </fieldset>
+              <fieldset disabled={selected.status !== "draft"} className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor={`training-title-${selected.id}`}>Título da ficha</Label>
+                  <Input id={`training-title-${selected.id}`} value={selected.title} onChange={(event) => update({ title: event.target.value })} className="h-11 rounded-xl bg-background" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`training-goal-${selected.id}`}>Objetivo</Label>
+                  <Input id={`training-goal-${selected.id}`} value={selected.goal} onChange={(event) => update({ goal: event.target.value })} className="rounded-xl bg-background" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`training-frequency-${selected.id}`}>Frequência</Label>
+                  <Input id={`training-frequency-${selected.id}`} value={selected.frequency} onChange={(event) => update({ frequency: event.target.value })} placeholder="Ex.: 3 vezes por semana" className="rounded-xl bg-background" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`training-start-${selected.id}`}>Data de início</Label>
+                  <Input id={`training-start-${selected.id}`} type="date" value={selected.valid_from ?? ""} onChange={(event) => update({ valid_from: event.target.value || null })} className="rounded-xl bg-background" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`training-end-${selected.id}`}>Data de término</Label>
+                  <Input id={`training-end-${selected.id}`} type="date" value={selected.valid_until ?? ""} onChange={(event) => update({ valid_until: event.target.value || null })} className="rounded-xl bg-background" />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor={`training-notes-${selected.id}`}>Orientações gerais</Label>
+                  <Textarea id={`training-notes-${selected.id}`} value={selected.general_notes} onChange={(event) => update({ general_notes: event.target.value })} placeholder="Observações para a ficha completa" className="min-h-24 resize-y rounded-xl bg-background" />
+                </div>
+              </fieldset>
+            </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/[0.05] p-4 sm:p-5">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Estrutura</p>
@@ -628,8 +653,8 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
               {(selected.sessions ?? []).length > 0 ? (
                 <div className="space-y-4">
                   {(selected.sessions ?? []).map((session, sessionIndex) => (
-                    <article key={session.id ?? sessionIndex} className="overflow-hidden rounded-2xl border border-border/60 bg-background">
-                      <div className="flex flex-col gap-3 border-b border-border/60 bg-muted/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <article key={session.id ?? sessionIndex} className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+                      <div className="flex flex-col gap-3 border-b border-border/60 bg-muted/25 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 flex-1 items-center gap-3">
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary" aria-hidden="true">
                             {sessionIndex + 1}
@@ -687,7 +712,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                               {session.exercises.map((exercise, exerciseIndex) => {
                                 const fieldId = `training-exercise-${selected.id}-${sessionIndex}-${exerciseIndex}`;
                                 return (
-                                  <li key={exercise.id ?? exerciseIndex} className="rounded-2xl border border-border/60 bg-muted/[0.12] p-3 sm:p-4">
+                                  <li key={exercise.id ?? exerciseIndex} className="rounded-2xl border border-border/60 bg-background p-3 shadow-sm sm:p-4">
                                     <div className="mb-3 flex items-center justify-between gap-3">
                                       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Exercício {exerciseIndex + 1}</span>
                                       {selected.status === "draft" ? (
