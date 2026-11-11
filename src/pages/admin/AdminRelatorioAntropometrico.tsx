@@ -18,6 +18,7 @@ import {
   type SkinfoldKey,
 } from "@/lib/anthropometryUtils";
 import { calculateFourComponentAnthropometry } from "@/lib/fourComponentAnthropometry";
+import { buildAnthropometryReportFilename, printWithSuggestedPdfName } from "@/lib/anthropometryReportFilename";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -696,6 +697,12 @@ export default function AdminRelatorioAntropometrico() {
 
   const mostRecent = cols[cols.length - 1];
   const oldest = cols[0];
+  const handleExportPdf = () => {
+    printWithSuggestedPdfName(
+      buildAnthropometryReportFilename(patient.name, cols.map((measurement) => measurement.assessment_date)),
+      { documentRef: document, windowRef: window },
+    );
+  };
   const summaryItems: SummaryItem[] = [
     {
       label: "Peso",
@@ -792,7 +799,7 @@ export default function AdminRelatorioAntropometrico() {
           </div>
         </div>
         <button
-          onClick={() => window.print()}
+          onClick={handleExportPdf}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded bg-foreground text-background text-sm font-semibold hover:bg-foreground/90 active:scale-[0.98] transition-all"
         >
           <FileDown size={15} />
