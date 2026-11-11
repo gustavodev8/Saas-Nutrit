@@ -26,15 +26,21 @@ describe("printWithSuggestedPdfName", () => {
   it("restores the document title after printing", () => {
     const documentRef = { title: "Fillipe David" };
     const listeners = new Map<string, () => void>();
+    let deferredPrint: (() => void) | undefined;
     const windowRef = {
       addEventListener: vi.fn((name: string, listener: () => void) => listeners.set(name, listener)),
       removeEventListener: vi.fn((name: string) => listeners.delete(name)),
-      setTimeout: vi.fn(() => 1),
+      setTimeout: vi.fn((callback: () => void) => {
+        deferredPrint = callback;
+        return 1;
+      }),
       clearTimeout: vi.fn(),
       print: vi.fn(() => listeners.get("afterprint")?.()),
     } as unknown as AnthropometryReportPrintEnvironment["windowRef"];
 
     printWithSuggestedPdfName("relatorio-antropometrico-ana-2026-11-11.pdf", { documentRef, windowRef });
+    expect(documentRef.title).toBe("relatorio-antropometrico-ana-2026-11-11");
+    deferredPrint?.();
 
     expect(windowRef.print).toHaveBeenCalledOnce();
     expect(documentRef.title).toBe("Fillipe David");
@@ -43,13 +49,13 @@ describe("printWithSuggestedPdfName", () => {
 
   it("restores the title through the fallback when printing is cancelled", () => {
     const documentRef = { title: "Fillipe David" };
-    let fallback: (() => void) | undefined;
+    const scheduledCallbacks: Array<() => void> = [];
     const windowRef = {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       setTimeout: vi.fn((callback: () => void) => {
-        fallback = callback;
-        return 1;
+        scheduledCallbacks.push(callback);
+        return scheduledCallbacks.length;
       }),
       clearTimeout: vi.fn(),
       print: vi.fn(),
@@ -58,7 +64,8 @@ describe("printWithSuggestedPdfName", () => {
     printWithSuggestedPdfName("relatorio-antropometrico-ana-2026-11-11.pdf", { documentRef, windowRef });
 
     expect(documentRef.title).toBe("relatorio-antropometrico-ana-2026-11-11");
-    fallback?.();
+    scheduledCallbacks[0]?.();
+    scheduledCallbacks[1]?.();
     expect(documentRef.title).toBe("Fillipe David");
     expect(windowRef.removeEventListener).toHaveBeenCalledWith("afterprint", expect.any(Function));
   });

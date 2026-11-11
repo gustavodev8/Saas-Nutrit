@@ -47,6 +47,7 @@ export function printWithSuggestedPdfName(
   const originalTitle = documentRef.title;
   const suggestedTitle = filename.replace(/\.pdf$/i, "");
   let restored = false;
+  let printTimer: ReturnType<Window["setTimeout"]> | undefined;
   let fallbackTimer: ReturnType<Window["setTimeout"]> | undefined;
 
   const restoreTitle = () => {
@@ -55,18 +56,22 @@ export function printWithSuggestedPdfName(
     restored = true;
     documentRef.title = originalTitle;
     windowRef.removeEventListener("afterprint", restoreTitle);
+    if (printTimer !== undefined) windowRef.clearTimeout(printTimer);
     if (fallbackTimer !== undefined) windowRef.clearTimeout(fallbackTimer);
   };
 
   documentRef.title = suggestedTitle;
   windowRef.addEventListener("afterprint", restoreTitle, { once: true });
 
-  try {
-    windowRef.print();
-  } catch (error) {
-    restoreTitle();
-    throw error;
-  }
+  printTimer = windowRef.setTimeout(() => {
+    printTimer = undefined;
+    try {
+      windowRef.print();
+    } catch (error) {
+      restoreTitle();
+      throw error;
+    }
 
-  if (!restored) fallbackTimer = windowRef.setTimeout(restoreTitle, 5_000);
+    if (!restored) fallbackTimer = windowRef.setTimeout(restoreTitle, 5_000);
+  }, 0);
 }
