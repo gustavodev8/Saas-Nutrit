@@ -10,6 +10,8 @@ export interface TrainingSession {
 }
 export interface TrainingPlan {
   id: number; workout_plan_id: number; patient_id: number; workspace_id: string | null;
+  parent_version_id?: number | null; origin_type?: "manual" | "preset" | "version_copy";
+  source_preset_version_id?: number | null;
   title: string; goal: string; frequency: string; valid_from: string | null; valid_until: string | null;
   general_notes: string; status: TrainingStatus; version: number; created_at: string;
   published_at: string | null; sessions?: TrainingSession[];
@@ -34,7 +36,6 @@ export async function fetchTrainingPlans(patientId: number): Promise<TrainingPla
     patient_id: roots.find((root) => root.id === version.workout_plan_id)?.patient_id ?? patientId,
     workspace_id: version.workspace_id })) as TrainingPlan[];
 }
-
 export async function fetchFullTrainingPlan(versionId: number): Promise<TrainingPlan | null> {
   const { data: version, error } = await supabaseAdmin.from("workout_plan_versions").select("*").eq("id", versionId).maybeSingle();
   if (error) throw error;
@@ -57,7 +58,7 @@ export async function createTrainingPlan(patientId: number, title = "Novo treino
   if (error) throw error;
   const { data: version, error: versionError } = await supabaseAdmin.from("workout_plan_versions").insert({ workout_plan_id: root.id, title, version: 1 }).select("*").single();
   if (versionError) throw versionError;
-  await auditPlan(patientId, version.id, title, "create", `Ficha de treino "${title}" criada.`);
+  await auditTrainingPlan(patientId, version.id, title, "create", `Ficha de treino "${title}" criada.`);
   return { ...version, workout_plan_id: root.id, patient_id: patientId, sessions: [blankSession()] } as TrainingPlan;
 }
 
@@ -86,7 +87,7 @@ export async function saveTrainingPlan(plan: TrainingPlan): Promise<TrainingPlan
       if (insertError) throw insertError;
     }
   }
-  await auditPlan(plan.patient_id, plan.id, title, "update", `Ficha de treino "${title}" atualizada.`);
+  await auditTrainingPlan(plan.patient_id, plan.id, title, "update", `Ficha de treino "${title}" atualizada.`);
   return (await fetchFullTrainingPlan(plan.id)) ?? { ...updated, patient_id: plan.patient_id } as TrainingPlan;
 }
 
@@ -94,27 +95,35 @@ export async function publishTrainingPlan(plan: TrainingPlan): Promise<void> {
   if (!(plan.sessions ?? []).length || !plan.sessions?.some((session) => session.exercises.length)) throw new Error("Adicione ao menos uma sessão e um exercício para publicar.");
   const { data, error } = await supabaseAdmin.from("workout_plan_versions").update({ status: "published", published_at: new Date().toISOString() }).eq("id", plan.id).eq("status", "draft").select("id,title").single();
   if (error) throw error;
-  await auditPlan(plan.patient_id, data.id, data.title, "update", `Ficha de treino "${data.title}" publicada.`);
+  await auditTrainingPlan(plan.patient_id, data.id, data.title, "update", `Ficha de treino "${data.title}" publicada.`);
 }
 
 export async function archiveTrainingPlan(plan: TrainingPlan): Promise<void> {
   const { data, error } = await supabaseAdmin.from("workout_plan_versions").update({ status: "archived" }).eq("id", plan.id).eq("status", "published").select("id,title").single();
   if (error) throw error;
-  await auditPlan(plan.patient_id, data.id, data.title, "update", `Ficha de treino "${data.title}" arquivada.`);
+  await auditTrainingPlan(plan.patient_id, data.id, data.title, "update", `Ficha de treino "${data.title}" arquivada.`);
 }
 
 export async function createTrainingPlanVersion(plan: TrainingPlan): Promise<TrainingPlan> {
-  const { data, error } = await supabaseAdmin.from("workout_plan_versions").insert({
+  const versionPayload = {
     workout_plan_id: plan.workout_plan_id, title: plan.title, goal: plan.goal, frequency: plan.frequency,
     valid_from: plan.valid_from, valid_until: plan.valid_until, general_notes: plan.general_notes,
-    version: plan.version + 1,
-  }).select("*").single();
+    version: plan.version + 1, parent_version_id: plan.id, origin_type: "version_copy",
+    source_preset_version_id: plan.source_preset_version_id ?? null,
+  };
+  let { data, error } = await supabaseAdmin.from("workout_plan_versions").insert(versionPayload).select("*").single();
+  // During staggered rollout, keep version creation functional against the old schema.
+  // Once the additive migration is applied, the lineage-bearing insert succeeds.
+  if (error && (error.code === "PGRST204" || error.code === "42703")) {
+    const { parent_version_id: _parent, origin_type: _origin, source_preset_version_id: _source, ...legacyPayload } = versionPayload;
+    ({ data, error } = await supabaseAdmin.from("workout_plan_versions").insert(legacyPayload).select("*").single());
+  }
   if (error) throw error;
   const previous = await fetchFullTrainingPlan(plan.id);
   const draft: TrainingPlan = { ...data, workout_plan_id: plan.workout_plan_id, patient_id: plan.patient_id,
     sessions: previous?.sessions ?? [] } as TrainingPlan;
   const saved = await saveTrainingPlan(draft);
-  await auditPlan(plan.patient_id, data.id, data.title, "create", `Versão ${data.version} da ficha criada.`);
+  await auditTrainingPlan(plan.patient_id, data.id, data.title, "create", `Versão ${data.version} da ficha criada.`);
   return saved;
 }
 
@@ -142,7 +151,7 @@ export async function createTrainingLog(input: { planId: number; sessionId: numb
   if (error) throw error;
 }
 
-async function auditPlan(patientId: number, entityId: number, title: string, action: "create" | "update", summary: string): Promise<void> {
+export async function auditTrainingPlan(patientId: number, entityId: number, title: string, action: "create" | "update", summary: string): Promise<void> {
   const [{ data: patient }, { data: userData }] = await Promise.all([
     supabaseAdmin.from("patients").select("name").eq("id", patientId).maybeSingle(),
     supabaseAdmin.auth.getUser(),

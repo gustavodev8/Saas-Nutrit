@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Archive,
@@ -13,12 +13,18 @@ import {
   Save,
   Send,
   Trash2,
+  Star,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ExerciseAutocomplete } from "@/components/admin/patient/training/ExerciseAutocomplete";
 import { toast } from "sonner";
+import { normalizeSearchText, searchNormalizedRecords } from "@/lib/normalizedSearch";
+import { resolveWorkspaceScope } from "@/lib/workspaceScope";
 import {
   archiveTrainingPlan,
   createTrainingPlan,
@@ -30,6 +36,21 @@ import {
   type TrainingPlan,
   type TrainingSession,
 } from "@/lib/trainingPlans";
+import {
+  archiveWorkoutExercisePreset,
+  createWorkoutPlanFromPreset,
+  createWorkoutPresetFromPlanVersion,
+  fetchFavoriteWorkoutPresetIds,
+  fetchWorkoutExerciseCatalog,
+  fetchWorkoutExercisePresets,
+  fetchWorkoutPresets,
+  publishWorkoutPresetVersion,
+  setWorkoutPresetFavorite,
+  upsertWorkoutExercisePreset,
+  type WorkoutExerciseCatalogItem,
+  type WorkoutExercisePreset,
+  type WorkoutPresetSummary,
+} from "@/lib/workoutLibrary";
 
 const statusLabel: Record<TrainingPlan["status"], string> = {
   draft: "Rascunho",
@@ -56,7 +77,59 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
   const [selected, setSelected] = useState<TrainingPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [showCreateFlow, setShowCreateFlow] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [exerciseCatalog, setExerciseCatalog] = useState<WorkoutExerciseCatalogItem[]>([]);
+  const [exercisePresets, setExercisePresets] = useState<WorkoutExercisePreset[]>([]);
+  const [workoutPresets, setWorkoutPresets] = useState<WorkoutPresetSummary[]>([]);
+  const [favoriteWorkoutPresetIds, setFavoriteWorkoutPresetIds] = useState<Set<number>>(new Set());
+  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [showPresetPicker, setShowPresetPicker] = useState(false);
+  const [presetSearch, setPresetSearch] = useState("");
+  const [showExercisePresetPicker, setShowExercisePresetPicker] = useState(false);
+  const [exercisePresetSearch, setExercisePresetSearch] = useState("");
+  const [exercisePresetTarget, setExercisePresetTarget] = useState<{ sessionIndex: number; exerciseIndex: number } | null>(null);
+  const [saveExercisePresetTarget, setSaveExercisePresetTarget] = useState<{ sessionIndex: number; exerciseIndex: number } | null>(null);
+  const [exercisePresetName, setExercisePresetName] = useState("");
+  const [saveModelOpen, setSaveModelOpen] = useState(false);
+  const [modelName, setModelName] = useState("");
+  const [librarySaving, setLibrarySaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const refreshLibrary = useCallback(async () => {
+    setLibraryLoading(true);
+    setLibraryError(null);
+    try {
+      const scope = await resolveWorkspaceScope();
+      if (scope.status === "denied") throw new Error("A biblioteca não está disponível para esta conta.");
+      const nextWorkspaceId = scope.workspaceId;
+      setWorkspaceId(nextWorkspaceId);
+      const catalog = await fetchWorkoutExerciseCatalog(nextWorkspaceId);
+      setExerciseCatalog(catalog);
+      if (!nextWorkspaceId) {
+        setExercisePresets([]);
+        setWorkoutPresets([]);
+        setFavoriteWorkoutPresetIds(new Set());
+        return;
+      }
+      const [nextExercisePresets, nextWorkoutPresets, nextFavoritePresetIds] = await Promise.all([
+        fetchWorkoutExercisePresets(nextWorkspaceId),
+        fetchWorkoutPresets(nextWorkspaceId),
+        fetchFavoriteWorkoutPresetIds(nextWorkspaceId),
+      ]);
+      setExercisePresets(nextExercisePresets);
+      setWorkoutPresets(nextWorkoutPresets);
+      setFavoriteWorkoutPresetIds(new Set(nextFavoritePresetIds));
+    } catch (cause) {
+      setLibraryError(cause instanceof Error ? cause.message : "Não foi possível carregar a biblioteca de treinos.");
+    } finally {
+      setLibraryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void refreshLibrary(); }, [refreshLibrary]);
 
   const refresh = useCallback(async (selectedId?: number) => {
     setLoading(true);
@@ -101,13 +174,182 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
     };
   });
 
-  const create = async () => {
+  const createBlank = async () => {
+    setCreating(true);
     try {
       const plan = await createTrainingPlan(patientId);
       setSelected(plan);
+      setShowCreateFlow(false);
       await refresh(plan.id);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Não foi possível criar a ficha.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const createFromLast = async () => {
+    const latest = [...plans].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (!latest) return;
+    setCreating(true);
+    try {
+      const source = await fetchFullTrainingPlan(latest.id);
+      if (!source) throw new Error("A ficha escolhida não foi encontrada.");
+      const draft = await createTrainingPlanVersion(source);
+      setShowCreateFlow(false);
+      await refresh(draft.id);
+      toast.success("Nova ficha criada a partir da última versão.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Não foi possível copiar a última ficha.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const applySetRepShortcut = (sessionIndex: number, exerciseIndex: number, sets: string, repetitions: string) => {
+    const exercise = selected?.sessions?.[sessionIndex]?.exercises[exerciseIndex];
+    if (!exercise || selected?.status !== "draft") return;
+    const hasValues = Boolean(exercise.sets.trim() || exercise.repetitions.trim());
+    const alreadyApplied = exercise.sets.trim() === sets && exercise.repetitions.trim() === repetitions;
+    if (hasValues && !alreadyApplied && !window.confirm(`Substituir séries e repetições atuais por ${sets} × ${repetitions}?`)) return;
+    updateExercise(sessionIndex, exerciseIndex, { sets, repetitions });
+  };
+
+  const filteredWorkoutPresets = useMemo(() => {
+    return searchNormalizedRecords(workoutPresets.map((preset) => ({
+      ...preset,
+      search_text: preset.description,
+    })), presetSearch).sort((a, b) =>
+      Number(favoriteWorkoutPresetIds.has(b.id)) - Number(favoriteWorkoutPresetIds.has(a.id)) || a.name.localeCompare(b.name));
+  }, [favoriteWorkoutPresetIds, presetSearch, workoutPresets]);
+
+  const filteredExercisePresets = useMemo(() => searchNormalizedRecords(exercisePresets.map((preset) => ({
+    ...preset,
+    search_text: [preset.sets, preset.repetitions, preset.reference_load, preset.rest, preset.instructions].join(" "),
+  })), exercisePresetSearch), [exercisePresetSearch, exercisePresets]);
+
+  const openSaveExercisePreset = (sessionIndex: number, exerciseIndex: number) => {
+    const exercise = selected?.sessions?.[sessionIndex]?.exercises[exerciseIndex];
+    if (!exercise) return;
+    setSaveExercisePresetTarget({ sessionIndex, exerciseIndex });
+    setExercisePresetName(exercise.name.trim()
+      ? `${exercise.name.trim()}${exercise.sets || exercise.repetitions ? ` · ${exercise.sets || "—"}×${exercise.repetitions || "—"}` : ""}`
+      : "Prescrição favorita");
+  };
+
+  const saveExercisePreset = async () => {
+    if (!workspaceId || !selected || !saveExercisePresetTarget) return;
+    const exercise = selected.sessions?.[saveExercisePresetTarget.sessionIndex]?.exercises[saveExercisePresetTarget.exerciseIndex];
+    if (!exercise?.name.trim()) {
+      toast.error("Informe o exercício antes de salvar como favorito.");
+      return;
+    }
+    setLibrarySaving(true);
+    try {
+      const catalogItem = exerciseCatalog.find((item) => normalizeSearchText(item.name) === normalizeSearchText(exercise.name));
+      await upsertWorkoutExercisePreset(workspaceId, {
+        catalog_exercise_id: catalogItem?.id ?? null,
+        name: exercisePresetName,
+        search_aliases: catalogItem?.search_aliases ?? [],
+        sets: exercise.sets,
+        repetitions: exercise.repetitions,
+        reference_load: exercise.reference_load,
+        rest: exercise.rest,
+        instructions: exercise.instructions,
+        demo_url: exercise.demo_url,
+      });
+      await refreshLibrary();
+      setSaveExercisePresetTarget(null);
+      toast.success("Prescrição favorita salva.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Não foi possível salvar a prescrição favorita.");
+    } finally {
+      setLibrarySaving(false);
+    }
+  };
+
+  const applyExercisePreset = (preset: WorkoutExercisePreset) => {
+    if (!selected || !exercisePresetTarget) return;
+    const current = selected.sessions?.[exercisePresetTarget.sessionIndex]?.exercises[exercisePresetTarget.exerciseIndex];
+    if (!current || selected.status !== "draft") return;
+    const hasCurrentValues = [current.sets, current.repetitions, current.reference_load, current.rest, current.instructions, current.demo_url]
+      .some((value) => value.trim());
+    const hasDifferences = current.name !== preset.name || current.sets !== preset.sets || current.repetitions !== preset.repetitions
+      || current.reference_load !== preset.reference_load || current.rest !== preset.rest
+      || current.instructions !== preset.instructions || current.demo_url !== preset.demo_url;
+    if (hasCurrentValues && hasDifferences && !window.confirm(`Aplicar “${preset.name}” substituirá os dados deste exercício. Continuar?`)) return;
+    updateExercise(exercisePresetTarget.sessionIndex, exercisePresetTarget.exerciseIndex, {
+      name: preset.name,
+      sets: preset.sets,
+      repetitions: preset.repetitions,
+      reference_load: preset.reference_load,
+      rest: preset.rest,
+      instructions: preset.instructions,
+      demo_url: preset.demo_url,
+    });
+    setShowExercisePresetPicker(false);
+    setExercisePresetTarget(null);
+  };
+
+  const archiveExercisePreset = async (preset: WorkoutExercisePreset) => {
+    if (!workspaceId || !window.confirm(`Arquivar a prescrição favorita “${preset.name}”?`)) return;
+    try {
+      await archiveWorkoutExercisePreset(preset.id, workspaceId);
+      await refreshLibrary();
+      toast.success("Prescrição favorita arquivada.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Não foi possível arquivar a prescrição.");
+    }
+  };
+
+  const toggleWorkoutPresetFavorite = async (preset: WorkoutPresetSummary) => {
+    if (!workspaceId) return;
+    const wasFavorite = favoriteWorkoutPresetIds.has(preset.id);
+    try {
+      await setWorkoutPresetFavorite(workspaceId, preset.id, !wasFavorite);
+      setFavoriteWorkoutPresetIds((current) => {
+        const next = new Set(current);
+        if (wasFavorite) next.delete(preset.id);
+        else next.add(preset.id);
+        return next;
+      });
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Não foi possível atualizar o favorito.");
+    }
+  };
+
+  const applyWorkoutPreset = async (preset: WorkoutPresetSummary) => {
+    if (!preset.latest_published_version_id) return;
+    setCreating(true);
+    try {
+      const plan = await createWorkoutPlanFromPreset(patientId, preset.latest_published_version_id);
+      setShowPresetPicker(false);
+      setShowCreateFlow(false);
+      setPresetSearch("");
+      await refresh(plan.id);
+      toast.success(`Nova ficha criada a partir de “${preset.name}”.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Não foi possível aplicar o modelo.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const saveSelectedAsWorkoutPreset = async () => {
+    if (!selected || !workspaceId) return;
+    setLibrarySaving(true);
+    try {
+      const source = selected.status === "draft" ? await saveTrainingPlan(selected) : selected;
+      const presetVersion = await createWorkoutPresetFromPlanVersion(source.id, modelName.trim() || source.title);
+      if (presetVersion.status === "draft") await publishWorkoutPresetVersion(presetVersion.id);
+      await refreshLibrary();
+      setSaveModelOpen(false);
+      setModelName("");
+      toast.success("Modelo salvo na biblioteca e disponibilizado para seleção.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Não foi possível salvar o modelo.");
+    } finally {
+      setLibrarySaving(false);
     }
   };
 
@@ -165,7 +407,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
             </p>
           </div>
         </div>
-        <Button onClick={() => void create()} className="w-full shrink-0 rounded-xl sm:w-auto">
+        <Button onClick={() => setShowCreateFlow(true)} className="w-full shrink-0 rounded-xl sm:w-auto">
           <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Nova ficha
         </Button>
       </header>
@@ -181,6 +423,8 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
           </Button>
         </div>
       ) : null}
+
+      {libraryError ? <p role="status" className="rounded-xl border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">Biblioteca de treinos indisponível: {libraryError}</p> : null}
 
       {loading && plans.length > 0 ? (
         <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status" aria-live="polite">
@@ -235,7 +479,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
           <p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
             Crie uma ficha para organizar os exercícios e acompanhar a rotina deste paciente.
           </p>
-          <Button type="button" onClick={() => void create()} className="mt-5 rounded-xl">
+          <Button type="button" onClick={() => setShowCreateFlow(true)} className="mt-5 rounded-xl">
             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Criar primeira ficha
           </Button>
         </section>
@@ -260,6 +504,9 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
               {selected.status === "draft" ? (
                 <>
+                  <Button type="button" variant="outline" onClick={() => { setModelName(selected.title); setSaveModelOpen(true); }} disabled={!workspaceId || librarySaving} className="w-full rounded-xl sm:w-auto">
+                    <BookOpen className="mr-2 h-4 w-4" aria-hidden="true" />Salvar como modelo
+                  </Button>
                   <Button type="button" variant="outline" onClick={() => void save()} disabled={saving} className="w-full rounded-xl sm:w-auto">
                     {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" aria-hidden="true" />}
                     Salvar rascunho
@@ -272,6 +519,9 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
               ) : null}
               {selected.status === "published" ? (
                 <>
+                  <Button type="button" variant="outline" onClick={() => { setModelName(selected.title); setSaveModelOpen(true); }} disabled={!workspaceId || librarySaving} className="w-full rounded-xl sm:w-auto">
+                    <BookOpen className="mr-2 h-4 w-4" aria-hidden="true" />Salvar como modelo
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
@@ -455,7 +705,13 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                                       <div className="space-y-1.5 sm:col-span-2 xl:col-span-4">
                                         <Label htmlFor={`${fieldId}-name`}>Exercício</Label>
-                                        <Input id={`${fieldId}-name`} disabled={selected.status !== "draft"} value={exercise.name} placeholder="Ex.: agachamento" onChange={(event) => updateExercise(sessionIndex, exerciseIndex, { name: event.target.value })} className="rounded-xl" />
+                                        <ExerciseAutocomplete id={`${fieldId}-name`} disabled={selected.status !== "draft"} value={exercise.name} items={exerciseCatalog}
+                                          onChange={(value) => updateExercise(sessionIndex, exerciseIndex, { name: value })}
+                                          onSelect={(item) => updateExercise(sessionIndex, exerciseIndex, {
+                                            name: item.name,
+                                            instructions: exercise.instructions || item.instructions || "",
+                                            demo_url: exercise.demo_url || item.demo_url || "",
+                                          })} />
                                       </div>
                                       <div className="space-y-1.5">
                                         <Label htmlFor={`${fieldId}-sets`}>Séries</Label>
@@ -464,6 +720,20 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                       <div className="space-y-1.5">
                                         <Label htmlFor={`${fieldId}-reps`}>Repetições</Label>
                                         <Input id={`${fieldId}-reps`} disabled={selected.status !== "draft"} value={exercise.repetitions} placeholder="Ex.: 10–12" onChange={(event) => updateExercise(sessionIndex, exerciseIndex, { repetitions: event.target.value })} className="rounded-xl" />
+                                        {selected.status === "draft" ? (
+                                          <div className="space-y-1.5 pt-1">
+                                            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Atalhos</p>
+                                            <div className="flex flex-wrap gap-1.5">
+                                              {([["3", "10"], ["3", "12"], ["4", "10"], ["4", "12"]] as const).map(([sets, repetitions]) => (
+                                                <Button key={`${sets}x${repetitions}`} type="button" variant="outline" size="sm"
+                                                  onClick={() => applySetRepShortcut(sessionIndex, exerciseIndex, sets, repetitions)}
+                                                  className="h-8 rounded-lg px-2.5 text-xs tabular-nums">
+                                                  {sets}×{repetitions}
+                                                </Button>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ) : null}
                                       </div>
                                       <div className="space-y-1.5">
                                         <Label htmlFor={`${fieldId}-load`}>Carga de referência</Label>
@@ -481,6 +751,14 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                         <Label htmlFor={`${fieldId}-demo`}>Link de demonstração <span className="font-normal text-muted-foreground">(opcional)</span></Label>
                                         <Input id={`${fieldId}-demo`} type="url" disabled={selected.status !== "draft"} value={exercise.demo_url} placeholder="https://" onChange={(event) => updateExercise(sessionIndex, exerciseIndex, { demo_url: event.target.value })} className="rounded-xl" />
                                       </div>
+                                      {selected.status === "draft" ? <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-4">
+                                        <Button type="button" variant="outline" size="sm" disabled={!workspaceId} onClick={() => openSaveExercisePreset(sessionIndex, exerciseIndex)} className="min-h-10 rounded-xl">
+                                          <Star className="mr-2 h-4 w-4" aria-hidden="true" />Salvar prescrição favorita
+                                        </Button>
+                                        <Button type="button" variant="outline" size="sm" disabled={!workspaceId || exercisePresets.length === 0} onClick={() => { setExercisePresetTarget({ sessionIndex, exerciseIndex }); setExercisePresetSearch(""); setShowExercisePresetPicker(true); }} className="min-h-10 rounded-xl">
+                                          Usar prescrição favorita
+                                        </Button>
+                                      </div> : null}
                                     </div>
                                   </li>
                                 );
@@ -520,6 +798,88 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
           </div>
         </section>
       ) : null}
+      <Dialog open={showCreateFlow} onOpenChange={setShowCreateFlow}>
+        <DialogContent className="max-w-lg rounded-3xl p-5 sm:p-6">
+          {showPresetPicker ? <>
+            <DialogHeader>
+              <DialogTitle>Escolher modelo</DialogTitle>
+              <DialogDescription>Modelos publicados são copiados para uma nova ficha deste paciente.</DialogDescription>
+            </DialogHeader>
+            <Input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder="Buscar modelo" aria-label="Buscar modelo de treino" className="rounded-xl" />
+            <div className="max-h-80 space-y-2 overflow-y-auto py-1">
+              {libraryLoading ? <p className="p-3 text-sm text-muted-foreground">Carregando modelos…</p> : null}
+              {!libraryLoading && filteredWorkoutPresets.length === 0 ? <p className="p-3 text-sm text-muted-foreground">Nenhum modelo publicado encontrado.</p> : null}
+              {filteredWorkoutPresets.filter((preset) => preset.latest_published_version_id).map((preset) => (
+                <div key={preset.id} className="flex items-center gap-2 rounded-2xl border border-border/60 p-3">
+                  <button type="button" aria-label={favoriteWorkoutPresetIds.has(preset.id) ? `Remover ${preset.name} dos favoritos` : `Favoritar ${preset.name}`} onClick={() => void toggleWorkoutPresetFavorite(preset)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl hover:bg-muted">
+                    <Star className={`h-4 w-4 ${favoriteWorkoutPresetIds.has(preset.id) ? "fill-primary text-primary" : "text-muted-foreground"}`} aria-hidden="true" />
+                  </button>
+                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{preset.name}</p><p className="truncate text-xs text-muted-foreground">{preset.description || `Versão ${preset.latest_published_version ?? "publicada"}`}</p></div>
+                  <Button type="button" size="sm" disabled={creating} onClick={() => void applyWorkoutPreset(preset)} className="min-h-10 rounded-xl">Usar</Button>
+                </div>
+              ))}
+            </div>
+            <DialogFooter className="flex-row justify-between sm:justify-between">
+              <Button type="button" variant="ghost" onClick={() => setShowPresetPicker(false)} className="rounded-xl">Voltar</Button>
+              <Button type="button" variant="ghost" disabled={creating} onClick={() => setShowCreateFlow(false)} className="rounded-xl">Cancelar</Button>
+            </DialogFooter>
+          </> : <>
+          <DialogHeader>
+            <DialogTitle>Como deseja começar?</DialogTitle>
+            <DialogDescription>Escolha uma base para a nova ficha. Ela será criada como rascunho e poderá ser editada antes de publicar.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <button type="button" disabled={creating} onClick={() => void createBlank()}
+              className="rounded-2xl border border-border/60 p-4 text-left transition hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+              <span className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Plus size={18} aria-hidden="true" /></span>
+                <span><span className="block font-semibold text-foreground">Começar vazia</span><span className="mt-1 block text-sm text-muted-foreground">Crie sessões e exercícios do início.</span></span>
+              </span>
+            </button>
+            <button type="button" disabled={creating || plans.length === 0} onClick={() => void createFromLast()}
+              className="rounded-2xl border border-border/60 p-4 text-left transition hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+              <span className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><ClipboardPlus size={18} aria-hidden="true" /></span>
+                <span><span className="block font-semibold text-foreground">Usar a última ficha</span><span className="mt-1 block text-sm text-muted-foreground">Crie uma nova versão baseada na ficha mais recente deste paciente.</span></span>
+              </span>
+            </button>
+            <button type="button" disabled={creating || !workspaceId || libraryLoading || workoutPresets.every((preset) => !preset.latest_published_version_id)} onClick={() => { setPresetSearch(""); setShowPresetPicker(true); }}
+              className="rounded-2xl border border-border/60 p-4 text-left transition hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+              <span className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><BookOpen size={18} aria-hidden="true" /></span><span><span className="block font-semibold text-foreground">Escolher da biblioteca</span><span className="mt-1 block text-sm text-muted-foreground">Aplique um modelo publicado à ficha deste paciente.</span></span></span>
+            </button>
+          </div>
+          {creating ? <p role="status" className="text-sm text-muted-foreground">Preparando nova ficha…</p> : null}
+          <DialogFooter>
+            <Button type="button" variant="ghost" disabled={creating} onClick={() => setShowCreateFlow(false)} className="rounded-xl">Cancelar</Button>
+          </DialogFooter>
+          </>}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(saveExercisePresetTarget)} onOpenChange={(open) => { if (!open) setSaveExercisePresetTarget(null); }}>
+        <DialogContent className="rounded-3xl p-5 sm:p-6">
+          <DialogHeader><DialogTitle>Salvar prescrição favorita</DialogTitle><DialogDescription>Os dados ficam salvos como um modelo reutilizável e não alteram a ficha atual.</DialogDescription></DialogHeader>
+          <div className="space-y-2"><Label htmlFor="exercise-preset-name">Nome da prescrição</Label><Input id="exercise-preset-name" value={exercisePresetName} onChange={(event) => setExercisePresetName(event.target.value)} maxLength={120} className="rounded-xl" /></div>
+          <DialogFooter><Button type="button" variant="ghost" onClick={() => setSaveExercisePresetTarget(null)} className="rounded-xl">Cancelar</Button><Button type="button" disabled={librarySaving || !exercisePresetName.trim()} onClick={() => void saveExercisePreset()} className="rounded-xl">{librarySaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showExercisePresetPicker} onOpenChange={setShowExercisePresetPicker}>
+        <DialogContent className="max-w-lg rounded-3xl p-5 sm:p-6">
+          <DialogHeader><DialogTitle>Prescrições favoritas</DialogTitle><DialogDescription>Aplicar uma prescrição substitui os campos deste exercício após confirmação.</DialogDescription></DialogHeader>
+          <Input value={exercisePresetSearch} onChange={(event) => setExercisePresetSearch(event.target.value)} placeholder="Buscar prescrição" aria-label="Buscar prescrição favorita" className="rounded-xl" />
+          <div className="max-h-80 space-y-2 overflow-y-auto">{filteredExercisePresets.length === 0 ? <p className="p-3 text-sm text-muted-foreground">Nenhuma prescrição favorita encontrada.</p> : filteredExercisePresets.map((preset) => <div key={preset.id} className="flex items-center gap-2 rounded-2xl border border-border/60 p-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{preset.name}</p><p className="text-xs text-muted-foreground">{[preset.sets && `${preset.sets} séries`, preset.repetitions && `${preset.repetitions} rep.`, preset.reference_load, preset.rest].filter(Boolean).join(" · ")}</p></div><Button type="button" size="sm" onClick={() => applyExercisePreset(preset)} className="min-h-10 rounded-xl">Usar</Button><Button type="button" size="sm" variant="ghost" onClick={() => void archiveExercisePreset(preset)} aria-label={`Arquivar ${preset.name}`} className="min-h-10 rounded-xl text-muted-foreground hover:text-destructive"><Archive className="h-4 w-4" aria-hidden="true" /></Button></div>)}</div>
+          <DialogFooter><Button type="button" variant="ghost" onClick={() => setShowExercisePresetPicker(false)} className="rounded-xl">Fechar</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={saveModelOpen} onOpenChange={setSaveModelOpen}>
+        <DialogContent className="rounded-3xl p-5 sm:p-6">
+          <DialogHeader><DialogTitle>Salvar como modelo</DialogTitle><DialogDescription>Será criada uma versão publicada na biblioteca do workspace, sem alterar a ficha do paciente.</DialogDescription></DialogHeader>
+          <div className="space-y-2"><Label htmlFor="workout-model-name">Nome do modelo</Label><Input id="workout-model-name" value={modelName} onChange={(event) => setModelName(event.target.value)} maxLength={120} className="rounded-xl" /></div>
+          <DialogFooter><Button type="button" variant="ghost" onClick={() => setSaveModelOpen(false)} className="rounded-xl">Cancelar</Button><Button type="button" disabled={librarySaving || !modelName.trim()} onClick={() => void saveSelectedAsWorkoutPreset()} className="rounded-xl">{librarySaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar modelo</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
