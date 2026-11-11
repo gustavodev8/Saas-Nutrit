@@ -32,10 +32,12 @@ export default function PatientPortalLayout() {
         ? "grid-cols-2"
         : visibleNavItems.length === 3
           ? "grid-cols-3"
-          : "grid-cols-4";
+          : visibleNavItems.length === 4
+            ? "grid-cols-4"
+            : "grid-cols-5";
 
   return (
-    <div className={`min-h-screen bg-muted/20 ${visibleNavItems.length > 0 ? "pb-24" : ""}`}>
+    <div className={`min-h-screen bg-muted/20 ${visibleNavItems.length > 0 ? "pb-[calc(6rem_+_env(safe-area-inset-bottom))]" : ""}`}>
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -70,7 +72,7 @@ export default function PatientPortalLayout() {
       </main>
 
       {visibleNavItems.length > 0 ? (
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur">
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
           <div className={`mx-auto grid max-w-5xl ${navGridClass}`}>
             {visibleNavItems.map(({ to, icon: Icon, label, end }) => (
               <NavLink
@@ -78,13 +80,13 @@ export default function PatientPortalLayout() {
                 to={to}
                 end={end}
                 className={({ isActive }) =>
-                  `flex flex-col items-center justify-center gap-1 px-2 py-3 text-xs font-medium transition-colors ${
+                  `flex min-w-0 flex-col items-center justify-center gap-1 px-1 py-2 text-xs font-medium transition-colors ${
                     isActive ? "text-primary" : "text-muted-foreground"
                   }`
                 }
               >
-                <Icon size={18} />
-                <span>{label}</span>
+                <Icon size={18} className="shrink-0" />
+                <span className="max-w-full truncate text-[11px] leading-tight sm:text-xs">{label}</span>
               </NavLink>
             ))}
           </div>

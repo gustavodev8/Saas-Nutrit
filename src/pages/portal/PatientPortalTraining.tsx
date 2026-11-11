@@ -37,7 +37,7 @@ function formatIsoDate(value?: string | null) {
 
 function MetaChip({ icon: Icon, children }: { icon: typeof Activity; children: string }) {
   return (
-    <span className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 text-xs font-medium text-muted-foreground">
+    <span className="inline-flex min-h-8 max-w-full min-w-0 items-center gap-1.5 whitespace-normal break-words rounded-full border border-border/60 bg-background/80 px-3 text-xs font-medium text-muted-foreground max-[390px]:px-2.5">
       <Icon aria-hidden="true" size={14} className="text-primary" />
       {children}
     </span>
@@ -170,7 +170,7 @@ export default function PatientPortalTraining() {
 
   return (
     <div className="space-y-5 pb-2">
-      <section className="overflow-hidden rounded-3xl bg-primary px-5 py-6 text-primary-foreground shadow-sm sm:px-6">
+      <section className="overflow-hidden rounded-3xl bg-primary px-5 py-6 text-primary-foreground shadow-sm max-[390px]:px-3.5 max-[390px]:py-5 sm:px-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-xl">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-80">Acompanhamento</p>
@@ -180,7 +180,7 @@ export default function PatientPortalTraining() {
             </p>
           </div>
           {selectedPlan ? (
-            <div className="flex shrink-0 items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm">
+            <div className="flex max-w-full shrink-0 items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm max-[390px]:px-3 max-[390px]:py-2.5">
               <Dumbbell aria-hidden="true" size={17} />
               <span>{selectedPlan.sessions.length} {selectedPlan.sessions.length === 1 ? "sessão" : "sessões"} na ficha</span>
             </div>
@@ -243,7 +243,7 @@ export default function PatientPortalTraining() {
                     setActiveSessionId(null);
                     resetForm();
                   }}
-                  className={`rounded-3xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                  className={`rounded-3xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 max-[390px]:p-3.5 ${
                     isSelected
                       ? "border-primary bg-primary/[0.04] shadow-sm ring-1 ring-primary/20"
                       : "border-border/60 bg-card hover:border-primary/30 hover:bg-muted/20"
@@ -332,7 +332,7 @@ export default function PatientPortalTraining() {
                               <span className="text-sm font-bold">{String(sessionIndex + 1).padStart(2, "0")}</span>
                             </div>
                             <div className="min-w-0">
-                              <CardTitle className="text-base sm:text-lg">{session.title}</CardTitle>
+                              <CardTitle className="break-words text-base sm:text-lg">{session.title}</CardTitle>
                               {session.notes?.trim() ? <CardDescription className="mt-1.5 leading-5">{session.notes}</CardDescription> : null}
                             </div>
                           </div>
@@ -343,20 +343,27 @@ export default function PatientPortalTraining() {
                         </div>
                       </CardHeader>
 
-                      <CardContent className="space-y-4 p-5 pt-0 sm:p-6 sm:pt-0">
+                      <CardContent className="space-y-4 p-5 pt-0 max-[390px]:px-3.5 max-[390px]:pb-3.5 sm:p-6 sm:pt-0">
                         {session.exercises.length > 0 ? (
-                          <ol className="space-y-2.5">
+                          <details defaultOpen={sessionIndex === 0} className="rounded-2xl border border-border/60 bg-muted/10">
+                            <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden max-[390px]:px-3">
+                              <Dumbbell aria-hidden="true" size={15} className="shrink-0 text-primary" />
+                              <span>Exercícios</span>
+                              <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">{session.exercises.length}</span>
+                              <span className="sr-only">Mostrar ou ocultar exercícios</span>
+                            </summary>
+                            <ol className="space-y-2 border-t border-border/60 p-3 max-[390px]:p-2.5">
                             {session.exercises.map((exercise, exerciseIndex) => (
-                              <li key={exercise.id} className="rounded-2xl border border-border/60 bg-muted/15 p-4">
+                              <li key={exercise.id} className="rounded-2xl border border-border/60 bg-background/80 p-4 max-[390px]:p-3">
                                 <div className="flex items-start gap-3">
                                   <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-background text-[11px] font-semibold text-muted-foreground">
                                     {exerciseIndex + 1}
                                   </span>
                                   <div className="min-w-0 flex-1">
                                     <div className="flex flex-wrap items-start justify-between gap-2">
-                                      <h3 className="font-semibold text-foreground">{exercise.name}</h3>
+                                      <h3 className="break-words font-semibold text-foreground">{exercise.name}</h3>
                                       {exercise.demo_url ? (
-                                        <a href={exercise.demo_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                        <a href={exercise.demo_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                           Ver demonstração <ExternalLink aria-hidden="true" size={13} />
                                         </a>
                                       ) : null}
@@ -377,7 +384,8 @@ export default function PatientPortalTraining() {
                                 </div>
                               </li>
                             ))}
-                          </ol>
+                            </ol>
+                          </details>
                         ) : (
                           <div className="rounded-2xl border border-dashed border-border/70 px-4 py-5 text-sm text-muted-foreground">
                             Esta sessão ainda não tem exercícios detalhados.
@@ -387,16 +395,16 @@ export default function PatientPortalTraining() {
                         <Button
                           type="button"
                           variant={isActive ? "secondary" : "outline"}
-                          className="w-full rounded-xl sm:w-auto"
+                          className="min-h-11 w-full rounded-xl sm:w-auto"
                           aria-expanded={isActive}
-                          aria-controls={`training-log-form-${session.id}`}
+                          aria-controls={isActive ? `training-log-form-${session.id}` : undefined}
                           onClick={() => isActive ? setActiveSessionId(null) : openSessionForm(session)}
                         >
                           {isActive ? "Fechar registro" : "Registrar treino realizado"}
                         </Button>
 
                         {isActive ? (
-                          <form id={`training-log-form-${session.id}`} onSubmit={(event) => void handleSubmit(event)} className="space-y-5 rounded-2xl border border-primary/20 bg-primary/[0.035] p-4 sm:p-5">
+                          <form id={`training-log-form-${session.id}`} onSubmit={(event) => void handleSubmit(event)} className="space-y-5 rounded-2xl border border-primary/20 bg-primary/[0.035] p-4 max-[390px]:p-3.5 sm:p-5">
                             <div className="flex items-start gap-3">
                               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                                 <CheckCircle2 aria-hidden="true" size={17} />
@@ -414,7 +422,7 @@ export default function PatientPortalTraining() {
                               </div>
                               <div className="space-y-2">
                                 <Label htmlFor={`difficulty-${session.id}`}>Dificuldade percebida</Label>
-                                <select id={`difficulty-${session.id}`} value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)} className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                <select id={`difficulty-${session.id}`} value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)} className="flex h-11 min-h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                   <option value="easy">Leve</option>
                                   <option value="moderate">Moderado</option>
                                   <option value="hard">Intenso</option>
@@ -441,8 +449,8 @@ export default function PatientPortalTraining() {
                               <Textarea id={`notes-${session.id}`} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Anote como se sentiu ou algo que queira lembrar." className="min-h-24 resize-y rounded-xl" />
                             </div>
                             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                              <Button type="button" variant="ghost" className="rounded-xl" disabled={saving} onClick={() => setActiveSessionId(null)}>Cancelar</Button>
-                              <Button type="submit" className="rounded-xl" disabled={saving || !performedAt}>
+                              <Button type="button" variant="ghost" className="min-h-11 rounded-xl" disabled={saving} onClick={() => setActiveSessionId(null)}>Cancelar</Button>
+                              <Button type="submit" className="min-h-11 rounded-xl" disabled={saving || !performedAt}>
                                 {saving ? <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden="true" className="mr-2 h-4 w-4" />}
                                 {saving ? "Salvando…" : "Salvar treino"}
                               </Button>
