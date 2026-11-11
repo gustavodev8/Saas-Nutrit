@@ -5,6 +5,7 @@ import {
   mergePatientPortalSettings,
   type PatientPortalSettings,
 } from "@/lib/patientPortalSettings";
+import { parseNormalizedSearchQuery, searchNormalizedRecords } from "@/lib/normalizedSearch";
 
 const supabaseUrl     = import.meta.env.VITE_SUPABASE_URL      as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -314,35 +315,66 @@ export function repairMojibake(value: string | null | undefined): string {
   return next.replace(/\uFFFD|\u00ef\u00bf\u00bd/g, "").normalize("NFC").trim();
 }
 
-export async function fetchFoodsFromSupabase(query?: string, category?: string): Promise<import("./foodDatabase").FoodItem[]> {
-  const pageSize = 1000;
-  const rows: Array<Record<string, unknown>> = [];
+const FOOD_PAGE_SIZE = 500;
+const FOOD_RANGE_COLUMNS: Readonly<Record<string, string>> = {
+  kcal: "kcal_per_100g",
+  protein: "protein_per_100g",
+  carbs: "carbs_per_100g",
+  fat: "fat_per_100g",
+  fiber: "fiber_per_100g",
+};
 
-  for (let from = 0; ; from += pageSize) {
-    let q = supabase.from(FOOD_TABLE).select("*");
+type FoodSearchCandidate = { type: "name" | "alias"; value: string } | { type: "ranges" };
 
-    if (query) {
-      q = q.ilike("name", `%${query}%`);
-    }
+function buildFoodSearchCandidates(query: string): FoodSearchCandidate[] {
+  const parsed = parseNormalizedSearchQuery(query);
+  const unknownRange = parsed.ranges.some((range) => !FOOD_RANGE_COLUMNS[range.field]);
+  if (unknownRange) return [];
 
-    if (category && category !== "Todos") {
-      q = q.eq("category", category);
-    }
-
-    const { data, error } = await q.order("name").range(from, from + pageSize - 1);
-
-    if (error) {
-      console.error("[Supabase] fetchFoodsFromSupabase error:", error.message);
-      return [];
-    }
-
-    rows.push(...(data ?? []));
-
-    if (!data || data.length < pageSize) {
-      break;
+  const candidates: FoodSearchCandidate[] = parsed.tokens.map((token) => ({ type: "name", value: token }));
+  const aliasValues = new Set<string>();
+  if (parsed.tokens.length) {
+    const phrase = parsed.tokens.join(" ");
+    aliasValues.add(phrase);
+    for (const token of parsed.tokens) {
+      aliasValues.add(token);
+      aliasValues.add(token.toLocaleUpperCase("pt-BR"));
+      aliasValues.add(token.charAt(0).toLocaleUpperCase("pt-BR") + token.slice(1));
     }
   }
+  for (const value of aliasValues) candidates.push({ type: "alias", value });
+  if (!candidates.length && parsed.ranges.length) candidates.push({ type: "ranges" });
+  return candidates;
+}
 
+async function fetchFoodRows(
+  candidate: FoodSearchCandidate | undefined,
+  category?: string,
+  query = "",
+): Promise<Array<Record<string, unknown>>> {
+  const parsed = parseNormalizedSearchQuery(query);
+  const rows: Array<Record<string, unknown>> = [];
+  for (let from = 0; ; from += FOOD_PAGE_SIZE) {
+    let request = supabase.from(FOOD_TABLE).select("*");
+    if (category && category !== "Todos") request = request.eq("category", category);
+    // `name_key` is punctuation/diacritic-free. Keep the raw-name fallback for
+    // legacy rows whose normalized key has not been populated yet.
+    if (candidate?.type === "name") request = request.or(`name_key.ilike.%${candidate.value}%,name.ilike.%${candidate.value}%`);
+    if (candidate?.type === "alias") request = request.contains("search_aliases", [candidate.value]);
+    for (const range of parsed.ranges) {
+      const column = FOOD_RANGE_COLUMNS[range.field];
+      if (column) request = request.gte(column, range.min).lte(column, range.max);
+    }
+
+    const { data, error } = await request.order("name").order("id").range(from, from + FOOD_PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < FOOD_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+function toFoodItems(rows: readonly Record<string, unknown>[]): import("./foodDatabase").FoodItem[] {
   return rows.map((f) => ({
     id: String(f.id ?? ""),
     name: repairMojibake(String(f.name ?? "")),
@@ -355,7 +387,42 @@ export async function fetchFoodsFromSupabase(query?: string, category?: string):
     source: repairMojibake(String(f.source ?? "custom")) || "custom",
     source_ref: f.source_ref ? repairMojibake(String(f.source_ref)) : undefined,
     source_code: f.source_code ? String(f.source_code) : undefined,
+    search_aliases: Array.isArray(f.search_aliases)
+      ? f.search_aliases.filter((alias): alias is string => typeof alias === "string").map(repairMojibake)
+      : [],
   }));
+}
+
+function filterNormalizedFoods(
+  foods: import("./foodDatabase").FoodItem[],
+  query: string,
+): import("./foodDatabase").FoodItem[] {
+  return searchNormalizedRecords(foods.map((food) => ({
+    ...food,
+    search_ranges: {
+      kcal: food.kcal,
+      protein: food.protein,
+      carbs: food.carbs,
+      fat: food.fat,
+      fiber: food.fiber,
+    },
+  })), query).map(({ search_ranges: _searchRanges, ...food }) => food);
+}
+
+export async function fetchFoodsFromSupabase(query?: string, category?: string): Promise<import("./foodDatabase").FoodItem[]> {
+  try {
+    if (!query?.trim()) return toFoodItems(await fetchFoodRows(undefined, category));
+
+    const candidates = buildFoodSearchCandidates(query);
+    if (!candidates.length) return [];
+    const candidateRows = await Promise.all(candidates.map((candidate) => fetchFoodRows(candidate, category, query)));
+    const rowsById = new Map<string, Record<string, unknown>>();
+    for (const row of candidateRows.flat()) rowsById.set(String(row.id ?? ""), row);
+    return filterNormalizedFoods(toFoodItems([...rowsById.values()]), query);
+  } catch (error) {
+    console.error("[Supabase] fetchFoodsFromSupabase error:", error instanceof Error ? error.message : "request failed");
+    return [];
+  }
 }
 
 export async function upsertFoodInSupabase(food: Partial<import("./foodDatabase").FoodItem>): Promise<boolean> {
@@ -406,6 +473,7 @@ export async function deleteFoodFromSupabase(id: number | string): Promise<boole
 }
 
 export async function searchFoodsInSupabase(query: string): Promise<import("./foodDatabase").FoodItem[]> {
+  if (!parseNormalizedSearchQuery(query).tokens.length && !parseNormalizedSearchQuery(query).ranges.length) return [];
   return fetchFoodsFromSupabase(query);
 }
 

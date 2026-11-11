@@ -10,13 +10,18 @@ export interface NormalizedSearchRecord {
   search_ranges?: Readonly<Record<string, number | null | undefined>>;
 }
 
-interface ParsedRange {
+export interface ParsedSearchRange {
   field: string;
-  min?: number;
-  max?: number;
+  min: number;
+  max: number;
 }
 
-const RANGE_TOKEN = /^([\p{L}_][\p{L}\p{N}_-]*):(-?\d+(?:[.,]\d+)?)(?:\.\.|-)(-?\d+(?:[.,]\d+)?)$/u;
+export interface ParsedNormalizedSearchQuery {
+  tokens: string[];
+  ranges: ParsedSearchRange[];
+}
+
+const RANGE_TOKEN = /([\p{L}_][\p{L}\p{N}_-]*)\s*:\s*(-?\d+(?:[.,]\d+)?)\s*(?:\.{2,}|[–—-])\s*(-?\d+(?:[.,]\d+)?)/gu;
 
 export function normalizeSearchText(value: string): string {
   return value
@@ -32,27 +37,23 @@ function parseNumber(value: string): number {
   return Number(value.replace(",", "."));
 }
 
-function parseQuery(query: string): { tokens: string[]; ranges: ParsedRange[] } {
-  const tokens: string[] = [];
-  const ranges: ParsedRange[] = [];
-
-  for (const part of query.trim().split(/\s+/).filter(Boolean)) {
-    const match = RANGE_TOKEN.exec(part);
-    if (match) {
-      const first = parseNumber(match[2]);
-      const second = parseNumber(match[3]);
-      ranges.push({ field: normalizeSearchText(match[1]).replace(/\s/g, "_"), min: Math.min(first, second), max: Math.max(first, second) });
-    } else {
-      const token = normalizeSearchText(part);
-      if (token) tokens.push(token);
-    }
-  }
-  return { tokens, ranges };
+export function parseNormalizedSearchQuery(query: string): ParsedNormalizedSearchQuery {
+  const ranges: ParsedSearchRange[] = [];
+  // Extract numeric ranges before punctuation normalization, which otherwise turns
+  // "protein:12.5..20" into unrelated text tokens.
+  const remainingText = query.replace(RANGE_TOKEN, (_whole, field: string, firstRaw: string, secondRaw: string) => {
+    const first = parseNumber(firstRaw);
+    const second = parseNumber(secondRaw);
+    ranges.push({ field: normalizeSearchText(field).replace(/\s/g, "_"), min: Math.min(first, second), max: Math.max(first, second) });
+    return " ";
+  });
+  const tokens = normalizeSearchText(remainingText).split(" ").filter(Boolean);
+  return { tokens: [...new Set(tokens)], ranges };
 }
 
 /** All text tokens must match; text may come from the name, aliases, or extra search text. */
 export function matchesNormalizedSearch(record: NormalizedSearchRecord, query: string): boolean {
-  const { tokens, ranges } = parseQuery(query);
+  const { tokens, ranges } = parseNormalizedSearchQuery(query);
   const haystack = normalizeSearchText([
     record.name ?? "",
     record.search_text ?? "",
@@ -63,8 +64,8 @@ export function matchesNormalizedSearch(record: NormalizedSearchRecord, query: s
   return ranges.every(({ field, min, max }) => {
     const value = record.search_ranges?.[field];
     return typeof value === "number" && Number.isFinite(value)
-      && value >= (min ?? Number.NEGATIVE_INFINITY)
-      && value <= (max ?? Number.POSITIVE_INFINITY);
+      && value >= min
+      && value <= max;
   });
 }
 

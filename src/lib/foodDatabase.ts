@@ -1,3 +1,5 @@
+import { searchNormalizedRecords } from "@/lib/normalizedSearch";
+
 export interface HouseholdMeasure {
   unit: string;
   grams: number;
@@ -175,11 +177,7 @@ export const BUILT_IN_FOODS: FoodItem[] = [
 
 export function searchFoods(query: string, limit = 20): FoodItem[] {
   if (!query.trim()) return [];
-  const q = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  return BUILT_IN_FOODS.filter((f) => {
-    const name = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    return name.includes(q);
-  }).slice(0, limit);
+  return searchNormalizedRecords(BUILT_IN_FOODS, query).slice(0, limit);
 }
 
 function normalizeFoodName(value: string): string {

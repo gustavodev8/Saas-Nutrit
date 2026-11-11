@@ -1124,10 +1124,7 @@ export function PrescriptionBuilder({ patientId }: Props) {
                     <div className="max-h-[44vh] overflow-y-auto pr-1 space-y-2">
                       {Object.entries(
                         substrates
-                          .filter((sub) =>
-                            sub.name.toLowerCase().includes(protocolSubSearch.toLowerCase()) ||
-                            sub.category.toLowerCase().includes(protocolSubSearch.toLowerCase())
-                          )
+                          .filter((sub) => matchesNormalizedSearch({ name: sub.name, search_text: sub.category }, protocolSubSearch))
                           .reduce<Record<string, Substrate[]>>((acc, sub) => {
                             (acc[sub.category] ??= []).push(sub);
                             return acc;

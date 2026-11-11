@@ -8,6 +8,7 @@ import { fetchCustomFoods } from "@/components/admin/customFoods";
 import type { MealFood } from "@/lib/supabase";
 import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
 import type { HouseholdMeasure } from "@/lib/foodDatabase";
+import { matchesNormalizedSearch, normalizeSearchText } from "@/lib/normalizedSearch";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -124,13 +125,12 @@ export function SmartSubstituteModal({ open, food, onClose, onSubstitute }: Prop
   );
 
   const results = useMemo(() => {
-    const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-    const currentNorm = norm(food.food_name);
+    const currentNorm = normalizeSearchText(food.food_name);
     return allFoods
       .filter((f) => {
-        if (norm(f.name) === currentNorm) return false; // exclude self
+        if (normalizeSearchText(f.name) === currentNorm) return false; // exclude self
         if (!activeCategories.includes(f.category)) return false;
-        if (query.trim().length >= 2 && !norm(f.name).includes(norm(query))) return false;
+        if (query.trim().length >= 2 && !matchesNormalizedSearch(f, query)) return false;
         return true;
       })
       .slice(0, 40);
