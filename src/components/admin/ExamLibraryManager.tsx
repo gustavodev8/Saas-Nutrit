@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { matchesNormalizedSearch, searchNormalizedRecords } from "@/lib/normalizedSearch";
+import { SearchAliasesField } from "@/components/admin/SearchAliasesField";
 import {
   fetchGlobalExams, upsertGlobalExam, deleteGlobalExam,
   fetchGlobalProtocols, upsertGlobalProtocol, deleteGlobalProtocol,
@@ -300,6 +302,10 @@ function ExamSlideOver({
               className="w-full rounded border border-border/60 bg-transparent px-2.5 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none text-foreground placeholder:text-muted-foreground/40"
             />
           </div>
+          <SearchAliasesField
+            value={form.search_aliases}
+            onChange={(search_aliases) => set("search_aliases", search_aliases)}
+          />
         </div>
 
         {/* Footer */}
@@ -357,6 +363,7 @@ function ProtocolBuilder({
 }) {
   const [name, setName] = useState(protocol.name);
   const [desc, setDesc] = useState(protocol.description ?? "");
+  const [searchAliases, setSearchAliases] = useState<string[]>(protocol.search_aliases ?? []);
   const [examIds, setExamIds] = useState<number[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -369,6 +376,7 @@ function ProtocolBuilder({
   useEffect(() => {
     setName(protocol.name);
     setDesc(protocol.description ?? "");
+    setSearchAliases(protocol.search_aliases ?? []);
     if (protocol.id) {
       setLoadingItems(true);
       fetchProtocolExamIds(protocol.id).then((ids) => {
@@ -394,10 +402,12 @@ function ProtocolBuilder({
 
   const suggestions = useMemo(() => {
     if (!search.trim()) return [];
-    const q = search.toLowerCase();
     return allExams
-      .filter((e) => !examIds.includes(e.id!) &&
-        (e.name.toLowerCase().includes(q) || e.category.toLowerCase().includes(q)))
+      .filter((exam) => !examIds.includes(exam.id!) && matchesNormalizedSearch({
+        name: exam.name,
+        search_aliases: exam.search_aliases,
+        search_text: [exam.category, exam.clinical_axis, exam.unit].filter(Boolean).join(" "),
+      }, search))
       .slice(0, 8);
   }, [search, allExams, examIds]);
 
@@ -416,7 +426,7 @@ function ProtocolBuilder({
   const handleSave = async () => {
     if (!name.trim()) { toast.error("Informe o nome do protocolo."); return; }
     setSaving(true);
-    const saved = await upsertGlobalProtocol({ ...protocol, name: name.trim(), description: desc });
+    const saved = await upsertGlobalProtocol({ ...protocol, name: name.trim(), description: desc, search_aliases: searchAliases });
     if (!saved?.id) { setSaving(false); toast.error("Erro ao salvar protocolo."); return; }
     await setProtocolExams(saved.id, examIds);
     setSaving(false);
@@ -472,6 +482,7 @@ function ProtocolBuilder({
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <SearchAliasesField value={searchAliases} onChange={setSearchAliases} />
 
         {/* Autocomplete */}
         <div>
@@ -628,15 +639,10 @@ export function ExamLibraryManager() {
   const filteredExams = useMemo(() => {
     let list = exams;
     if (catFilter !== "Todos") list = list.filter((e) => e.category === catFilter);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter((e) =>
-        e.name.toLowerCase().includes(q) ||
-        e.category.toLowerCase().includes(q) ||
-        (e.clinical_axis ?? "").toLowerCase().includes(q)
-      );
-    }
-    return list;
+    return searchNormalizedRecords(list.map((exam) => ({
+      ...exam,
+      search_text: [exam.category, exam.clinical_axis, exam.unit, exam.clinical_observation].filter(Boolean).join(" "),
+    })), search);
   }, [exams, search, catFilter]);
 
   // Category counts
@@ -648,9 +654,10 @@ export function ExamLibraryManager() {
 
   // Filtered protocols
   const filteredProtos = useMemo(() => {
-    if (!protoSearch.trim()) return protocols;
-    const q = protoSearch.toLowerCase();
-    return protocols.filter((p) => p.name.toLowerCase().includes(q));
+    return searchNormalizedRecords(protocols.map((protocol) => ({
+      ...protocol,
+      search_text: protocol.description,
+    })), protoSearch);
   }, [protocols, protoSearch]);
 
   const handleExamSaved = (exam: GlobalExam) => {

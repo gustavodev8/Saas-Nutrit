@@ -28,6 +28,7 @@ import {
 } from "@/lib/patientSegments";
 import { PatientSegmentsBadges } from "@/components/admin/patient/PatientSegmentsBadges";
 import { cn } from "@/lib/utils";
+import { matchesNormalizedSearch } from "@/lib/normalizedSearch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -259,9 +260,11 @@ export default function AdminPacientes() {
 
   // ── Gender counts (respects text search only) ────────────────────────────────
   const genderCounts = useMemo(() => {
-    const q = search.toLowerCase();
-    const base = q
-      ? patients.filter((p) => p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q))
+    const base = search.trim()
+      ? patients.filter((p) => matchesNormalizedSearch({
+          name: p.name,
+          search_text: [p.email, p.phone, p.city, p.cpf].filter(Boolean).join(" "),
+        }, search))
       : patients;
     return {
       all:   base.length,
@@ -273,14 +276,16 @@ export default function AdminPacientes() {
 
   // ── Full filtered list ───────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    const q        = search.toLowerCase();
     const ageMinN  = ageMin  ? parseInt(ageMin)  : null;
     const ageMaxN  = ageMax  ? parseInt(ageMax)  : null;
     const hasSegment = (patientId: number | undefined, segment: PatientSegmentKey) =>
       typeof patientId === "number" && patientSegmentsById.get(patientId)?.includes(segment);
 
     let list = patients.filter((p) => {
-      if (q && !p.name?.toLowerCase().includes(q) && !p.email?.toLowerCase().includes(q)) return false;
+      if (search.trim() && !matchesNormalizedSearch({
+        name: p.name,
+        search_text: [p.email, p.phone, p.city, p.cpf].filter(Boolean).join(" "),
+      }, search)) return false;
       if (gender !== "all" && p.gender !== gender) return false;
       if (actionFilter === "new_this_month" && p.created_at?.slice(0, 7) !== stats.thisMonth) return false;
       if (actionFilter === "incomplete" && !hasSegment(p.id, "cadastro_incompleto")) return false;

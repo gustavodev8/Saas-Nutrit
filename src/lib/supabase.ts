@@ -2134,16 +2134,18 @@ export interface DietTemplate {
   carbs_g?:     number;
   fat_g?:       number;
   is_active?:   boolean;
+  search_aliases?: string[];
   created_at?:  string;
   meals?:       DietTemplateMeal[];
 }
 
-export async function fetchDietTemplates(): Promise<DietTemplate[]> {
-  const { data, error } = await supabase
+export async function fetchDietTemplates(includeInactive = false): Promise<DietTemplate[]> {
+  let query = supabase
     .from("diet_templates")
     .select("*, meals:diet_template_meals(*, foods:diet_template_foods(*))")
-    .eq("is_active", true)
     .order("name");
+  if (!includeInactive) query = query.eq("is_active", true);
+  const { data, error } = await query;
   if (error) { console.error("[Supabase] fetchDietTemplates:", error.message); return []; }
   type DietTemplateMealRow = DietTemplateMeal & { foods?: DietTemplateFood[] | null };
   type DietTemplateRow = DietTemplate & { meals?: DietTemplateMealRow[] | null };
@@ -2315,18 +2317,20 @@ export interface MealPreset {
   carbs_g?: number;
   fat_g?: number;
   is_active?: boolean;
+  search_aliases?: string[];
   source_template_id?: number | null;
   source_template_meal_id?: number | null;
   created_at?: string;
   foods?: MealPresetFood[];
 }
 
-export async function fetchMealPresets(): Promise<MealPreset[]> {
-  const { data, error } = await supabase
+export async function fetchMealPresets(includeInactive = false): Promise<MealPreset[]> {
+  let query = supabase
     .from("meal_presets")
     .select("*, foods:meal_preset_foods(*)")
-    .eq("is_active", true)
     .order("name");
+  if (!includeInactive) query = query.eq("is_active", true);
+  const { data, error } = await query;
 
   if (error) {
     console.error("[Supabase] fetchMealPresets:", error.message);
@@ -3262,12 +3266,14 @@ export interface GlobalExam {
   target_female_min?:    number | null;
   target_female_max?:    number | null;
   clinical_observation?: string;
+  search_aliases?: string[];
 }
 
 export interface GlobalProtocol {
   id?:          number;
   name:         string;
   description?: string;
+  search_aliases?: string[];
 }
 
 export async function fetchGlobalExams(): Promise<GlobalExam[]> {

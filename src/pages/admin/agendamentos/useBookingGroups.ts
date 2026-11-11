@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { Booking } from "@/lib/supabase";
 import { toLocalISO } from "./bookingDateUtils";
+import { matchesNormalizedSearch } from "@/lib/normalizedSearch";
 import {
   bookingGroupNeedsNextReturn,
   isBookingGroupComplete,
@@ -78,17 +79,14 @@ export function getBookingGroupsData({
   const groups: Record<string, Booking[]> = {};
   filteredGroupIds.forEach(id => { groups[id] = allGrouped[id]; });
 
-  const query = search.trim().toLowerCase();
-
   const groupEntries = Object.entries(groups)
     .filter(([, sessions]) => {
       const first = sessions[0];
       const latest = [...sessions].sort((a, b) => (b.session_number ?? 0) - (a.session_number ?? 0))[0];
-      if (query) {
-        if (!first.client_name?.toLowerCase().includes(query) &&
-            !first.plan_name?.toLowerCase().includes(query) &&
-            !first.client_email?.toLowerCase().includes(query)) return false;
-      }
+      if (!matchesNormalizedSearch({
+        name: first.client_name,
+        search_text: `${first.plan_name ?? ""} ${first.client_email ?? ""}`,
+      }, search)) return false;
       if (filterType !== "all" && !sessions.some(session => session.type === filterType)) return false;
       if (filterDateFrom && latest.appointment_date < filterDateFrom) return false;
       if (filterDateTo && latest.appointment_date > filterDateTo) return false;

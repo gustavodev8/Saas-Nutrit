@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { matchesNumericSearchRange, searchNormalizedRecords } from "@/lib/normalizedSearch";
 import {
   deleteDietTemplate,
   fetchDietTemplates,
@@ -47,6 +48,12 @@ const STRATEGY_COLORS: Record<string, string> = {
 
 type SortKey = "name_asc" | "name_desc" | "kcal_asc" | "kcal_desc" | "recent";
 type KcalFilterKey = "all" | "under_1800" | "1800_2400" | "2400_3000" | "over_3000";
+type MacroRange = { min: string; max: string };
+type MacroKey = "kcal" | "protein" | "carbs" | "fat";
+const EMPTY_MACRO_RANGES: Record<MacroKey, MacroRange> = {
+  kcal: { min: "", max: "" }, protein: { min: "", max: "" },
+  carbs: { min: "", max: "" }, fat: { min: "", max: "" },
+};
 
 const SORT_OPTIONS: { id: SortKey; label: string }[] = [
   { id: "recent", label: "Mais recentes" },
@@ -63,14 +70,6 @@ const KCAL_FILTER_OPTIONS: { id: KcalFilterKey; label: string }[] = [
   { id: "2400_3000", label: "2400–3000 kcal" },
   { id: "over_3000", label: "Acima de 3000 kcal" },
 ];
-
-function normalizeText(value: string | undefined | null) {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
 
 function formatStrategy(strategy?: string) {
   if (!strategy) return "";
@@ -208,12 +207,14 @@ export default function AdminTemplates() {
   const [search, setSearch] = useState("");
   const [strategyFilter, setStrategyFilter] = useState("all");
   const [kcalFilter, setKcalFilter] = useState<KcalFilterKey>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [macroRanges, setMacroRanges] = useState(EMPTY_MACRO_RANGES);
   const [sort, setSort] = useState<SortKey>("recent");
   const [page, setPage] = useState(1);
 
   const load = async () => {
     setLoading(true);
-    setTemplates(await fetchDietTemplates());
+    setTemplates(await fetchDietTemplates(true));
     setLoading(false);
   };
 
@@ -236,25 +237,39 @@ export default function AdminTemplates() {
   }, [templates]);
 
   const filteredTemplates = useMemo(() => {
-    const query = normalizeText(search);
-    const list = templates.filter((template) => {
-      const totalKcal = Number(template.total_kcal ?? 0);
-      if (strategyFilter !== "all" && template.strategy !== strategyFilter) return false;
-      if (!matchesKcalFilter(totalKcal, kcalFilter)) return false;
-
-      if (!query) return true;
-
-      const haystack = [
-        template.name,
+    const normalizedTemplates = searchNormalizedRecords(templates.map((template) => ({
+      ...template,
+      search_text: [
         template.description,
         template.strategy,
         formatStrategy(template.strategy),
         template.total_kcal ? `${template.total_kcal} kcal` : "",
-      ]
-        .map((value) => normalizeText(value))
-        .join(" ");
-
-      return haystack.includes(query);
+      ].filter(Boolean).join(" "),
+      search_ranges: {
+        kcal: template.total_kcal,
+        protein: template.protein_g,
+        carbs: template.carbs_g,
+        fat: template.fat_g,
+      },
+    })), search);
+    const list = normalizedTemplates.filter((template) => {
+      const totalKcal = Number(template.total_kcal ?? 0);
+      if (strategyFilter !== "all" && template.strategy !== strategyFilter) return false;
+      if (!matchesKcalFilter(totalKcal, kcalFilter)) return false;
+      if (statusFilter === "active" && template.is_active === false) return false;
+      if (statusFilter === "inactive" && template.is_active !== false) return false;
+      const macros: Record<MacroKey, number | undefined> = {
+        kcal: template.total_kcal, protein: template.protein_g, carbs: template.carbs_g, fat: template.fat_g,
+      };
+      if ((Object.keys(macroRanges) as MacroKey[]).some((key) => {
+        const range = macroRanges[key];
+        if (!range.min && !range.max) return false;
+        return !matchesNumericSearchRange(macros[key], {
+          min: range.min ? Number(range.min) : undefined,
+          max: range.max ? Number(range.max) : undefined,
+        });
+      })) return false;
+      return true;
     });
 
     const sorted = [...list];
@@ -271,7 +286,7 @@ export default function AdminTemplates() {
     }
 
     return sorted;
-  }, [templates, search, strategyFilter, kcalFilter, sort]);
+  }, [templates, search, strategyFilter, kcalFilter, statusFilter, macroRanges, sort]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTemplates.length / ITEMS_PER_PAGE));
   const paginatedTemplates = filteredTemplates.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
@@ -279,7 +294,7 @@ export default function AdminTemplates() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, strategyFilter, kcalFilter, sort]);
+  }, [search, strategyFilter, kcalFilter, statusFilter, macroRanges, sort]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -289,12 +304,16 @@ export default function AdminTemplates() {
     (search.trim() ? 1 : 0) +
     (strategyFilter !== "all" ? 1 : 0) +
     (kcalFilter !== "all" ? 1 : 0) +
+    (statusFilter !== "all" ? 1 : 0) +
+    Object.values(macroRanges).filter((range) => range.min || range.max).length +
     (sort !== "recent" ? 1 : 0);
 
   const clearFilters = () => {
     setSearch("");
     setStrategyFilter("all");
     setKcalFilter("all");
+    setStatusFilter("all");
+    setMacroRanges(EMPTY_MACRO_RANGES);
     setSort("recent");
   };
 
@@ -370,6 +389,17 @@ export default function AdminTemplates() {
               </select>
 
               <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+                aria-label="Filtrar por status"
+              >
+                <option value="all">Todos os status</option>
+                <option value="active">Ativos</option>
+                <option value="inactive">Inativos</option>
+              </select>
+
+              <select
                 value={sort}
                 onChange={(event) => setSort(event.target.value as SortKey)}
                 className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
@@ -392,6 +422,23 @@ export default function AdminTemplates() {
                 Limpar
               </Button>
             </div>
+          </div>
+
+          <div className="grid gap-3 border-t border-border/60 pt-3 sm:grid-cols-2 xl:grid-cols-4">
+            {([
+              ["kcal", "Calorias (kcal)"], ["protein", "Proteínas (g)"],
+              ["carbs", "Carboidratos (g)"], ["fat", "Gorduras (g)"],
+            ] as const).map(([key, label]) => (
+              <fieldset key={key} className="space-y-1.5">
+                <legend className="text-xs font-medium text-muted-foreground">{label}</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input aria-label={`${label} mínimo`} type="number" min="0" placeholder="Mín." value={macroRanges[key].min}
+                    onChange={(event) => setMacroRanges((current) => ({ ...current, [key]: { ...current[key], min: event.target.value } }))} />
+                  <Input aria-label={`${label} máximo`} type="number" min="0" placeholder="Máx." value={macroRanges[key].max}
+                    onChange={(event) => setMacroRanges((current) => ({ ...current, [key]: { ...current[key], max: event.target.value } }))} />
+                </div>
+              </fieldset>
+            ))}
           </div>
 
           <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">

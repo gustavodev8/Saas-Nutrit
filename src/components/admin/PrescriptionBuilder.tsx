@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { matchesNormalizedSearch } from "@/lib/normalizedSearch";
 import {
   fetchSubstrates, fetchReadyFormulas, savePrescription, fetchPatient,
   fetchPrescriptions, deletePrescription, insertSubstrate, insertReadyFormula,
@@ -533,19 +534,13 @@ export function PrescriptionBuilder({ patientId }: Props) {
 
   const categories = Array.from(new Set(substrates.map((s) => s.category)));
   const visibleSubs = subSearch.length > 0
-    ? substrates.filter((s) =>
-        s.name.toLowerCase().includes(subSearch.toLowerCase()) ||
-        s.category.toLowerCase().includes(subSearch.toLowerCase())
-      )
+    ? substrates.filter((s) => matchesNormalizedSearch({ name: s.name, search_text: s.category }, subSearch))
     : substrates;
   const groupedSubs = visibleSubs.reduce<Record<string, Substrate[]>>((acc, s) => {
     (acc[s.category] ??= []).push(s);
     return acc;
   }, {});
-  const protocolVisibleSubs = substrates.filter((sub) =>
-    sub.name.toLowerCase().includes(protocolSubSearch.toLowerCase()) ||
-    sub.category.toLowerCase().includes(protocolSubSearch.toLowerCase())
-  );
+  const protocolVisibleSubs = substrates.filter((sub) => matchesNormalizedSearch({ name: sub.name, search_text: sub.category }, protocolSubSearch));
   const protocolGroupedSubs = protocolVisibleSubs.reduce<Record<string, Substrate[]>>((acc, sub) => {
     (acc[sub.category] ??= []).push(sub);
     return acc;

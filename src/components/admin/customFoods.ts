@@ -26,6 +26,7 @@ export async function saveCustomFood(food: {
   carbs_per_100g: number;
   fat_per_100g: number;
   fiber_per_100g?: number;
+  search_aliases?: string[];
 }): Promise<FoodItem> {
   const newFood: FoodItem = {
     id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -36,6 +37,7 @@ export async function saveCustomFood(food: {
     carbs: food.carbs_per_100g,
     fat: food.fat_per_100g,
     fiber: food.fiber_per_100g,
+    search_aliases: food.search_aliases ?? [],
   };
 
   saveCustomFoodLocal(newFood);

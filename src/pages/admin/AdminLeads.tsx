@@ -3,6 +3,7 @@ import { Users, Search, Trash2, Download, Loader2, RefreshCw, Mail } from "lucid
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
+import { matchesNormalizedSearch } from "@/lib/normalizedSearch";
 
 interface Lead {
   id: number;
@@ -50,10 +51,10 @@ const AdminLeads = () => {
     URL.revokeObjectURL(url);
   };
 
-  const filtered = leads.filter(l =>
-    l.name.toLowerCase().includes(search.toLowerCase()) ||
-    l.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = leads.filter((lead) => matchesNormalizedSearch({
+    name: lead.name,
+    search_text: lead.email,
+  }, search));
 
   return (
     <div className="max-w-4xl space-y-5">

@@ -1,4 +1,5 @@
 import type { PatientReport } from "@/lib/supabase";
+import { matchesNormalizedSearch } from "@/lib/normalizedSearch";
 
 export type ReportHistorySort = "recent" | "oldest";
 export type ReportSaveStatus = "saving" | "saved" | "dirty" | "unsaved";
@@ -122,17 +123,11 @@ export const filterPatientReports = (
   query: string,
   sort: ReportHistorySort,
 ) => {
-  const normalizedQuery = query.trim().toLowerCase();
-
   return [...reports]
-    .filter((report) => {
-      if (!normalizedQuery) return true;
-      return (
-        report.title.toLowerCase().includes(normalizedQuery) ||
-        report.report_text.toLowerCase().includes(normalizedQuery) ||
-        report.report_date.includes(normalizedQuery)
-      );
-    })
+    .filter((report) => matchesNormalizedSearch({
+      name: report.title,
+      search_text: `${report.report_text} ${report.report_date}`,
+    }, query))
     .sort((a, b) => {
       const left = `${a.report_date}${a.created_at ?? ""}`;
       const right = `${b.report_date}${b.created_at ?? ""}`;

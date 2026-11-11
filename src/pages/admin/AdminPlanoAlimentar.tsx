@@ -35,6 +35,7 @@ import { MealPlanPdfOptionsDialog } from "@/components/admin/MealPlanPdfOptionsD
 import { MonthlyShoppingListDialog } from "@/components/admin/MonthlyShoppingListDialog";
 import { TemplateImportModal } from "@/components/admin/TemplateImportModal";
 import { MealPresetImportModal, type MealPresetImportTarget } from "@/components/admin/MealPresetImportModal";
+import { SearchAliasesField } from "@/components/admin/SearchAliasesField";
 import { useConsultation } from "@/contexts/ConsultationContext";
 import { generateClinicalAlerts } from "@/lib/clinicalAlertsUtils";
 import { generateMealPlanPdf } from "@/lib/generateMealPlanPdf";
@@ -262,9 +263,11 @@ export default function AdminPlanoAlimentar() {
   const [mealPresetSourceMealIndex, setMealPresetSourceMealIndex] = useState<number | null>(null);
   const [mealPresetDraftName, setMealPresetDraftName] = useState("");
   const [mealPresetDraftDescription, setMealPresetDraftDescription] = useState("");
+  const [mealPresetDraftAliases, setMealPresetDraftAliases] = useState<string[]>([]);
   const [savingMealPreset, setSavingMealPreset] = useState(false);
   const [planTemplateDraftName, setPlanTemplateDraftName] = useState("");
   const [planTemplateDraftDescription, setPlanTemplateDraftDescription] = useState("");
+  const [planTemplateDraftAliases, setPlanTemplateDraftAliases] = useState<string[]>([]);
   const [savingPlanTemplate, setSavingPlanTemplate] = useState(false);
   const [showPdfOptions, setShowPdfOptions] = useState(false);
   const [macroGoals, setMacroGoals]     = useState<MacroGoals | null>(null);
@@ -374,6 +377,7 @@ export default function AdminPlanoAlimentar() {
     setPlanTemplateDraftDescription(
       plan.notes?.trim() || `Modelo salvo a partir do plano ${plan.title || "Plano Alimentar"}.`,
     );
+    setPlanTemplateDraftAliases([]);
     setShowSavePlanTemplateDialog(true);
   };
 
@@ -475,6 +479,7 @@ export default function AdminPlanoAlimentar() {
     setMealPresetSourceMealIndex(i);
     setMealPresetDraftName(source.meal_name?.trim() || `Refeição ${i + 1}`);
     setMealPresetDraftDescription(`Modelo salvo a partir do plano ${plan.title || "atual"}.`);
+    setMealPresetDraftAliases([]);
     setShowSaveMealPresetDialog(true);
   };
 
@@ -521,6 +526,7 @@ export default function AdminPlanoAlimentar() {
       const savedPreset = await upsertMealPreset({
         name,
         description: mealPresetDraftDescription.trim() || undefined,
+        search_aliases: mealPresetDraftAliases,
         meal_name: source.meal_name.trim() || name,
         time_suggestion: source.time_suggestion || undefined,
         notes: source.notes || undefined,
@@ -816,6 +822,7 @@ export default function AdminPlanoAlimentar() {
       const savedTemplate = await upsertDietTemplate({
         name,
         description: planTemplateDraftDescription.trim() || undefined,
+        search_aliases: planTemplateDraftAliases,
         strategy: plan.strategy_type || undefined,
         total_kcal: grand.cal > 0 ? parseFloat(grand.cal.toFixed(1)) : undefined,
         protein_g: grand.prot > 0 ? parseFloat(grand.prot.toFixed(1)) : undefined,
@@ -1683,6 +1690,7 @@ export default function AdminPlanoAlimentar() {
                 placeholder="Ex.: plano com boa adesão para rotina corrida, foco em saciedade e praticidade."
               />
             </div>
+            <SearchAliasesField value={planTemplateDraftAliases} onChange={setPlanTemplateDraftAliases} />
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">
@@ -1729,6 +1737,7 @@ export default function AdminPlanoAlimentar() {
                 placeholder="Ex.: bloco salvo para usar em consultas com rotina corrida."
               />
             </div>
+            <SearchAliasesField value={mealPresetDraftAliases} onChange={setMealPresetDraftAliases} />
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">

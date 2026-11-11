@@ -17,6 +17,7 @@ export interface FoodItem {
   source?: string;
   source_ref?: string;
   source_code?: string;
+  search_aliases?: string[];
 }
 
 export const FOOD_CATEGORIES = [

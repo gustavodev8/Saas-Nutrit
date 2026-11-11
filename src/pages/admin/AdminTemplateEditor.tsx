@@ -24,6 +24,7 @@ import {
 } from "@/lib/supabase";
 import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
 import { getFoodHouseholdMeasures } from "@/lib/foodDatabase";
+import { SearchAliasesField } from "@/components/admin/SearchAliasesField";
 
 // ─── Defaults ──────────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ export default function AdminTemplateEditor() {
   const [name,        setName]        = useState("Novo Modelo");
   const [description, setDescription] = useState("");
   const [strategy,    setStrategy]    = useState("");
+  const [searchAliases, setSearchAliases] = useState<string[]>([]);
 
   const [meals,   setMeals]   = useState<EditorMeal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,6 +116,7 @@ export default function AdminTemplateEditor() {
         setName(found.name);
         setDescription(found.description ?? "");
         setStrategy(found.strategy ?? "");
+        setSearchAliases(found.search_aliases ?? []);
         const rawMeals = found.meals ?? [];
         const parents = rawMeals
           .filter((m) => !m.is_substitution_of)
@@ -151,6 +154,7 @@ export default function AdminTemplateEditor() {
         id:          numId ?? undefined,
         name:        name.trim(),
         description: description.trim() || undefined,
+        search_aliases: searchAliases,
         strategy:    strategy || undefined,
         total_kcal:  grand.cal   > 0 ? parseFloat(grand.cal.toFixed(1))   : undefined,
         protein_g:   grand.prot  > 0 ? parseFloat(grand.prot.toFixed(1))  : undefined,
@@ -326,6 +330,11 @@ export default function AdminTemplateEditor() {
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
               />
             </div>
+            <SearchAliasesField
+              value={searchAliases}
+              onChange={setSearchAliases}
+              className="sm:col-span-3"
+            />
           </div>
         </section>
 

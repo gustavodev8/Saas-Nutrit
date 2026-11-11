@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   Search,
+  SlidersHorizontal,
   Trash2,
   X,
 } from "lucide-react";
@@ -32,6 +33,8 @@ import {
 } from "@/components/admin/adminStyles";
 import { FOOD_CATEGORIES, type FoodItem } from "@/lib/foodDatabase";
 import { deleteFoodFromSupabase, fetchFoodsFromSupabase, upsertFoodInSupabase } from "@/lib/supabase";
+import { matchesNormalizedSearch, matchesNumericSearchRange } from "@/lib/normalizedSearch";
+import { SearchAliasesField } from "@/components/admin/SearchAliasesField";
 import { cn } from "@/lib/utils";
 
 interface FoodForm {
@@ -42,6 +45,7 @@ interface FoodForm {
   carbs: string;
   fat: string;
   fiber: string;
+  search_aliases: string[];
 }
 
 const EMPTY_FORM: FoodForm = {
@@ -52,13 +56,15 @@ const EMPTY_FORM: FoodForm = {
   carbs: "",
   fat: "",
   fiber: "",
+  search_aliases: [],
 };
 
 const ITEMS_PER_PAGE = 12;
-
-function normalizeStr(value: string) {
-  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
+type MacroRange = { min: string; max: string };
+const EMPTY_MACRO_RANGES: Record<"kcal" | "protein" | "carbs" | "fat", MacroRange> = {
+  kcal: { min: "", max: "" }, protein: { min: "", max: "" },
+  carbs: { min: "", max: "" }, fat: { min: "", max: "" },
+};
 
 function toForm(food: FoodItem): FoodForm {
   return {
@@ -69,6 +75,7 @@ function toForm(food: FoodItem): FoodForm {
     carbs: String(food.carbs),
     fat: String(food.fat),
     fiber: food.fiber !== undefined ? String(food.fiber) : "",
+    search_aliases: food.search_aliases ?? [],
   };
 }
 
@@ -125,7 +132,7 @@ function FormModal({
   const [form, setForm] = useState<FoodForm>(initial);
   const [errors, setErrors] = useState<Partial<Record<keyof FoodForm, string>>>({});
 
-  const setField = (key: keyof FoodForm, value: string) => {
+  const setField = (key: Exclude<keyof FoodForm, "search_aliases">, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     if (errors[key]) {
       setErrors((prev) => ({ ...prev, [key]: undefined }));
@@ -148,7 +155,7 @@ function FormModal({
 
   const field = (
     label: string,
-    key: keyof FoodForm,
+    key: Exclude<keyof FoodForm, "search_aliases">,
     required = false,
     type: "text" | "number" = "text",
   ) => (
@@ -225,6 +232,11 @@ function FormModal({
               <div className="sm:col-span-2">{field("Fibras (g) - opcional", "fiber", false, "number")}</div>
             </div>
           </div>
+
+          <SearchAliasesField
+            value={form.search_aliases}
+            onChange={(search_aliases) => setForm((current) => ({ ...current, search_aliases }))}
+          />
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end">
@@ -252,6 +264,9 @@ export default function AdminAlimentos() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("Todos");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [macroRanges, setMacroRanges] = useState(EMPTY_MACRO_RANGES);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [editingItem, setEditingItem] = useState<FoodItem | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -274,21 +289,33 @@ export default function AdminAlimentos() {
   }, []);
 
   const filtered = useMemo(() => {
-    const q = normalizeStr(search.trim());
     return foods.filter((food) => {
       const matchesCategory = catFilter === "Todos" || food.category === catFilter;
-      const matchesQuery =
-        !q ||
-        normalizeStr(food.name).includes(q) ||
-        normalizeStr(food.category).includes(q) ||
-        normalizeStr(getFoodSourceLabel(food)).includes(q);
-      return matchesCategory && matchesQuery;
+      const matchesSource = sourceFilter === "all" || (food.source || "custom") === sourceFilter;
+      const matchesQuery = matchesNormalizedSearch({
+        name: food.name,
+        search_aliases: food.search_aliases,
+        search_text: `${food.category} ${getFoodSourceLabel(food)}`,
+      }, search);
+      const rangeMatches = (key: keyof typeof macroRanges, value: number) => {
+        const range = macroRanges[key];
+        if (!range.min && !range.max) return true;
+        return matchesNumericSearchRange(value, {
+          min: range.min ? Number(range.min) : undefined,
+          max: range.max ? Number(range.max) : undefined,
+        });
+      };
+      return matchesCategory && matchesSource && matchesQuery &&
+        rangeMatches("kcal", food.kcal) && rangeMatches("protein", food.protein) &&
+        rangeMatches("carbs", food.carbs) && rangeMatches("fat", food.fat);
     });
-  }, [foods, search, catFilter]);
+  }, [foods, search, catFilter, sourceFilter, macroRanges]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
-  const hasFilters = search.trim().length > 0 || catFilter !== "Todos";
+  const hasMacroFilters = Object.values(macroRanges).some((range) => range.min || range.max);
+  const hasFilters = search.trim().length > 0 || catFilter !== "Todos" || sourceFilter !== "all" || hasMacroFilters;
+  const sourceOptions = useMemo(() => Array.from(new Set(foods.map((food) => food.source || "custom"))).sort(), [foods]);
   const categoryCount = useMemo(() => new Set(foods.map((food) => food.category)).size, [foods]);
 
   const pagedFoods = useMemo(() => {
@@ -298,7 +325,7 @@ export default function AdminAlimentos() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, catFilter]);
+  }, [search, catFilter, sourceFilter, macroRanges]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -316,6 +343,7 @@ export default function AdminAlimentos() {
       carbs: Number(form.carbs),
       fat: Number(form.fat),
       fiber: form.fiber ? Number(form.fiber) : undefined,
+      search_aliases: form.search_aliases,
     };
 
     const success = await upsertFoodInSupabase(food);
@@ -413,6 +441,8 @@ export default function AdminAlimentos() {
             onClick={() => {
               setSearch("");
               setCatFilter("Todos");
+              setSourceFilter("all");
+              setMacroRanges(EMPTY_MACRO_RANGES);
             }}
             className={cn(adminSecondaryButtonClass, "w-full lg:w-auto")}
             disabled={!hasFilters}
@@ -420,6 +450,39 @@ export default function AdminAlimentos() {
             <FilterX className="h-4 w-4" />
             Limpar filtros
           </button>
+        </div>
+
+        <div className="mt-3 border-t border-border/70 pt-3">
+          <button type="button" onClick={() => setAdvancedOpen((open) => !open)} className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <SlidersHorizontal className="h-4 w-4 text-primary" />
+            Filtros avançados
+            <ChevronDown className={cn("h-4 w-4 transition-transform", advancedOpen && "rotate-180")} />
+          </button>
+          {advancedOpen && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <label className="space-y-1.5">
+                <span className={adminFieldLabelClass}>Origem</span>
+                <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className={adminSelectClass}>
+                  <option value="all">Todas as origens</option>
+                  {sourceOptions.map((source) => <option key={source} value={source}>{source === "custom" ? "Cadastro interno" : source}</option>)}
+                </select>
+              </label>
+              {([
+                ["kcal", "Calorias (kcal)"], ["protein", "Proteínas (g)"],
+                ["carbs", "Carboidratos (g)"], ["fat", "Gorduras (g)"],
+              ] as const).map(([key, label]) => (
+                <fieldset key={key} className="space-y-1.5">
+                  <legend className={adminFieldLabelClass}>{label}</legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input aria-label={`${label} mínimo`} type="number" min="0" placeholder="Mín." value={macroRanges[key].min}
+                      onChange={(event) => setMacroRanges((current) => ({ ...current, [key]: { ...current[key], min: event.target.value } }))} className={adminNumberInputClass} />
+                    <input aria-label={`${label} máximo`} type="number" min="0" placeholder="Máx." value={macroRanges[key].max}
+                      onChange={(event) => setMacroRanges((current) => ({ ...current, [key]: { ...current[key], max: event.target.value } }))} className={adminNumberInputClass} />
+                  </div>
+                </fieldset>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="mt-3 flex flex-col gap-2 border-t border-border/70 pt-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
@@ -458,6 +521,8 @@ export default function AdminAlimentos() {
                 onClick={() => {
                   setSearch("");
                   setCatFilter("Todos");
+                  setSourceFilter("all");
+                  setMacroRanges(EMPTY_MACRO_RANGES);
                 }}
                 className={adminSecondaryButtonClass}
               >

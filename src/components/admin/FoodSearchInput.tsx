@@ -16,9 +16,11 @@ import {
   adminSurfaceClass,
 } from "@/components/admin/adminStyles";
 import { fetchCustomFoods, saveCustomFood } from "@/components/admin/customFoods";
+import { fetchFoodSearchCatalog } from "@/components/admin/foodSearchCatalog";
+import { SearchAliasesField } from "@/components/admin/SearchAliasesField";
+import { searchNormalizedRecords } from "@/lib/normalizedSearch";
 import { FOOD_CATEGORIES, getFoodHouseholdMeasures, type FoodItem, type HouseholdMeasure } from "@/lib/foodDatabase";
 import { searchOpenFoodFacts } from "@/lib/openFoodFacts";
-import { searchFoodsInSupabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
 const EMPTY_FORM = {
@@ -66,6 +68,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
   const [apiStatus, setApiStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<CustomFoodForm>(EMPTY_FORM);
+  const [searchAliases, setSearchAliases] = useState<string[]>([]);
   const [formErrors, setFormErrors] = useState<Partial<CustomFoodForm>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -74,6 +77,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
   const inputRef = useRef<HTMLInputElement>(null);
   const apiAbortRef = useRef<AbortController | null>(null);
   const apiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchGenerationRef = useRef(0);
 
   useEffect(() => {
     setQuery(value);
@@ -86,6 +90,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
   }, []);
 
   const runSearch = useCallback(async (nextQuery: string) => {
+    const generation = ++searchGenerationRef.current;
     if (nextQuery.trim().length < 2) {
       setResults([]);
       setApiResults([]);
@@ -94,14 +99,13 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
       return;
     }
 
-    const dbFoods = await searchFoodsInSupabase(nextQuery);
-    const customFoods = await fetchCustomFoods();
-    const customMatches = customFoods.filter((food) => normalizeKey(food.name).includes(normalizeKey(nextQuery)));
-
-    const merged = [...customMatches, ...dbFoods].filter((food, index, array) => {
-      const currentKey = `${normalizeKey(food.name)}::${normalizeKey(food.category)}`;
-      return array.findIndex((candidate) => `${normalizeKey(candidate.name)}::${normalizeKey(candidate.category)}` === currentKey) === index;
-    });
+    const [catalogFoods, customFoods] = await Promise.all([fetchFoodSearchCatalog(), fetchCustomFoods()]);
+    if (generation !== searchGenerationRef.current) return;
+    const merged = searchNormalizedRecords([...customFoods, ...catalogFoods], nextQuery)
+      .filter((food, index, array) => {
+        const currentKey = `${normalizeKey(food.name)}::${normalizeKey(food.category)}`;
+        return array.findIndex((candidate) => `${normalizeKey(candidate.name)}::${normalizeKey(candidate.category)}` === currentKey) === index;
+      });
 
     setResults(merged.slice(0, 30));
     updatePos();
@@ -114,6 +118,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
     setApiResults([]);
 
     apiTimerRef.current = setTimeout(async () => {
+      if (generation !== searchGenerationRef.current) return;
       const controller = new AbortController();
       apiAbortRef.current = controller;
 
@@ -200,6 +205,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
 
   const openModal = () => {
     setForm({ ...EMPTY_FORM, name: query });
+    setSearchAliases([]);
     setFormErrors({});
     setIsOpen(false);
     setShowModal(true);
@@ -208,6 +214,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
   const closeModal = () => {
     setShowModal(false);
     setForm(EMPTY_FORM);
+    setSearchAliases([]);
     setFormErrors({});
   };
 
@@ -245,6 +252,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
         carbs_per_100g: Number(form.carbs_per_100g),
         fat_per_100g: Number(form.fat_per_100g),
         fiber_per_100g: form.fiber_per_100g ? Number(form.fiber_per_100g) : undefined,
+        search_aliases: searchAliases,
       });
 
       setQuery(saved.name);
@@ -473,6 +481,8 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
                   </div>
                 </div>
               </div>
+
+              <SearchAliasesField value={searchAliases} onChange={setSearchAliases} />
 
               <div className="space-y-3">
                 <div>
