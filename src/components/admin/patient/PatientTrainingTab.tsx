@@ -73,6 +73,15 @@ function StatusBadge({ status }: { status: TrainingPlan["status"] }) {
   );
 }
 
+function ExerciseMetric({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <span className="min-w-0 rounded-xl border border-border/60 bg-muted/20 px-2.5 py-2">
+      <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
+      <span className="mt-0.5 block truncate text-xs font-semibold text-foreground">{value?.trim() || "—"}</span>
+    </span>
+  );
+}
+
 export function PatientTrainingTab({ patientId }: { patientId: number }) {
   const [plans, setPlans] = useState<TrainingPlan[]>([]);
   const [selected, setSelected] = useState<TrainingPlan | null>(null);
@@ -401,7 +410,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
   }
 
   const publishedPlanCount = plans.filter((plan) => plan.status === "published").length;
-  const sessionCount = plans.reduce((total, plan) => total + (plan.sessions?.length ?? 0), 0);
+  const draftPlanCount = plans.filter((plan) => plan.status === "draft").length;
 
   return (
     <div className="space-y-6">
@@ -428,7 +437,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
           {[
             ["Fichas", plans.length],
             ["Publicadas", publishedPlanCount],
-            ["Sessões", sessionCount],
+            ["Rascunhos", draftPlanCount],
           ].map(([label, value]) => (
             <div key={label} className="rounded-2xl border border-border/60 bg-muted/25 px-3 py-2.5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
@@ -512,8 +521,8 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       ) : null}
 
       {selected && editorStep !== "library" ? (
-        <section className="overflow-hidden rounded-3xl border border-primary/15 bg-card shadow-sm" aria-labelledby="training-editor-heading">
-          <div className="flex flex-col gap-4 border-b border-border/60 bg-muted/15 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
+        <section className="rounded-3xl border border-primary/15 bg-card shadow-sm" aria-labelledby="training-editor-heading">
+          <div className="sticky top-2 z-20 flex flex-col gap-4 rounded-t-3xl border-b border-border/60 bg-card/95 p-4 shadow-sm backdrop-blur-xl sm:flex-row sm:items-start sm:justify-between sm:p-5">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 id="training-editor-heading" className="font-display text-lg font-semibold tracking-tight text-foreground sm:text-xl">
@@ -606,10 +615,10 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
             </div>
           ) : null}
 
-          <nav aria-label="Etapas do construtor" className="grid grid-cols-3 gap-1 border-b border-border/60 bg-muted/20 p-2 sm:gap-2 sm:p-3">
+          <nav aria-label="Etapas do construtor" className="grid grid-cols-3 gap-1 border-b border-border/60 bg-muted/15 p-2 sm:gap-2 sm:p-3">
             {([["details", "1", "Ficha"], ["sessions", "2", "Montagem"], ["review", "3", "Revisão"]] as const).map(([step, number, label]) => (
               <button key={step} type="button" aria-current={editorStep === step ? "step" : undefined} onClick={() => setEditorStep(step)}
-                className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${editorStep === step ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:bg-card/70 hover:text-foreground"}`}>
+                className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-medium transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${editorStep === step ? "border border-primary/15 bg-card text-primary shadow-sm" : "border border-transparent text-muted-foreground hover:bg-card/70 hover:text-foreground"}`}>
                 <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${editorStep === step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{number}</span>{label}
               </button>
             ))}
@@ -650,7 +659,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
               </fieldset>
             </div> : null}
 
-            {editorStep === "sessions" ? <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/[0.05] p-4 sm:p-5">
+            {editorStep === "sessions" ? <div className="space-y-4 rounded-3xl border border-border/60 bg-muted/[0.04] p-3 sm:p-5">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-xs font-medium text-primary">ETAPA 2 · MONTAGEM</p>
@@ -669,14 +678,14 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
               </div>
 
               {(selected.sessions ?? []).length > 0 ? (
-                <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(170px,0.7fr)_minmax(300px,1.8fr)] xl:grid-cols-[minmax(175px,0.7fr)_minmax(340px,1.8fr)_minmax(240px,0.95fr)]">
-                  <aside aria-label="Selecionar sessão" className="rounded-2xl border border-border/70 bg-muted/20 p-2.5">
+                <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(170px,0.65fr)_minmax(0,1.8fr)] 2xl:grid-cols-[minmax(180px,0.62fr)_minmax(420px,1.8fr)_minmax(250px,0.9fr)]">
+                  <aside aria-label="Selecionar sessão" className="h-fit rounded-2xl border border-border/70 bg-muted/20 p-2.5 lg:sticky lg:top-28">
                     <p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessões · {(selected.sessions ?? []).length}</p>
                     <div className="space-y-1">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={session.id ?? sessionIndex} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => setActiveSessionIndex(sessionIndex)} className={`flex min-h-12 w-full items-center gap-2 rounded-xl px-2.5 text-left ${activeSessionIndex === sessionIndex ? "bg-primary/10 text-primary" : "text-foreground hover:bg-background"}`}><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-background text-xs font-semibold">{sessionIndex + 1}</span><span className="min-w-0 flex-1 truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="text-xs text-muted-foreground">{session.exercises.length}</span></button>)}</div>
                     {(selected.sessions ?? []).length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">Adicione uma sessão para começar.</p> : null}
                   </aside>
                   {(selected.sessions ?? []).filter((_, index) => index === activeSessionIndex).map((session, sessionIndex) => (
-                    <article key={session.id ?? sessionIndex} className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+                    <article key={session.id ?? sessionIndex} className="min-w-0 overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
                       <div className="flex flex-col gap-3 border-b border-border/60 bg-muted/25 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 flex-1 items-center gap-3">
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary" aria-hidden="true">
@@ -741,8 +750,8 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                               {session.exercises.map((exercise, exerciseIndex) => {
                                 const fieldId = `training-exercise-${selected.id}-${sessionIndex}-${exerciseIndex}`;
                                 return (
-                                  <li key={exercise.id ?? exerciseIndex} className="rounded-2xl border border-border/60 bg-background p-3 shadow-sm sm:p-4">
-                                    <details open={expandedExercises.has(`${sessionIndex}-${exerciseIndex}`) || !exercise.name.trim()} onToggle={(event) => {
+                                  <li key={exercise.id ?? exerciseIndex} className="overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-shadow motion-reduce:transition-none hover:shadow-md">
+                                    <details className="group" open={expandedExercises.has(`${sessionIndex}-${exerciseIndex}`) || !exercise.name.trim()} onToggle={(event) => {
                                       const isOpen = event.currentTarget.open;
                                       setExpandedExercises((current) => {
                                         const next = new Set(current);
@@ -751,12 +760,20 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                         return next;
                                       });
                                     }}>
-                                      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-lg px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-semibold text-primary">{exerciseIndex + 1}</span>
-                                        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{exercise.name || "Novo exercício"}</span><span className="block truncate text-xs text-muted-foreground">{[exercise.sets && `${exercise.sets} séries`, exercise.repetitions && `${exercise.repetitions} rep.`, exercise.reference_load, exercise.rest && `Desc. ${exercise.rest}`].filter(Boolean).join(" · ") || "Definir parâmetros"}</span></span>
-                                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                      <summary className="grid min-h-16 cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4">
+                                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-xs font-bold text-primary">{String(exerciseIndex + 1).padStart(2, "0")}</span>
+                                        <span className="min-w-0">
+                                          <span className="block truncate text-sm font-semibold text-foreground">{exercise.name || "Novo exercício"}</span>
+                                          <span className="mt-1 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                                            <ExerciseMetric label="Séries" value={exercise.sets} />
+                                            <ExerciseMetric label="Repetições" value={exercise.repetitions} />
+                                            <ExerciseMetric label="Carga" value={exercise.reference_load} />
+                                            <ExerciseMetric label="Intervalo" value={exercise.rest} />
+                                          </span>
+                                        </span>
+                                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
                                       </summary>
-                                      <div className="grid gap-3 border-t border-border/60 bg-muted/10 p-3 sm:grid-cols-2">
+                                      <div className="grid gap-3 border-t border-border/60 bg-muted/10 p-3 sm:grid-cols-2 sm:p-4">
                                       <div className="space-y-1.5 sm:col-span-2 xl:col-span-4">
                                         <Label htmlFor={`${fieldId}-name`}>Exercício</Label>
                                         <ExerciseAutocomplete id={`${fieldId}-name`} disabled={selected.status !== "draft"} value={exercise.name} items={exerciseCatalog}
@@ -844,7 +861,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                       </div>
                     </article>
                   ))}
-                  <aside aria-label="Biblioteca contextual de exercícios" className="min-w-0 space-y-4 rounded-2xl border border-border/70 bg-muted/20 p-3 sm:p-4">
+                  <aside aria-label="Biblioteca contextual de exercícios" className="min-w-0 space-y-4 rounded-2xl border border-border/70 bg-muted/20 p-3 sm:p-4 2xl:sticky 2xl:top-28 2xl:h-fit">
                     <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Biblioteca contextual</p><h5 className="mt-1 font-semibold">Exercícios</h5><p className="mt-1 text-xs text-muted-foreground">{selected.sessions?.[activeSessionIndex]?.title || "Selecione uma sessão"}</p></div>
                     {selected.status === "draft" ? <>
                       <div className="space-y-2"><Label htmlFor={`training-library-${selected.id}`}>Buscar no catálogo</Label><ExerciseAutocomplete id={`training-library-${selected.id}`} value={catalogSearch} items={exerciseCatalog} onChange={setCatalogSearch} onSelect={(item) => {
