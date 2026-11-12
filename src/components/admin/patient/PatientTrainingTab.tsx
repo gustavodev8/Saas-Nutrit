@@ -742,7 +742,15 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                 const fieldId = `training-exercise-${selected.id}-${sessionIndex}-${exerciseIndex}`;
                                 return (
                                   <li key={exercise.id ?? exerciseIndex} className="rounded-2xl border border-border/60 bg-background p-3 shadow-sm sm:p-4">
-                                    <details open={expandedExercises.has(`${sessionIndex}-${exerciseIndex}`) || !exercise.name.trim()} onToggle={(event) => setExpandedExercises((current) => { const next = new Set(current); if ((event.currentTarget as HTMLDetailsElement).open) next.add(`${sessionIndex}-${exerciseIndex}`); else next.delete(`${sessionIndex}-${exerciseIndex}`); return next; })}>
+                                    <details open={expandedExercises.has(`${sessionIndex}-${exerciseIndex}`) || !exercise.name.trim()} onToggle={(event) => {
+                                      const isOpen = event.currentTarget.open;
+                                      setExpandedExercises((current) => {
+                                        const next = new Set(current);
+                                        if (isOpen) next.add(`${sessionIndex}-${exerciseIndex}`);
+                                        else next.delete(`${sessionIndex}-${exerciseIndex}`);
+                                        return next;
+                                      });
+                                    }}>
                                       <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-lg px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-semibold text-primary">{exerciseIndex + 1}</span>
                                         <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{exercise.name || "Novo exercício"}</span><span className="block truncate text-xs text-muted-foreground">{[exercise.sets && `${exercise.sets} séries`, exercise.repetitions && `${exercise.repetitions} rep.`, exercise.reference_load, exercise.rest && `Desc. ${exercise.rest}`].filter(Boolean).join(" · ") || "Definir parâmetros"}</span></span>
