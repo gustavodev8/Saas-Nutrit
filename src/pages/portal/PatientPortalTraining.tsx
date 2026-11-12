@@ -47,15 +47,6 @@ function MetaChip({ icon: Icon, children }: { icon: typeof Activity; children: s
   );
 }
 
-function PrescriptionCell({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <span className="rounded-xl border border-border/60 bg-muted/20 px-2.5 py-2.5">
-      <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
-      <span className="mt-1 block truncate text-xs font-semibold text-foreground">{value?.trim() || "—"}</span>
-    </span>
-  );
-}
-
 type TrainingLogDraft = {
   performedAt: string;
   difficulty: "easy" | "moderate" | "hard";
@@ -121,9 +112,6 @@ export default function PatientPortalTraining() {
     ? selectedPlan?.sessions.findIndex((session) => session.id === focusedSession.id) ?? -1
     : -1;
   const activeSession = selectedPlan?.sessions.find((session) => session.id === activeSessionId) ?? null;
-  const sessionProgress = selectedPlan && focusedSessionIndex >= 0
-    ? Math.round(((focusedSessionIndex + 1) / Math.max(selectedPlan.sessions.length, 1)) * 100)
-    : 0;
 
   if (!settings.navigation.training) {
     return (
@@ -394,8 +382,8 @@ export default function PatientPortalTraining() {
             </div>
 
             {selectedPlan.sessions.length > 0 ? (
-              <div className="-mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-                <nav aria-label="Navegar entre sessões" className="flex w-max min-w-full gap-2 sm:w-auto sm:min-w-0">
+              <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0">
+                <nav aria-label="Navegar entre sessões" className="flex w-max min-w-full snap-x snap-mandatory gap-2 sm:w-auto sm:min-w-0">
                   {selectedPlan.sessions.map((session, index) => {
                     const isFocused = focusedSession?.id === session.id;
                     return (
@@ -404,7 +392,7 @@ export default function PatientPortalTraining() {
                         type="button"
                         aria-current={isFocused ? "step" : undefined}
                         onClick={() => switchToSession(session.id)}
-                        className={`flex min-h-12 min-w-32 max-w-56 items-center gap-2 rounded-2xl border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:min-w-36 ${
+                        className={`flex min-h-12 min-w-32 max-w-56 snap-start items-center gap-2 rounded-2xl border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:min-w-36 ${
                           isFocused
                             ? "border-primary/30 bg-primary/[0.07] text-primary shadow-sm"
                             : "border-border/60 bg-card text-muted-foreground hover:border-primary/25 hover:bg-primary/[0.025]"
@@ -448,18 +436,7 @@ export default function PatientPortalTraining() {
                             {session.exercises.length} {session.exercises.length === 1 ? "exercício" : "exercícios"}
                           </span>
                         </div>
-                        <div className="mt-4 space-y-2">
-                          <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
-                            <span>Sessão {sessionIndex + 1} de {selectedPlan.sessions.length}</span>
-                            <span>{sessionProgress}%</span>
-                          </div>
-                          <progress
-                            value={sessionProgress}
-                            max={100}
-                            aria-label="Progresso entre as sessões"
-                            className="h-1.5 w-full overflow-hidden rounded-full bg-muted accent-primary [&::-moz-progress-bar]:rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary"
-                          />
-                        </div>
+                        <p className="mt-4 text-[11px] font-medium text-muted-foreground">Sessão {sessionIndex + 1} de {selectedPlan.sessions.length}</p>
                       </CardHeader>
 
                       <CardContent className="space-y-4 p-5 pt-0 max-[390px]:px-3.5 max-[390px]:pb-3.5 sm:p-6 sm:pt-0">
@@ -486,11 +463,12 @@ export default function PatientPortalTraining() {
                                         </a>
                                       ) : null}
                                     </div>
-                                    <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                                      <PrescriptionCell label="Séries" value={exercise.sets} />
-                                      <PrescriptionCell label="Repetições" value={exercise.repetitions} />
-                                      <PrescriptionCell label="Carga" value={exercise.reference_load} />
-                                      <PrescriptionCell label="Intervalo" value={exercise.rest} />
+                                    <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                                      <span className="font-semibold text-foreground">{exercise.sets?.trim() || "—"} × {exercise.repetitions?.trim() || "—"}</span>
+                                      <span aria-hidden="true">·</span>
+                                      <span>{exercise.reference_load?.trim() || "Carga livre"}</span>
+                                      <span aria-hidden="true">·</span>
+                                      <span>{exercise.rest?.trim() ? `Descanso ${exercise.rest}` : "Intervalo livre"}</span>
                                     </div>
                                     {exercise.instructions?.trim() ? (
                                       <details className="group mt-3 rounded-xl border border-border/50 bg-muted/10">

@@ -12,6 +12,7 @@ import {
   Loader2,
   Plus,
   Save,
+  Search,
   Send,
   Trash2,
   Star,
@@ -75,9 +76,9 @@ function StatusBadge({ status }: { status: TrainingPlan["status"] }) {
 
 function ExerciseMetric({ label, value }: { label: string; value?: string | null }) {
   return (
-    <span className="min-w-0 rounded-xl border border-border/60 bg-muted/20 px-2.5 py-2">
-      <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
-      <span className="mt-0.5 block truncate text-xs font-semibold text-foreground">{value?.trim() || "—"}</span>
+    <span className="inline-flex min-w-0 items-baseline gap-1.5 text-xs text-muted-foreground">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.12em]">{label}</span>
+      <span className="truncate font-semibold text-foreground">{value?.trim() || "—"}</span>
     </span>
   );
 }
@@ -108,6 +109,8 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
   const [librarySaving, setLibrarySaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editorStep, setEditorStep] = useState<"library" | "details" | "sessions" | "review">("library");
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [libraryStatus, setLibraryStatus] = useState<TrainingPlan["status"] | "all">("all");
   const [activeSessionIndex, setActiveSessionIndex] = useState(0);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -243,6 +246,12 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
     ...preset,
     search_text: [preset.sets, preset.repetitions, preset.reference_load, preset.rest, preset.instructions].join(" "),
   })), exercisePresetSearch), [exercisePresetSearch, exercisePresets]);
+
+  const filteredPlans = useMemo(() => searchNormalizedRecords(plans.map((plan) => ({
+    ...plan,
+    name: plan.title,
+    search_text: [plan.goal, plan.frequency, plan.general_notes].filter(Boolean).join(" "),
+  })), librarySearch).filter((plan) => libraryStatus === "all" || plan.status === libraryStatus), [librarySearch, libraryStatus, plans]);
 
   const openSaveExercisePreset = (sessionIndex: number, exerciseIndex: number) => {
     const exercise = selected?.sessions?.[sessionIndex]?.exercises[exerciseIndex];
@@ -469,17 +478,51 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
 
       {plans.length > 0 && editorStep === "library" ? (
         <section aria-labelledby="training-plan-list-heading" className="space-y-4 rounded-3xl border border-border/60 bg-card/70 p-4 sm:p-5">
-          <div className="flex items-end justify-between gap-3">
+          {plans.find((plan) => plan.status === "published") ? (() => {
+            const publishedPlan = plans.find((plan) => plan.status === "published");
+            if (!publishedPlan) return null;
+            return (
+              <article className="grid gap-4 rounded-2xl border border-primary/20 bg-primary/[0.035] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-5">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2"><StatusBadge status="published" /><span className="text-xs text-muted-foreground">Visível no portal do paciente</span></div>
+                  <p className="mt-2 truncate text-base font-semibold text-foreground">{publishedPlan.title}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Versão {publishedPlan.version} · {publishedPlan.frequency || "Frequência não definida"} · {(publishedPlan.sessions ?? []).length} {(publishedPlan.sessions ?? []).length === 1 ? "sessão" : "sessões"}</p>
+                </div>
+                <Button type="button" variant="outline" onClick={() => { setActiveSessionIndex(0); void refresh(publishedPlan.id); setEditorStep("review"); }} className="min-h-10 rounded-xl sm:w-auto">Ver ficha publicada</Button>
+              </article>
+            );
+          })() : null}
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Biblioteca do paciente</p>
               <h3 id="training-plan-list-heading" className="mt-1 text-base font-semibold text-foreground">Fichas cadastradas</h3>
             </div>
             <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-              {plans.length} {plans.length === 1 ? "ficha" : "fichas"}
+              {filteredPlans.length} de {plans.length} {plans.length === 1 ? "ficha" : "fichas"}
             </span>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="group" aria-label="Selecionar ficha de treino">
-            {plans.map((plan) => {
+
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_240px] md:items-center">
+            <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Filtrar fichas por status">
+              {(["all", "published", "draft", "archived"] as const).map((status) => {
+                const label = status === "all" ? "Todas" : statusLabel[status];
+                const count = status === "all" ? plans.length : plans.filter((plan) => plan.status === status).length;
+                return <button key={status} type="button" role="tab" aria-selected={libraryStatus === status} onClick={() => setLibraryStatus(status)} className={`min-h-9 shrink-0 rounded-lg px-3 text-sm transition-colors ${libraryStatus === status ? "bg-foreground font-semibold text-background" : "text-muted-foreground hover:bg-muted"}`}>{label} <span className="ml-1 tabular-nums opacity-70">{count}</span></button>;
+              })}
+            </div>
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input value={librarySearch} onChange={(event) => setLibrarySearch(event.target.value)} placeholder="Buscar ficha" aria-label="Buscar ficha de treino" className="h-10 rounded-xl pl-9" />
+            </label>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-border/60 bg-background">
+            <div className="hidden grid-cols-[minmax(0,2fr)_120px_76px_1fr_40px] gap-4 border-b border-border/60 bg-muted/25 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground md:grid">
+              <span>Ficha</span><span>Status</span><span>Versão</span><span>Estrutura</span><span />
+            </div>
+            <div className="divide-y divide-border/60" role="group" aria-label="Selecionar ficha de treino">
+            {filteredPlans.map((plan) => {
               const active = selected?.id === plan.id;
               return (
                 <button
@@ -487,22 +530,22 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                   type="button"
                   aria-pressed={active}
                   onClick={() => { setActiveSessionIndex(0); void refresh(plan.id); setEditorStep("details"); }}
-                  className={`group min-w-0 rounded-2xl border p-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${active ? "border-primary/40 bg-primary/[0.05] shadow-md shadow-primary/5" : "border-border/60 bg-background hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.02] hover:shadow-md"}`}
+                  className={`group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring md:grid-cols-[minmax(0,2fr)_120px_76px_1fr_40px] md:gap-4 ${active ? "bg-primary/[0.055]" : "hover:bg-muted/35"}`}
                 >
-                  <span className="flex items-start justify-between gap-3">
-                    <span className="min-w-0">
-                      <span className="block truncate font-semibold text-foreground">{plan.title}</span>
-                      <span className="mt-1 block text-xs text-muted-foreground">Versão {plan.version}</span>
-                    </span>
-                    <StatusBadge status={plan.status} />
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold text-foreground">{plan.title}</span>
+                    <span className="mt-1 block truncate text-xs text-muted-foreground">{plan.goal || "Objetivo não definido"} · {plan.frequency || "Frequência não definida"}</span>
                   </span>
-                  <span className="mt-4 flex items-center justify-between border-t border-border/60 pt-3 text-xs text-muted-foreground">
-                    <span>{plan.frequency || "Frequência não definida"}</span>
-                    <ChevronRight className={`h-4 w-4 transition-transform ${active ? "translate-x-0.5 text-primary" : "group-hover:translate-x-0.5"}`} aria-hidden="true" />
-                  </span>
+                  <span className="md:hidden"><StatusBadge status={plan.status} /></span>
+                  <span className="hidden md:block"><StatusBadge status={plan.status} /></span>
+                  <span className="hidden text-sm tabular-nums text-muted-foreground md:block">v{plan.version}</span>
+                  <span className="col-span-2 text-xs text-muted-foreground md:col-span-1 md:text-sm">{(plan.sessions ?? []).length} {(plan.sessions ?? []).length === 1 ? "sessão" : "sessões"}</span>
+                  <ChevronRight className={`hidden h-4 w-4 justify-self-end transition-transform md:block ${active ? "translate-x-0.5 text-primary" : "group-hover:translate-x-0.5"}`} aria-hidden="true" />
                 </button>
               );
             })}
+            {filteredPlans.length === 0 ? <p className="px-5 py-12 text-center text-sm text-muted-foreground">Nenhuma ficha encontrada com estes filtros.</p> : null}
+            </div>
           </div>
         </section>
       ) : plans.length === 0 && editorStep === "library" ? (
@@ -681,7 +724,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                 <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(170px,0.65fr)_minmax(0,1.8fr)] 2xl:grid-cols-[minmax(180px,0.62fr)_minmax(420px,1.8fr)_minmax(250px,0.9fr)]">
                   <aside aria-label="Selecionar sessão" className="h-fit rounded-2xl border border-border/70 bg-muted/20 p-2.5 lg:sticky lg:top-28">
                     <p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessões · {(selected.sessions ?? []).length}</p>
-                    <div className="space-y-1">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={session.id ?? sessionIndex} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => setActiveSessionIndex(sessionIndex)} className={`flex min-h-12 w-full items-center gap-2 rounded-xl px-2.5 text-left ${activeSessionIndex === sessionIndex ? "bg-primary/10 text-primary" : "text-foreground hover:bg-background"}`}><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-background text-xs font-semibold">{sessionIndex + 1}</span><span className="min-w-0 flex-1 truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="text-xs text-muted-foreground">{session.exercises.length}</span></button>)}</div>
+                    <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={session.id ?? sessionIndex} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => setActiveSessionIndex(sessionIndex)} className={`flex min-h-12 min-w-36 items-center gap-2 rounded-xl px-2.5 text-left transition-colors lg:w-full ${activeSessionIndex === sessionIndex ? "border border-primary/20 bg-primary/10 text-primary" : "border border-transparent text-foreground hover:bg-background"}`}><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-background text-xs font-semibold">{sessionIndex + 1}</span><span className="min-w-0 flex-1 truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="text-xs text-muted-foreground">{session.exercises.length}</span></button>)}</div>
                     {(selected.sessions ?? []).length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">Adicione uma sessão para começar.</p> : null}
                   </aside>
                   {(selected.sessions ?? []).filter((_, index) => index === activeSessionIndex).map((session, sessionIndex) => (
@@ -764,7 +807,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-xs font-bold text-primary">{String(exerciseIndex + 1).padStart(2, "0")}</span>
                                         <span className="min-w-0">
                                           <span className="block truncate text-sm font-semibold text-foreground">{exercise.name || "Novo exercício"}</span>
-                                          <span className="mt-1 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                                          <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
                                             <ExerciseMetric label="Séries" value={exercise.sets} />
                                             <ExerciseMetric label="Repetições" value={exercise.repetitions} />
                                             <ExerciseMetric label="Carga" value={exercise.reference_load} />
