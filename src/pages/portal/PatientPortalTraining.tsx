@@ -3,6 +3,8 @@ import {
   Activity,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Dumbbell,
   ExternalLink,
@@ -44,12 +46,24 @@ function MetaChip({ icon: Icon, children }: { icon: typeof Activity; children: s
   );
 }
 
+type TrainingLogDraft = {
+  performedAt: string;
+  difficulty: "easy" | "moderate" | "hard";
+  notes: string;
+  loads: Record<number, string>;
+};
+
+function emptyTrainingLogDraft(): TrainingLogDraft {
+  return { performedAt: today(), difficulty: "moderate", notes: "", loads: {} };
+}
+
 export default function PatientPortalTraining() {
   const { patient } = usePatientPortalAuth();
   const { settings } = usePatientPortalSettings();
   const [plans, setPlans] = useState<PortalTrainingPlan[]>([]);
   const [logs, setLogs] = useState<PortalTrainingLog[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
+  const [focusedSessionId, setFocusedSessionId] = useState<number | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +72,7 @@ export default function PatientPortalTraining() {
   const [difficulty, setDifficulty] = useState<"easy" | "moderate" | "hard">("moderate");
   const [notes, setNotes] = useState("");
   const [loads, setLoads] = useState<Record<number, string>>({});
+  const [logDrafts, setLogDrafts] = useState<Record<number, TrainingLogDraft>>({});
 
   const loadData = useCallback(async (patientId: number) => {
     setLoading(true);
@@ -72,6 +87,11 @@ export default function PatientPortalTraining() {
         : nextPlans[0]?.id ?? null);
       setActiveSessionId((current) => nextPlans.some((plan) =>
         plan.sessions.some((session) => session.id === current)) ? current : null);
+      setFocusedSessionId((current) => {
+        return nextPlans.some((plan) => plan.sessions.some((session) => session.id === current))
+          ? current
+          : nextPlans[0]?.sessions[0]?.id ?? null;
+      });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar os treinos.");
     } finally {
@@ -84,6 +104,12 @@ export default function PatientPortalTraining() {
   }, [patient?.id, loadData]);
 
   const selectedPlan = plans.find((plan) => plan.id === selectedVersionId) ?? null;
+  const focusedSession = selectedPlan?.sessions.find((session) => session.id === focusedSessionId)
+    ?? selectedPlan?.sessions[0]
+    ?? null;
+  const focusedSessionIndex = focusedSession
+    ? selectedPlan?.sessions.findIndex((session) => session.id === focusedSession.id) ?? -1
+    : -1;
   const activeSession = selectedPlan?.sessions.find((session) => session.id === activeSessionId) ?? null;
 
   if (!settings.navigation.training) {
@@ -95,16 +121,44 @@ export default function PatientPortalTraining() {
     );
   }
 
-  const resetForm = () => {
-    setPerformedAt(today());
-    setDifficulty("moderate");
-    setNotes("");
-    setLoads({});
+  const resetForm = (draft: TrainingLogDraft = emptyTrainingLogDraft()) => {
+    setPerformedAt(draft.performedAt);
+    setDifficulty(draft.difficulty);
+    setNotes(draft.notes);
+    setLoads({ ...draft.loads });
+  };
+
+  const saveCurrentDraft = () => {
+    if (activeSessionId === null) return;
+    setLogDrafts((current) => ({
+      ...current,
+      [activeSessionId]: { performedAt, difficulty, notes, loads: { ...loads } },
+    }));
+  };
+
+  const switchToSession = (sessionId: number) => {
+    saveCurrentDraft();
+    setFocusedSessionId(sessionId);
+    setActiveSessionId(null);
+    resetForm(logDrafts[sessionId]);
+  };
+
+  const cancelSessionForm = () => {
+    if (activeSessionId !== null) {
+      setLogDrafts((current) => {
+        const next = { ...current };
+        delete next[activeSessionId];
+        return next;
+      });
+    }
+    setActiveSessionId(null);
+    resetForm();
   };
 
   const openSessionForm = (session: PortalTrainingSession) => {
+    setFocusedSessionId(session.id);
     setActiveSessionId(session.id);
-    resetForm();
+    resetForm(logDrafts[session.id]);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -139,6 +193,11 @@ export default function PatientPortalTraining() {
     }
 
     toast.success("Treino registrado com sucesso.");
+    setLogDrafts((current) => {
+      const next = { ...current };
+      delete next[activeSession.id];
+      return next;
+    });
     setActiveSessionId(null);
     resetForm();
     await loadData(patient.id);
@@ -240,7 +299,9 @@ export default function PatientPortalTraining() {
                   aria-pressed={isSelected}
                   onClick={() => {
                     setSelectedVersionId(plan.id);
+                    setFocusedSessionId(plan.sessions[0]?.id ?? null);
                     setActiveSessionId(null);
+                    setLogDrafts({});
                     resetForm();
                   }}
                     className={`rounded-3xl border p-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 max-[390px]:p-3.5 ${
@@ -319,8 +380,40 @@ export default function PatientPortalTraining() {
             </div>
 
             {selectedPlan.sessions.length > 0 ? (
-              <div className="space-y-4">
-                {selectedPlan.sessions.map((session, sessionIndex) => {
+              <div className="-mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+                <nav aria-label="Navegar entre sessões" className="flex w-max min-w-full gap-2 sm:w-auto sm:min-w-0">
+                  {selectedPlan.sessions.map((session, index) => {
+                    const isFocused = focusedSession?.id === session.id;
+                    return (
+                      <button
+                        key={session.id}
+                        type="button"
+                        aria-current={isFocused ? "step" : undefined}
+                        onClick={() => switchToSession(session.id)}
+                        className={`flex min-h-12 min-w-32 max-w-56 items-center gap-2 rounded-2xl border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:min-w-36 ${
+                          isFocused
+                            ? "border-primary/30 bg-primary/[0.07] text-primary shadow-sm"
+                            : "border-border/60 bg-card text-muted-foreground hover:border-primary/25 hover:bg-primary/[0.025]"
+                        }`}
+                      >
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${isFocused ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs font-semibold">{session.title}</span>
+                          <span className="mt-0.5 block text-[10px] opacity-75">{session.exercises.length} {session.exercises.length === 1 ? "exercício" : "exercícios"}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </nav>
+              </div>
+            ) : null}
+
+            {selectedPlan.sessions.length > 0 ? (
+              <div>
+                {selectedPlan.sessions.filter((session) => session.id === focusedSession?.id).map((session) => {
+                  const sessionIndex = focusedSessionIndex;
                   const sessionLogs = logs.filter((log) => log.version_id === selectedPlan.id && log.workout_session_id === session.id);
                   const isActive = activeSessionId === session.id;
                   return (
@@ -345,16 +438,15 @@ export default function PatientPortalTraining() {
 
                       <CardContent className="space-y-4 p-5 pt-0 max-[390px]:px-3.5 max-[390px]:pb-3.5 sm:p-6 sm:pt-0">
                         {session.exercises.length > 0 ? (
-                          <details defaultOpen={sessionIndex === 0} className="rounded-2xl border border-border/60 bg-muted/[0.08]">
-                            <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-semibold text-foreground outline-none transition-colors hover:bg-muted/20 focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden max-[390px]:px-3">
+                          <div className="rounded-2xl border border-border/60 bg-muted/[0.08]">
+                            <div className="flex min-h-12 items-center gap-2 px-4 text-sm font-semibold text-foreground max-[390px]:px-3">
                               <Dumbbell aria-hidden="true" size={15} className="shrink-0 text-primary" />
                               <span>Exercícios</span>
                               <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">{session.exercises.length}</span>
-                              <span className="sr-only">Mostrar ou ocultar exercícios</span>
-                            </summary>
-                            <ol className="space-y-2 border-t border-border/60 p-3 max-[390px]:p-2.5">
+                            </div>
+                            <ol className="grid gap-2 border-t border-border/60 p-3 max-[390px]:p-2.5 sm:grid-cols-2">
                             {session.exercises.map((exercise, exerciseIndex) => (
-                              <li key={exercise.id} className="rounded-2xl border border-border/60 bg-background p-4 shadow-sm max-[390px]:p-3">
+                              <li key={exercise.id} className="rounded-2xl border border-border/60 bg-background p-3 shadow-sm">
                                 <div className="flex items-start gap-3">
                                   <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-background text-[11px] font-semibold text-muted-foreground">
                                     {exerciseIndex + 1}
@@ -385,7 +477,7 @@ export default function PatientPortalTraining() {
                               </li>
                             ))}
                             </ol>
-                          </details>
+                          </div>
                         ) : (
                           <div className="rounded-2xl border border-dashed border-border/70 px-4 py-5 text-sm text-muted-foreground">
                             Esta sessão ainda não tem exercícios detalhados.
@@ -449,7 +541,7 @@ export default function PatientPortalTraining() {
                               <Textarea id={`notes-${session.id}`} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Anote como se sentiu ou algo que queira lembrar." className="min-h-24 resize-y rounded-xl" />
                             </div>
                             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                              <Button type="button" variant="ghost" className="min-h-11 rounded-xl" disabled={saving} onClick={() => setActiveSessionId(null)}>Cancelar</Button>
+                              <Button type="button" variant="ghost" className="min-h-11 rounded-xl" disabled={saving} onClick={cancelSessionForm}>Cancelar</Button>
                               <Button type="submit" className="min-h-11 rounded-xl" disabled={saving || !performedAt}>
                                 {saving ? <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden="true" className="mr-2 h-4 w-4" />}
                                 {saving ? "Salvando…" : "Salvar treino"}
@@ -491,6 +583,17 @@ export default function PatientPortalTraining() {
                               ))}
                             </div>
                           </details>
+                        ) : null}
+                        {selectedPlan.sessions.length > 1 ? (
+                          <div className="flex items-center justify-between border-t border-border/50 pt-4">
+                            <Button type="button" variant="ghost" className="min-h-11 rounded-xl px-3" disabled={sessionIndex <= 0} onClick={() => { const previousSessionId = selectedPlan.sessions[sessionIndex - 1]?.id; if (previousSessionId !== undefined) switchToSession(previousSessionId); }}>
+                              <ChevronLeft aria-hidden="true" className="mr-1 h-4 w-4" /> Anterior
+                            </Button>
+                            <span className="text-xs tabular-nums text-muted-foreground">{sessionIndex + 1} / {selectedPlan.sessions.length}</span>
+                            <Button type="button" variant="ghost" className="min-h-11 rounded-xl px-3" disabled={sessionIndex >= selectedPlan.sessions.length - 1} onClick={() => { const nextSessionId = selectedPlan.sessions[sessionIndex + 1]?.id; if (nextSessionId !== undefined) switchToSession(nextSessionId); }}>
+                              Próxima <ChevronRight aria-hidden="true" className="ml-1 h-4 w-4" />
+                            </Button>
+                          </div>
                         ) : null}
                       </CardContent>
                     </Card>

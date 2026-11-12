@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronRight,
+  ChevronDown,
   ClipboardPlus,
   Dumbbell,
   FileText,
@@ -97,6 +98,10 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
   const [modelName, setModelName] = useState("");
   const [librarySaving, setLibrarySaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editorStep, setEditorStep] = useState<"library" | "details" | "sessions" | "review">("library");
+  const [activeSessionIndex, setActiveSessionIndex] = useState(0);
+  const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
+  const [catalogSearch, setCatalogSearch] = useState("");
 
   const refreshLibrary = useCallback(async () => {
     setLibraryLoading(true);
@@ -180,6 +185,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       const plan = await createTrainingPlan(patientId);
       setSelected(plan);
       setShowCreateFlow(false);
+      setEditorStep("details");
       await refresh(plan.id);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Não foi possível criar a ficha.");
@@ -197,6 +203,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       if (!source) throw new Error("A ficha escolhida não foi encontrada.");
       const draft = await createTrainingPlanVersion(source);
       setShowCreateFlow(false);
+      setEditorStep("details");
       await refresh(draft.id);
       toast.success("Nova ficha criada a partir da última versão.");
     } catch (cause) {
@@ -325,6 +332,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       const plan = await createWorkoutPlanFromPreset(patientId, preset.latest_published_version_id);
       setShowPresetPicker(false);
       setShowCreateFlow(false);
+      setEditorStep("details");
       setPresetSearch("");
       await refresh(plan.id);
       toast.success(`Nova ficha criada a partir de “${preset.name}”.`);
@@ -450,7 +458,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
         </p>
       ) : null}
 
-      {plans.length > 0 ? (
+      {plans.length > 0 && editorStep === "library" ? (
         <section aria-labelledby="training-plan-list-heading" className="space-y-4 rounded-3xl border border-border/60 bg-card/70 p-4 sm:p-5">
           <div className="flex items-end justify-between gap-3">
             <div>
@@ -469,7 +477,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                   key={plan.id}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => void refresh(plan.id)}
+                  onClick={() => { setActiveSessionIndex(0); void refresh(plan.id); setEditorStep("details"); }}
                   className={`group min-w-0 rounded-2xl border p-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${active ? "border-primary/40 bg-primary/[0.05] shadow-md shadow-primary/5" : "border-border/60 bg-background hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.02] hover:shadow-md"}`}
                 >
                   <span className="flex items-start justify-between gap-3">
@@ -488,7 +496,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
             })}
           </div>
         </section>
-      ) : (
+      ) : plans.length === 0 && editorStep === "library" ? (
         <section className="rounded-3xl border border-dashed border-border/70 bg-muted/10 px-5 py-10 text-center sm:py-14" aria-labelledby="training-empty-heading">
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <FileText className="h-5 w-5" aria-hidden="true" />
@@ -501,11 +509,11 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Criar primeira ficha
           </Button>
         </section>
-      )}
+      ) : null}
 
-      {selected ? (
+      {selected && editorStep !== "library" ? (
         <section className="overflow-hidden rounded-3xl border border-primary/15 bg-card shadow-sm" aria-labelledby="training-editor-heading">
-          <div className="flex flex-col gap-4 border-b border-border/60 bg-muted/10 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+          <div className="flex flex-col gap-4 border-b border-border/60 bg-muted/15 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 id="training-editor-heading" className="font-display text-lg font-semibold tracking-tight text-foreground sm:text-xl">
@@ -519,7 +527,8 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                 <span>{(selected.sessions ?? []).length} {(selected.sessions ?? []).length === 1 ? "sessão" : "sessões"}</span>
               </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+              <Button type="button" variant="ghost" onClick={() => setEditorStep("library")} className="col-span-2 min-h-10 justify-start rounded-xl sm:col-span-1 sm:justify-center">← Biblioteca</Button>
               {selected.status === "draft" ? (
                 <>
                   <Button type="button" variant="outline" onClick={() => { setModelName(selected.title); setSaveModelOpen(true); }} disabled={!workspaceId || librarySaving} className="w-full rounded-xl sm:w-auto">
@@ -597,12 +606,21 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
             </div>
           ) : null}
 
-          <div className="space-y-7 p-5 sm:p-6">
-            <div className="overflow-hidden rounded-2xl border border-border/60 bg-muted/[0.08]">
+          <nav aria-label="Etapas do construtor" className="grid grid-cols-3 gap-1 border-b border-border/60 bg-muted/20 p-2 sm:gap-2 sm:p-3">
+            {([["details", "1", "Ficha"], ["sessions", "2", "Montagem"], ["review", "3", "Revisão"]] as const).map(([step, number, label]) => (
+              <button key={step} type="button" aria-current={editorStep === step ? "step" : undefined} onClick={() => setEditorStep(step)}
+                className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${editorStep === step ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:bg-card/70 hover:text-foreground"}`}>
+                <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${editorStep === step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{number}</span>{label}
+              </button>
+            ))}
+          </nav>
+
+          <div className="p-4 sm:p-5">
+            {editorStep === "details" ? <div className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-border/70 bg-muted/15">
               <div className="border-b border-border/60 px-4 py-3 sm:px-5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Configuração</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">Detalhes da ficha</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">Defina o contexto que o paciente verá antes de iniciar a sessão.</p>
+                <p className="text-xs font-medium text-primary">ETAPA 1 · INFORMAÇÕES</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">Contexto da ficha</p>
+                <p className="mt-1 text-sm text-muted-foreground">Defina o que o paciente verá antes de iniciar os treinos.</p>
               </div>
               <fieldset disabled={selected.status !== "draft"} className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5">
                 <div className="space-y-2 sm:col-span-2">
@@ -630,19 +648,19 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                   <Textarea id={`training-notes-${selected.id}`} value={selected.general_notes} onChange={(event) => update({ general_notes: event.target.value })} placeholder="Observações para a ficha completa" className="min-h-24 resize-y rounded-xl bg-background" />
                 </div>
               </fieldset>
-            </div>
+            </div> : null}
 
-            <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/[0.05] p-4 sm:p-5">
+            {editorStep === "sessions" ? <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/[0.05] p-4 sm:p-5">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Estrutura</p>
-                  <h4 className="mt-1 text-base font-semibold text-foreground">Sessões e exercícios</h4>
+                  <p className="text-xs font-medium text-primary">ETAPA 2 · MONTAGEM</p>
+                  <h4 className="mt-1 text-lg font-semibold text-foreground">Construtor de sessões</h4>
                 </div>
                 {selected.status === "draft" ? (
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => update({ sessions: [...(selected.sessions ?? []), { title: `Treino ${String.fromCharCode(65 + (selected.sessions?.length ?? 0))}`, notes: "", sort_order: selected.sessions?.length ?? 0, exercises: [] }] })}
+                    onClick={() => { const next = selected.sessions?.length ?? 0; update({ sessions: [...(selected.sessions ?? []), { title: `Treino ${String.fromCharCode(65 + next)}`, notes: "", sort_order: next, exercises: [] }] }); setActiveSessionIndex(next); }}
                     className="w-full rounded-xl sm:w-auto"
                   >
                     <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Adicionar sessão
@@ -651,8 +669,13 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
               </div>
 
               {(selected.sessions ?? []).length > 0 ? (
-                <div className="space-y-4">
-                  {(selected.sessions ?? []).map((session, sessionIndex) => (
+                <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(170px,0.7fr)_minmax(300px,1.8fr)] xl:grid-cols-[minmax(175px,0.7fr)_minmax(340px,1.8fr)_minmax(240px,0.95fr)]">
+                  <aside aria-label="Selecionar sessão" className="rounded-2xl border border-border/70 bg-muted/20 p-2.5">
+                    <p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessões · {(selected.sessions ?? []).length}</p>
+                    <div className="space-y-1">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={session.id ?? sessionIndex} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => setActiveSessionIndex(sessionIndex)} className={`flex min-h-12 w-full items-center gap-2 rounded-xl px-2.5 text-left ${activeSessionIndex === sessionIndex ? "bg-primary/10 text-primary" : "text-foreground hover:bg-background"}`}><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-background text-xs font-semibold">{sessionIndex + 1}</span><span className="min-w-0 flex-1 truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="text-xs text-muted-foreground">{session.exercises.length}</span></button>)}</div>
+                    {(selected.sessions ?? []).length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">Adicione uma sessão para começar.</p> : null}
+                  </aside>
+                  {(selected.sessions ?? []).filter((_, index) => index === activeSessionIndex).map((session, sessionIndex) => (
                     <article key={session.id ?? sessionIndex} className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
                       <div className="flex flex-col gap-3 border-b border-border/60 bg-muted/25 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -676,7 +699,13 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                             size="icon"
                             variant="ghost"
                             aria-label={`Remover sessão ${session.title || sessionIndex + 1}`}
-                            onClick={() => update({ sessions: (selected.sessions ?? []).filter((_, index) => index !== sessionIndex) })}
+                            onClick={() => {
+                              const nextSessions = (selected.sessions ?? []).filter((_, index) => index !== sessionIndex);
+                              update({ sessions: nextSessions });
+                              setActiveSessionIndex((current) => current > sessionIndex
+                                ? current - 1
+                                : Math.min(current, Math.max(0, nextSessions.length - 1)));
+                            }}
                             className="self-end rounded-xl text-muted-foreground hover:text-destructive sm:self-auto"
                           >
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -713,21 +742,13 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                 const fieldId = `training-exercise-${selected.id}-${sessionIndex}-${exerciseIndex}`;
                                 return (
                                   <li key={exercise.id ?? exerciseIndex} className="rounded-2xl border border-border/60 bg-background p-3 shadow-sm sm:p-4">
-                                    <div className="mb-3 flex items-center justify-between gap-3">
-                                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Exercício {exerciseIndex + 1}</span>
-                                      {selected.status === "draft" ? (
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => updateSession(sessionIndex, { exercises: session.exercises.filter((_, index) => index !== exerciseIndex) })}
-                                          className="h-8 rounded-lg px-2 text-muted-foreground hover:text-destructive"
-                                        >
-                                          <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />Remover
-                                        </Button>
-                                      ) : null}
-                                    </div>
-                                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                    <details open={expandedExercises.has(`${sessionIndex}-${exerciseIndex}`) || !exercise.name.trim()} onToggle={(event) => setExpandedExercises((current) => { const next = new Set(current); if ((event.currentTarget as HTMLDetailsElement).open) next.add(`${sessionIndex}-${exerciseIndex}`); else next.delete(`${sessionIndex}-${exerciseIndex}`); return next; })}>
+                                      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-lg px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-semibold text-primary">{exerciseIndex + 1}</span>
+                                        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{exercise.name || "Novo exercício"}</span><span className="block truncate text-xs text-muted-foreground">{[exercise.sets && `${exercise.sets} séries`, exercise.repetitions && `${exercise.repetitions} rep.`, exercise.reference_load, exercise.rest && `Desc. ${exercise.rest}`].filter(Boolean).join(" · ") || "Definir parâmetros"}</span></span>
+                                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                      </summary>
+                                      <div className="grid gap-3 border-t border-border/60 bg-muted/10 p-3 sm:grid-cols-2">
                                       <div className="space-y-1.5 sm:col-span-2 xl:col-span-4">
                                         <Label htmlFor={`${fieldId}-name`}>Exercício</Label>
                                         <ExerciseAutocomplete id={`${fieldId}-name`} disabled={selected.status !== "draft"} value={exercise.name} items={exerciseCatalog}
@@ -783,8 +804,12 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                         <Button type="button" variant="outline" size="sm" disabled={!workspaceId || exercisePresets.length === 0} onClick={() => { setExercisePresetTarget({ sessionIndex, exerciseIndex }); setExercisePresetSearch(""); setShowExercisePresetPicker(true); }} className="min-h-10 rounded-xl">
                                           Usar prescrição favorita
                                         </Button>
+                                        <Button type="button" variant="ghost" size="sm" onClick={() => updateSession(sessionIndex, { exercises: session.exercises.filter((_, index) => index !== exerciseIndex) })} className="min-h-10 rounded-xl text-destructive hover:text-destructive">
+                                          <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />Remover exercício
+                                        </Button>
                                       </div> : null}
-                                    </div>
+                                      </div>
+                                    </details>
                                   </li>
                                 );
                               })}
@@ -811,6 +836,26 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                       </div>
                     </article>
                   ))}
+                  <aside aria-label="Biblioteca contextual de exercícios" className="min-w-0 space-y-4 rounded-2xl border border-border/70 bg-muted/20 p-3 sm:p-4">
+                    <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Biblioteca contextual</p><h5 className="mt-1 font-semibold">Exercícios</h5><p className="mt-1 text-xs text-muted-foreground">{selected.sessions?.[activeSessionIndex]?.title || "Selecione uma sessão"}</p></div>
+                    {selected.status === "draft" ? <>
+                      <div className="space-y-2"><Label htmlFor={`training-library-${selected.id}`}>Buscar no catálogo</Label><ExerciseAutocomplete id={`training-library-${selected.id}`} value={catalogSearch} items={exerciseCatalog} onChange={setCatalogSearch} onSelect={(item) => {
+                        const session = selected.sessions?.[activeSessionIndex];
+                        if (!session) return;
+                        const exerciseIndex = session.exercises.length;
+                        updateSession(activeSessionIndex, { exercises: [...session.exercises, { name: item.name, sets: "", repetitions: "", reference_load: "", rest: "", instructions: item.instructions || "", demo_url: item.demo_url || "", sort_order: exerciseIndex }] });
+                        setExpandedExercises((current) => new Set(current).add(`${activeSessionIndex}-${exerciseIndex}`));
+                        setCatalogSearch("");
+                      }} /></div>
+                      {workspaceId ? <div className="space-y-1 border-t border-border/60 pt-3"><p className="pb-1 text-sm font-semibold">Prescrições salvas</p>{exercisePresets.slice(0, 5).map((preset) => <button key={preset.id} type="button" disabled={!selected.sessions?.[activeSessionIndex]} onClick={() => {
+                        const session = selected.sessions?.[activeSessionIndex];
+                        if (!session) return;
+                        const exerciseIndex = session.exercises.length;
+                        updateSession(activeSessionIndex, { exercises: [...session.exercises, { name: preset.name, sets: preset.sets, repetitions: preset.repetitions, reference_load: preset.reference_load, rest: preset.rest, instructions: preset.instructions, demo_url: preset.demo_url, sort_order: exerciseIndex }] });
+                        setExpandedExercises((current) => new Set(current).add(`${activeSessionIndex}-${exerciseIndex}`));
+                      }} className="block min-h-11 w-full rounded-xl px-2 py-2 text-left hover:bg-background disabled:opacity-50"><span className="block truncate text-sm font-medium">{preset.name}</span><span className="block truncate text-xs text-muted-foreground">{[preset.sets && `${preset.sets} séries`, preset.repetitions && `${preset.repetitions} rep.`, preset.reference_load].filter(Boolean).join(" · ")}</span></button>)}{exercisePresets.length === 0 ? <p className="text-xs text-muted-foreground">Suas prescrições favoritas aparecerão aqui.</p> : null}</div> : null}
+                    </> : <p className="text-sm text-muted-foreground">Versão somente para consulta.</p>}
+                  </aside>
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-border/70 bg-muted/[0.08] px-4 py-8 text-center">
@@ -819,7 +864,14 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                   <p className="mt-1 text-xs text-muted-foreground">Separe a ficha em sessões para organizar os exercícios.</p>
                 </div>
               )}
-            </div>
+            </div> : null}
+
+            {editorStep === "review" ? <section aria-labelledby="training-review-heading" className="mx-auto max-w-4xl space-y-4">
+              <div><p className="text-xs font-medium text-primary">ETAPA 3 · REVISÃO</p><h4 id="training-review-heading" className="mt-1 text-lg font-semibold">Resumo antes de compartilhar</h4><p className="mt-1 text-sm text-muted-foreground">Revise as informações e volte diretamente à etapa que precisa de ajuste.</p></div>
+              <article className="rounded-2xl border border-border/70 bg-muted/15 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs text-muted-foreground">Ficha · versão {selected.version}</p><h5 className="mt-1 text-lg font-semibold">{selected.title || "Nova ficha de treino"}</h5></div><StatusBadge status={selected.status}/></div><p className="mt-3 text-sm text-muted-foreground">{selected.goal || "Objetivo não definido"} · {selected.frequency || "Frequência não definida"}</p><p className="mt-1 text-sm text-muted-foreground">{selected.valid_from || "Sem início"} – {selected.valid_until || "Sem término"}</p>{selected.general_notes ? <p className="mt-3 whitespace-pre-wrap rounded-xl bg-background p-3 text-sm">{selected.general_notes}</p> : null}<Button type="button" variant="outline" onClick={() => setEditorStep("details")} className="mt-3 min-h-10 rounded-xl">Editar informações</Button></article>
+              <div className="space-y-2">{(selected.sessions ?? []).map((session, sessionIndex) => <article key={session.id ?? sessionIndex} className="rounded-2xl border border-border/70 bg-background p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><h5 className="font-semibold">{session.title || `Sessão ${sessionIndex + 1}`}</h5><p className="text-xs text-muted-foreground">{session.exercises.length} {session.exercises.length === 1 ? "exercício" : "exercícios"}</p></div><Button type="button" variant="outline" onClick={() => { setActiveSessionIndex(sessionIndex); setEditorStep("sessions"); }} className="min-h-10 rounded-xl">Editar sessão</Button></div>{session.notes ? <p className="mt-3 text-sm text-muted-foreground">{session.notes}</p> : null}<ul className="mt-3 grid gap-2 sm:grid-cols-2">{session.exercises.map((exercise, exerciseIndex) => <li key={exercise.id ?? exerciseIndex} className="rounded-xl bg-muted/40 px-3 py-2"><p className="truncate text-sm font-medium">{exercise.name || "Exercício sem nome"}</p><p className="text-xs text-muted-foreground">{[exercise.sets && `${exercise.sets} séries`, exercise.repetitions && `${exercise.repetitions} rep.`, exercise.reference_load, exercise.rest].filter(Boolean).join(" · ") || "Parâmetros não definidos"}</p></li>)}</ul></article>)}</div>
+              {(selected.sessions ?? []).length === 0 ? <div className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">Ainda não há sessões para revisar.</div> : null}
+            </section> : null}
           </div>
         </section>
       ) : null}

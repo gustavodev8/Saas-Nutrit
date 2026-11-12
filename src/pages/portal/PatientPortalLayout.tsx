@@ -67,12 +67,12 @@ export default function PatientPortalLayout() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:py-7">
+      <main className="mx-auto min-h-[calc(100dvh-5rem)] max-w-5xl px-4 py-5 sm:min-h-[calc(100dvh-5.5rem)] sm:py-7">
         <Outlet />
       </main>
 
       {visibleNavItems.length > 0 ? (
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_-20px_hsl(var(--foreground)/0.35)] backdrop-blur">
+      <nav aria-label="Navegação do portal" className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_-20px_hsl(var(--foreground)/0.35)] backdrop-blur">
           <div className={`mx-auto grid max-w-5xl ${navGridClass}`}>
             {visibleNavItems.map(({ to, icon: Icon, label, end }) => (
               <NavLink
@@ -80,7 +80,7 @@ export default function PatientPortalLayout() {
                 to={to}
                 end={end}
                 className={({ isActive }) =>
-                  `mx-1 my-1 flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-xs font-medium transition-colors ${
+                  `mx-1 my-1 flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-xs font-medium transition-colors ${
                     isActive ? "bg-primary/[0.08] text-primary" : "text-muted-foreground hover:bg-muted/60"
                   }`
                 }
