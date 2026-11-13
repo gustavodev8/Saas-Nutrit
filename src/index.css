@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700;800&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Playfair+Display:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -100,6 +100,15 @@
 @layer utilities {
   .font-display {
     font-family: 'Playfair Display', serif;
+  }
+
+  .training-sans {
+    font-family: 'Instrument Sans', 'Inter', sans-serif;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  .training-display {
+    font-family: 'Newsreader', 'Playfair Display', Georgia, serif;
   }
 }
 

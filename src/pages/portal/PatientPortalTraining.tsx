@@ -229,21 +229,20 @@ export default function PatientPortalTraining() {
   }
 
   return (
-    <div className="space-y-5 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:pb-2">
-      <section className="relative overflow-hidden rounded-3xl border border-primary/15 bg-card px-5 py-6 shadow-sm max-[390px]:px-4 max-[390px]:py-5 sm:px-6">
-        <span className="absolute inset-y-0 left-0 w-1 bg-primary" aria-hidden="true" />
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+    <div className="training-sans space-y-4 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:pb-2">
+      <section className="border-b border-border/70 pb-4 max-[390px]:pb-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Acompanhamento</p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Meus treinos</h1>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Acompanhamento</p>
+            <h1 className="training-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Meus treinos</h1>
+            <p className="text-sm leading-6 text-muted-foreground">
               Consulte sua ficha e registre cada sessão realizada no seu ritmo.
             </p>
           </div>
           {selectedPlan ? (
-            <div className="flex max-w-full shrink-0 items-center gap-3 rounded-2xl border border-border/60 bg-muted/20 px-4 py-3 text-sm max-[390px]:px-3 max-[390px]:py-2.5">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Dumbbell aria-hidden="true" size={17} /></span>
-              <span className="text-foreground"><strong className="block text-base leading-5">{selectedPlan.sessions.length}</strong><span className="text-xs text-muted-foreground">{selectedPlan.sessions.length === 1 ? "sessão disponível" : "sessões disponíveis"}</span></span>
+            <div className="flex max-w-full shrink-0 items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><Dumbbell aria-hidden="true" size={16} /></span>
+              <span className="text-foreground"><strong className="block text-sm leading-4">{selectedPlan.sessions.length}</strong><span className="text-[11px] text-muted-foreground">{selectedPlan.sessions.length === 1 ? "sessão disponível" : "sessões disponíveis"}</span></span>
             </div>
           ) : null}
         </div>
@@ -283,7 +282,7 @@ export default function PatientPortalTraining() {
       ) : null}
 
       {plans.length > 1 ? (
-        <section aria-labelledby="training-plan-list-title" className="space-y-4 rounded-3xl border border-border/60 bg-card/70 p-4 sm:p-5">
+        <section aria-labelledby="training-plan-list-title" className="space-y-3 rounded-xl border border-border/70 bg-card p-3 sm:p-4">
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Suas fichas</p>
@@ -306,10 +305,10 @@ export default function PatientPortalTraining() {
                     setLogDrafts({});
                     resetForm();
                   }}
-                    className={`rounded-3xl border p-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 max-[390px]:p-3.5 ${
+                  className={`rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 max-[390px]:p-3 ${
                     isSelected
-                      ? "border-primary bg-primary/[0.05] shadow-md shadow-primary/5 ring-1 ring-primary/20"
-                      : "border-border/60 bg-background hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.02] hover:shadow-md"
+                      ? "border-primary bg-primary/[0.08] ring-1 ring-primary/20"
+                      : "border-border/60 bg-background hover:border-primary/30 hover:bg-primary/[0.02]"
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -338,16 +337,16 @@ export default function PatientPortalTraining() {
 
       {selectedPlan ? (
         <>
-          <Card className="overflow-hidden rounded-3xl border-primary/15 shadow-sm">
-            <CardHeader className="border-b border-border/50 bg-primary/[0.035] p-5 sm:p-6">
+          <Card className="overflow-hidden rounded-xl border-border/70 shadow-sm">
+            <CardHeader className="border-b border-border/60 bg-primary/[0.035] p-4 sm:p-5">
               <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Activity aria-hidden="true" size={20} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="text-lg leading-snug sm:text-xl">{selectedPlan.title}</CardTitle>
-                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary">Ficha publicada</span>
+                    <CardTitle className="training-display text-2xl font-semibold leading-snug sm:text-3xl">{selectedPlan.title}</CardTitle>
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">Ficha publicada</span>
                   </div>
                   <CardDescription className="mt-1.5 text-sm">
                     {selectedPlan.goal?.trim() || "Acompanhe os exercícios e registre cada sessão."}
@@ -365,7 +364,7 @@ export default function PatientPortalTraining() {
               </div>
             </CardHeader>
             {selectedPlan.general_notes?.trim() ? (
-              <CardContent className="p-5 sm:p-6">
+              <CardContent className="p-4 sm:p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Orientações da ficha</p>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/85">{selectedPlan.general_notes}</p>
               </CardContent>
@@ -375,8 +374,8 @@ export default function PatientPortalTraining() {
           <section aria-labelledby="training-sessions-title" className="space-y-4">
             <div className="flex items-end justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Programa</p>
-                <h2 id="training-sessions-title" className="mt-1 text-base font-semibold text-foreground">Sessões da ficha</h2>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Programa</p>
+                <h2 id="training-sessions-title" className="training-display text-2xl font-semibold text-foreground">Sessões da ficha</h2>
               </div>
               <span className="text-xs text-muted-foreground">{selectedPlan.sessions.length} no total</span>
             </div>
@@ -392,14 +391,14 @@ export default function PatientPortalTraining() {
                         type="button"
                         aria-current={isFocused ? "step" : undefined}
                         onClick={() => switchToSession(session.id)}
-                        className={`flex min-h-12 min-w-32 max-w-56 snap-start items-center gap-2 rounded-2xl border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:min-w-36 ${
+                        className={`flex min-h-11 min-w-32 max-w-56 snap-start items-center gap-2 rounded-lg border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:min-w-36 ${
                           isFocused
-                            ? "border-primary/30 bg-primary/[0.07] text-primary shadow-sm"
+                            ? "border-primary bg-primary/10 text-primary"
                             : "border-border/60 bg-card text-muted-foreground hover:border-primary/25 hover:bg-primary/[0.025]"
                         }`}
                       >
-                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${isFocused ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                          {String(index + 1).padStart(2, "0")}
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold ${isFocused ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                          {String.fromCharCode(65 + index)}
                         </span>
                         <span className="min-w-0">
                           <span className="block truncate text-xs font-semibold">{session.title}</span>
@@ -419,15 +418,15 @@ export default function PatientPortalTraining() {
                   const sessionLogs = logs.filter((log) => log.version_id === selectedPlan.id && log.workout_session_id === session.id);
                   const isActive = activeSessionId === session.id;
                   return (
-                    <Card key={session.id} className={`overflow-visible rounded-3xl border-border/60 shadow-sm transition-shadow motion-reduce:transition-none ${isActive ? "ring-1 ring-primary/25 shadow-md shadow-primary/5" : ""}`}>
-                      <CardHeader className="rounded-t-3xl border-b border-border/50 bg-muted/[0.08] p-5 pb-4 sm:p-6 sm:pb-4">
+                    <Card key={session.id} className={`overflow-visible rounded-xl border-border/70 shadow-sm transition-shadow motion-reduce:transition-none ${isActive ? "ring-1 ring-primary/25" : ""}`}>
+                      <CardHeader className="rounded-t-xl border-b border-border/60 bg-muted/[0.12] p-4 pb-3 sm:p-5 sm:pb-3">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-secondary text-secondary-foreground">
-                              <span className="text-sm font-bold">{String(sessionIndex + 1).padStart(2, "0")}</span>
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+                              <span className="text-sm font-bold">{String.fromCharCode(65 + sessionIndex)}</span>
                             </div>
                             <div className="min-w-0">
-                              <CardTitle className="break-words text-base sm:text-lg">{session.title}</CardTitle>
+                              <CardTitle className="training-display break-words text-2xl font-semibold sm:text-3xl">{session.title}</CardTitle>
                               {session.notes?.trim() ? <CardDescription className="mt-1.5 leading-5">{session.notes}</CardDescription> : null}
                             </div>
                           </div>
@@ -439,19 +438,19 @@ export default function PatientPortalTraining() {
                         <p className="mt-4 text-[11px] font-medium text-muted-foreground">Sessão {sessionIndex + 1} de {selectedPlan.sessions.length}</p>
                       </CardHeader>
 
-                      <CardContent className="space-y-4 p-5 pt-0 max-[390px]:px-3.5 max-[390px]:pb-3.5 sm:p-6 sm:pt-0">
+                      <CardContent className="space-y-3 p-4 pt-0 max-[390px]:px-3.5 max-[390px]:pb-3.5 sm:p-5 sm:pt-0">
                         {session.exercises.length > 0 ? (
-                          <div className="rounded-2xl border border-border/60 bg-muted/[0.06]">
+                          <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
                             <div className="flex min-h-12 items-center gap-2 px-4 text-sm font-semibold text-foreground max-[390px]:px-3">
                               <Dumbbell aria-hidden="true" size={15} className="shrink-0 text-primary" />
                               <span>Exercícios</span>
                               <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">{session.exercises.length}</span>
                             </div>
-                            <ol className="grid gap-2.5 border-t border-border/60 p-3 max-[390px]:p-2.5">
+                            <ol className="divide-y border-t border-border/60">
                             {session.exercises.map((exercise, exerciseIndex) => (
-                              <li key={exercise.id} className="rounded-2xl border border-border/60 bg-background p-3.5 shadow-sm sm:p-4">
+                              <li key={exercise.id} className="bg-background px-3 py-3 sm:px-4">
                                 <div className="flex items-start gap-3">
-                                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-[11px] font-bold text-primary">
+                                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-[11px] font-bold text-primary">
                                     {String(exerciseIndex + 1).padStart(2, "0")}
                                   </span>
                                   <div className="min-w-0 flex-1">
@@ -463,7 +462,7 @@ export default function PatientPortalTraining() {
                                         </a>
                                       ) : null}
                                     </div>
-                                    <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                                    <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-sm text-muted-foreground">
                                       <span className="font-semibold text-foreground">{exercise.sets?.trim() || "—"} × {exercise.repetitions?.trim() || "—"}</span>
                                       <span aria-hidden="true">·</span>
                                       <span>{exercise.reference_load?.trim() || "Carga livre"}</span>

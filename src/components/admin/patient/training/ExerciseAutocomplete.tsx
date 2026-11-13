@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { searchNormalizedRecords } from "@/lib/normalizedSearch";
 
@@ -71,11 +72,12 @@ export function ExerciseAutocomplete({
         if (!wrapperRef.current?.contains(event.relatedTarget as Node | null)) setOpen(false);
       }}
     >
+      <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         id={id}
         value={value}
         disabled={disabled}
-        placeholder="Ex.: agachamento"
+        placeholder="Buscar no catálogo de exercícios"
         onChange={(event) => {
           onChange(event.target.value);
           setActiveIndex(0);
@@ -86,18 +88,18 @@ export function ExerciseAutocomplete({
         aria-autocomplete="list"
         aria-expanded={open && suggestions.length > 0}
         aria-controls={`${id}-suggestions`}
-        className="rounded-xl"
+        className="h-10 rounded-md border-border/70 pl-9 shadow-none focus-visible:ring-primary/20"
       />
       {open && suggestions.length > 0 ? (
-        <div id={`${id}-suggestions`} role="listbox" aria-label="Sugestões de exercícios" className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-2xl border border-primary/15 bg-popover/95 p-1.5 shadow-xl shadow-foreground/10 backdrop-blur-sm">
+        <div id={`${id}-suggestions`} role="listbox" aria-label="Sugestões de exercícios" className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border/70 bg-popover p-1 shadow-lg shadow-foreground/[0.08]">
           {suggestions.map((item, index) => {
             return (
-              <div key={item.id} role="option" aria-selected={index === activeIndex} className={`flex items-center rounded-xl ${index === activeIndex ? "bg-primary/[0.08]" : ""}`}>
+              <div key={item.id} role="option" aria-selected={index === activeIndex} className={`flex items-center rounded-md ${index === activeIndex ? "bg-primary/10" : ""}`}>
                 <button
                   type="button"
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => { onSelect(item); setOpen(false); }}
-                  className="min-h-11 min-w-0 flex-1 rounded-xl px-3 py-2 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="min-h-11 min-w-0 flex-1 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="block truncate text-sm font-medium text-foreground">{item.name}</span>
                   {(item.category || item.equipment) ? <span className="block truncate text-xs text-muted-foreground">{[item.category, item.equipment].filter(Boolean).join(" · ")}</span> : null}

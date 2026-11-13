@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   Archive,
+  ArrowDown,
+  ArrowUp,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
   ChevronDown,
   ClipboardPlus,
+  Copy,
   Dumbbell,
   FileText,
   Loader2,
@@ -24,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExerciseAutocomplete } from "@/components/admin/patient/training/ExerciseAutocomplete";
+import { getTrainingReviewWarnings, moveTrainingExercise } from "@/components/admin/patient/training/trainingEditorUtils";
 import { toast } from "sonner";
 import { normalizeSearchText, searchNormalizedRecords } from "@/lib/normalizedSearch";
 import { resolveWorkspaceScope } from "@/lib/workspaceScope";
@@ -61,14 +66,15 @@ const statusLabel: Record<TrainingPlan["status"], string> = {
 };
 
 const statusClass: Record<TrainingPlan["status"], string> = {
-  draft: "border-border bg-muted/40 text-muted-foreground",
+  draft: "border-border bg-secondary text-secondary-foreground",
   published: "border-primary/20 bg-primary/10 text-primary",
-  archived: "border-border bg-background text-muted-foreground",
+  archived: "border-border bg-muted/50 text-muted-foreground",
 };
 
 function StatusBadge({ status }: { status: TrainingPlan["status"] }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass[status]}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass[status]}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
       {statusLabel[status]}
     </span>
   );
@@ -89,7 +95,6 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [showCreateFlow, setShowCreateFlow] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [exerciseCatalog, setExerciseCatalog] = useState<WorkoutExerciseCatalogItem[]>([]);
   const [exercisePresets, setExercisePresets] = useState<WorkoutExercisePreset[]>([]);
@@ -97,8 +102,9 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
   const [favoriteWorkoutPresetIds, setFavoriteWorkoutPresetIds] = useState<Set<number>>(new Set());
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState<string | null>(null);
-  const [showPresetPicker, setShowPresetPicker] = useState(false);
   const [presetSearch, setPresetSearch] = useState("");
+  const [creationChoice, setCreationChoice] = useState<"last" | "model" | "blank">("blank");
+  const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null);
   const [showExercisePresetPicker, setShowExercisePresetPicker] = useState(false);
   const [exercisePresetSearch, setExercisePresetSearch] = useState("");
   const [exercisePresetTarget, setExercisePresetTarget] = useState<{ sessionIndex: number; exerciseIndex: number } | null>(null);
@@ -108,7 +114,8 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
   const [modelName, setModelName] = useState("");
   const [librarySaving, setLibrarySaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editorStep, setEditorStep] = useState<"library" | "details" | "sessions" | "review">("library");
+  const [editorStep, setEditorStep] = useState<"library" | "start" | "details" | "sessions" | "review">("library");
+  const [isDirty, setIsDirty] = useState(false);
   const [librarySearch, setLibrarySearch] = useState("");
   const [libraryStatus, setLibraryStatus] = useState<TrainingPlan["status"] | "all">("all");
   const [activeSessionIndex, setActiveSessionIndex] = useState(0);
@@ -156,6 +163,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       const id = selectedId ?? selected?.id;
       const active = id ? await fetchFullTrainingPlan(id) : null;
       setSelected(active ?? null);
+      setIsDirty(false);
       setError(null);
     } catch {
       setError("Não foi possível carregar as fichas. Verifique a conexão e as permissões do banco.");
@@ -166,17 +174,32 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const update = (patch: Partial<TrainingPlan>) => setSelected((current) => current ? { ...current, ...patch } : current);
-  const updateSession = (index: number, patch: Partial<TrainingSession>) => setSelected((current) => current ? {
-    ...current,
-    sessions: (current.sessions ?? []).map((session, i) => i === index ? { ...session, ...patch } : session),
-  } : current);
+  useEffect(() => {
+    if (!isDirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [isDirty]);
+
+  const update = (patch: Partial<TrainingPlan>) => {
+    setIsDirty(true);
+    setSelected((current) => current ? { ...current, ...patch } : current);
+  };
+  const updateSession = (index: number, patch: Partial<TrainingSession>) => {
+    setIsDirty(true);
+    setSelected((current) => current ? {
+      ...current,
+      sessions: (current.sessions ?? []).map((session, i) => i === index ? { ...session, ...patch } : session),
+    } : current);
+  };
 
   const updateExercise = (
     sessionIndex: number,
     exerciseIndex: number,
     patch: Partial<TrainingSession["exercises"][number]>,
-  ) => setSelected((current) => {
+  ) => {
+    setIsDirty(true);
+    setSelected((current) => {
     if (!current) return current;
     return {
       ...current,
@@ -189,14 +212,28 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
         }
         : session),
     };
-  });
+    });
+  };
+
+  const moveExercise = (sessionIndex: number, exerciseIndex: number, direction: -1 | 1) => {
+    const session = selected?.sessions?.[sessionIndex];
+    if (!session) return;
+    const targetIndex = exerciseIndex + direction;
+    if (targetIndex < 0 || targetIndex >= session.exercises.length) return;
+    updateSession(sessionIndex, { exercises: moveTrainingExercise(session.exercises, exerciseIndex, direction) });
+    setExpandedExercises((current) => {
+      const next = new Set(current);
+      next.delete(`${sessionIndex}-${exerciseIndex}`);
+      next.add(`${sessionIndex}-${targetIndex}`);
+      return next;
+    });
+  };
 
   const createBlank = async () => {
     setCreating(true);
     try {
       const plan = await createTrainingPlan(patientId);
       setSelected(plan);
-      setShowCreateFlow(false);
       setEditorStep("details");
       await refresh(plan.id);
     } catch (cause) {
@@ -214,7 +251,6 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       const source = await fetchFullTrainingPlan(latest.id);
       if (!source) throw new Error("A ficha escolhida não foi encontrada.");
       const draft = await createTrainingPlanVersion(source);
-      setShowCreateFlow(false);
       setEditorStep("details");
       await refresh(draft.id);
       toast.success("Nova ficha criada a partir da última versão.");
@@ -252,6 +288,10 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
     name: plan.title,
     search_text: [plan.goal, plan.frequency, plan.general_notes].filter(Boolean).join(" "),
   })), librarySearch).filter((plan) => libraryStatus === "all" || plan.status === libraryStatus), [librarySearch, libraryStatus, plans]);
+
+  const latestPlan = useMemo(() => [...plans].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null, [plans]);
+
+  const reviewWarnings = useMemo(() => selected ? getTrainingReviewWarnings(selected) : [], [selected]);
 
   const openSaveExercisePreset = (sessionIndex: number, exerciseIndex: number) => {
     const exercise = selected?.sessions?.[sessionIndex]?.exercises[exerciseIndex];
@@ -348,8 +388,6 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
     setCreating(true);
     try {
       const plan = await createWorkoutPlanFromPreset(patientId, preset.latest_published_version_id);
-      setShowPresetPicker(false);
-      setShowCreateFlow(false);
       setEditorStep("details");
       setPresetSearch("");
       await refresh(plan.id);
@@ -385,6 +423,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
     try {
       const saved = await saveTrainingPlan(selected);
       setSelected(saved);
+      setIsDirty(false);
       await refresh(saved.id);
       toast.success("Ficha salva.");
     } catch (cause) {
@@ -400,6 +439,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
     try {
       const saved = await saveTrainingPlan(selected);
       await publishTrainingPlan(saved);
+      setIsDirty(false);
       await refresh(saved.id);
       toast.success("Ficha publicada no portal.");
     } catch (cause) {
@@ -407,6 +447,39 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const beginCreation = () => {
+    if (isDirty && !window.confirm("Há alterações não salvas. Deseja sair mesmo assim?")) return;
+    setSelected(null);
+    setCreationChoice(latestPlan ? "last" : "blank");
+    setSelectedPresetId(null);
+    setPresetSearch("");
+    setEditorStep("start");
+    setIsDirty(false);
+  };
+
+  const returnToLibrary = () => {
+    if (isDirty && !window.confirm("Há alterações não salvas. Deseja voltar à biblioteca?")) return;
+    setEditorStep("library");
+    setIsDirty(false);
+  };
+
+  const continueCreation = async () => {
+    if (creationChoice === "last") {
+      await createFromLast();
+      return;
+    }
+    if (creationChoice === "model") {
+      const preset = workoutPresets.find((item) => item.id === selectedPresetId);
+      if (!preset) {
+        toast.error("Escolha um modelo para continuar.");
+        return;
+      }
+      await applyWorkoutPreset(preset);
+      return;
+    }
+    await createBlank();
   };
 
   if (loading && plans.length === 0) {
@@ -419,13 +492,13 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col gap-4 border-b border-border/60 pb-5 sm:flex-row sm:items-end sm:justify-between">
+    <div className="training-sans space-y-4">
+      <header className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Acompanhamento</p>
-          <h2 className="mt-1 font-display text-3xl font-semibold tracking-tight text-foreground">Treinos</h2>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Acompanhamento</p>
+          <h2 className="training-display text-3xl font-semibold tracking-tight text-foreground">Treinos</h2>
         </div>
-        <Button onClick={() => setShowCreateFlow(true)} className="w-full shrink-0 rounded-lg sm:w-auto">
+        <Button onClick={beginCreation} className="w-full shrink-0 rounded-lg sm:w-auto">
           <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Nova ficha
         </Button>
       </header>
@@ -451,16 +524,16 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       ) : null}
 
       {plans.length > 0 && editorStep === "library" ? (
-        <section aria-labelledby="training-plan-list-heading" className="space-y-5">
+        <section aria-labelledby="training-plan-list-heading" className="space-y-4">
           {plans.find((plan) => plan.status === "published") ? (() => {
             const publishedPlan = plans.find((plan) => plan.status === "published");
             if (!publishedPlan) return null;
             return (
-              <article className="grid gap-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-5">
+              <article className="grid gap-3 rounded-xl border border-primary/20 border-l-[3px] border-l-primary bg-primary/[0.035] p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2"><StatusBadge status="published" /><span className="text-xs text-muted-foreground">Visível no portal do paciente</span></div>
-                  <p className="mt-2 truncate text-base font-semibold text-foreground">{publishedPlan.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Versão {publishedPlan.version} · {publishedPlan.frequency || "Frequência não definida"} · {(publishedPlan.sessions ?? []).length} {(publishedPlan.sessions ?? []).length === 1 ? "sessão" : "sessões"}</p>
+                  <p className="mt-1 truncate font-display text-xl font-bold tracking-tight text-foreground">{publishedPlan.title}</p>
+                  <p className="text-xs text-muted-foreground">v{publishedPlan.version} · {publishedPlan.frequency || "Frequência não definida"} · {(publishedPlan.sessions ?? []).length} {(publishedPlan.sessions ?? []).length === 1 ? "sessão" : "sessões"} · {(publishedPlan.sessions ?? []).reduce((total, session) => total + session.exercises.length, 0)} exercícios</p>
                 </div>
                 <Button type="button" variant="outline" onClick={() => { setActiveSessionIndex(0); void refresh(publishedPlan.id); setEditorStep("review"); }} className="min-h-10 rounded-xl sm:w-auto">Ver ficha publicada</Button>
               </article>
@@ -470,7 +543,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
           <h3 id="training-plan-list-heading" className="sr-only">Fichas cadastradas</h3>
           <span className="sr-only">{filteredPlans.length} de {plans.length} fichas</span>
 
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_240px] md:items-center">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_240px] md:items-center">
             <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Filtrar fichas por status">
               {(["all", "published", "draft", "archived"] as const).map((status) => {
                 const label = status === "all" ? "Todas" : statusLabel[status];
@@ -484,9 +557,9 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
             </label>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-border/60 bg-background">
-            <div className="hidden grid-cols-[minmax(0,2fr)_120px_76px_1fr_40px] gap-4 border-b border-border/60 bg-muted/25 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground md:grid">
-              <span>Ficha</span><span>Status</span><span>Versão</span><span>Estrutura</span><span />
+          <div className="overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+            <div className="hidden grid-cols-[minmax(0,2fr)_112px_68px_1fr_105px_20px] gap-3 border-b border-border/70 bg-muted/50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.13em] text-muted-foreground md:grid">
+              <span>Ficha</span><span>Status</span><span>Versão</span><span>Estrutura</span><span>Criada</span><span />
             </div>
             <div className="divide-y divide-border/60" role="group" aria-label="Selecionar ficha de treino">
             {filteredPlans.map((plan) => {
@@ -497,16 +570,17 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                   type="button"
                   aria-pressed={active}
                   onClick={() => { setActiveSessionIndex(0); void refresh(plan.id); setEditorStep("details"); }}
-                  className={`group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring md:grid-cols-[minmax(0,2fr)_120px_76px_1fr_40px] md:gap-4 ${active ? "bg-primary/[0.055]" : "hover:bg-muted/35"}`}
+                  className={`group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring md:grid-cols-[minmax(0,2fr)_112px_68px_1fr_105px_20px] md:gap-3 ${active ? "bg-primary/[0.07]" : "hover:bg-muted/45"}`}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold text-foreground">{plan.title}</span>
-                    <span className="mt-1 block truncate text-xs text-muted-foreground">{plan.goal || "Objetivo não definido"} · {plan.frequency || "Frequência não definida"}</span>
+                    <span className="block truncate text-sm font-semibold text-foreground">{plan.title}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{plan.goal || "Objetivo não definido"} · {plan.frequency || "Frequência não definida"}</span>
                   </span>
                   <span className="md:hidden"><StatusBadge status={plan.status} /></span>
                   <span className="hidden md:block"><StatusBadge status={plan.status} /></span>
                   <span className="hidden text-sm tabular-nums text-muted-foreground md:block">v{plan.version}</span>
-                  <span className="col-span-2 text-xs text-muted-foreground md:col-span-1 md:text-sm">{(plan.sessions ?? []).length} {(plan.sessions ?? []).length === 1 ? "sessão" : "sessões"}</span>
+                  <span className="col-span-2 text-xs text-muted-foreground md:col-span-1">{(plan.sessions ?? []).length} {(plan.sessions ?? []).length === 1 ? "sessão" : "sessões"} · {(plan.sessions ?? []).reduce((total, session) => total + session.exercises.length, 0)} ex.</span>
+                  <span className="hidden text-xs text-muted-foreground md:block">{new Date(plan.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}</span>
                   <ChevronRight className={`hidden h-4 w-4 justify-self-end transition-transform md:block ${active ? "translate-x-0.5 text-primary" : "group-hover:translate-x-0.5"}`} aria-hidden="true" />
                 </button>
               );
@@ -524,44 +598,98 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
           <p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
             Crie uma ficha para organizar os exercícios e acompanhar a rotina deste paciente.
           </p>
-          <Button type="button" onClick={() => setShowCreateFlow(true)} className="mt-5 rounded-xl">
+          <Button type="button" onClick={beginCreation} className="mt-5 rounded-xl">
             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Criar primeira ficha
           </Button>
         </section>
       ) : null}
 
+      {editorStep === "start" ? (
+        <section className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm" aria-labelledby="training-start-heading">
+          <nav aria-label="Etapas do construtor" className="grid grid-cols-4 border-b border-border/60 bg-background px-2 py-2 sm:px-5">
+            {(["Início", "Informações", "Montagem", "Revisão"] as const).map((label, index) => (
+              <span key={label} aria-current={index === 0 ? "step" : undefined} className={`flex min-h-10 items-center justify-center gap-2 rounded-lg px-1 text-xs font-medium sm:text-sm ${index === 0 ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>
+                <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${index === 0 ? "bg-primary text-primary-foreground" : "border border-border"}`}>{index + 1}</span>
+                <span className={index > 1 ? "hidden sm:inline" : "inline"}>{label}</span>
+              </span>
+            ))}
+          </nav>
+          <div className="mx-auto max-w-5xl p-4 pb-24 sm:p-7 sm:pb-24">
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Etapa 1 · Início</p>
+            <h3 id="training-start-heading" className="training-display mt-1 text-3xl font-semibold tracking-tight text-foreground">Como deseja começar?</h3>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Escolha uma base. A ficha só será criada quando você continuar.</p>
+
+            <div className="mt-6 grid gap-3 lg:grid-cols-3">
+              <button type="button" aria-pressed={creationChoice === "last"} disabled={!latestPlan} onClick={() => setCreationChoice("last")} className={`rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 ${creationChoice === "last" ? "border-primary bg-primary/[0.06]" : "border-border/70 hover:border-primary/40 hover:bg-muted/30"}`}>
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><ClipboardPlus className="h-5 w-5" aria-hidden="true" /></span>
+                <span className="mt-4 block font-semibold text-foreground">Usar a última ficha</span>
+                <span className="mt-1 block text-sm leading-5 text-muted-foreground">{latestPlan ? `${latestPlan.title} · v${latestPlan.version} · ${(latestPlan.sessions ?? []).length} sessões` : "Este paciente ainda não possui ficha anterior."}</span>
+              </button>
+              <button type="button" aria-pressed={creationChoice === "model"} disabled={!workspaceId || filteredWorkoutPresets.every((preset) => !preset.latest_published_version_id)} onClick={() => setCreationChoice("model")} className={`rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 ${creationChoice === "model" ? "border-primary bg-primary/[0.06]" : "border-border/70 hover:border-primary/40 hover:bg-muted/30"}`}>
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><BookOpen className="h-5 w-5" aria-hidden="true" /></span>
+                <span className="mt-4 block font-semibold text-foreground">Utilizar um modelo</span>
+                <span className="mt-1 block text-sm leading-5 text-muted-foreground">Copie sessões e exercícios de um modelo publicado da biblioteca.</span>
+              </button>
+              <button type="button" aria-pressed={creationChoice === "blank"} onClick={() => setCreationChoice("blank")} className={`rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${creationChoice === "blank" ? "border-primary bg-primary/[0.06]" : "border-border/70 hover:border-primary/40 hover:bg-muted/30"}`}>
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-foreground"><Plus className="h-5 w-5" aria-hidden="true" /></span>
+                <span className="mt-4 block font-semibold text-foreground">Começar do zero</span>
+                <span className="mt-1 block text-sm leading-5 text-muted-foreground">Crie uma ficha vazia e monte cada sessão manualmente.</span>
+              </button>
+            </div>
+
+            {creationChoice === "model" ? (
+              <div className="mt-5 rounded-xl border border-border/70 bg-muted/15 p-3 sm:p-4">
+                <label className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder="Buscar modelo" aria-label="Buscar modelo de treino" className="h-10 rounded-lg bg-background pl-9" />
+                </label>
+                <div className="mt-3 grid max-h-64 gap-2 overflow-y-auto sm:grid-cols-2">
+                  {filteredWorkoutPresets.filter((preset) => preset.latest_published_version_id).map((preset) => (
+                    <div key={preset.id} className={`flex min-h-16 items-center rounded-lg border ${selectedPresetId === preset.id ? "border-primary bg-primary/[0.07]" : "border-border/60 bg-background hover:border-primary/35"}`}>
+                      <button type="button" aria-pressed={selectedPresetId === preset.id} onClick={() => setSelectedPresetId(preset.id)} className="min-w-0 flex-1 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+                        <span className="block truncate text-sm font-semibold">{preset.name}</span><span className="block truncate text-xs text-muted-foreground">{preset.description || `Versão ${preset.latest_published_version ?? "publicada"}`}</span>
+                      </button>
+                      <button type="button" aria-label={favoriteWorkoutPresetIds.has(preset.id) ? `Remover ${preset.name} dos favoritos` : `Favoritar ${preset.name}`} onClick={() => void toggleWorkoutPresetFavorite(preset)} className="mr-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <Star className={`h-4 w-4 ${favoriteWorkoutPresetIds.has(preset.id) ? "fill-primary text-primary" : "text-muted-foreground"}`} aria-hidden="true" />
+                      </button>
+                    </div>
+                  ))}
+                  {!libraryLoading && filteredWorkoutPresets.filter((preset) => preset.latest_published_version_id).length === 0 ? <p className="p-3 text-sm text-muted-foreground">Nenhum modelo publicado encontrado.</p> : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 border-t border-border/70 bg-card/95 px-4 py-3 backdrop-blur sm:px-6">
+            <Button type="button" variant="ghost" onClick={returnToLibrary}>Voltar</Button>
+            <Button type="button" disabled={creating || (creationChoice === "last" && !latestPlan) || (creationChoice === "model" && !selectedPresetId)} onClick={() => void continueCreation()}>
+              {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}Continuar<ChevronRight className="ml-2 h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
       {selected && editorStep !== "library" ? (
         <section className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm" aria-labelledby="training-editor-heading">
-          <div className="sticky top-2 z-20 flex flex-col gap-4 border-b border-border/60 bg-card/95 p-4 backdrop-blur-xl sm:flex-row sm:items-start sm:justify-between sm:p-5">
+          <div className="sticky top-2 z-20 flex flex-col gap-3 border-b border-border/70 bg-card/95 p-3 backdrop-blur-xl sm:flex-row sm:items-start sm:justify-between sm:px-5 sm:py-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 id="training-editor-heading" className="font-display text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                <h3 id="training-editor-heading" className="training-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
                   {selected.title || "Nova ficha de treino"}
                 </h3>
                 <StatusBadge status={selected.status} />
               </div>
-              <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span>Versão {selected.version}</span>
                 <span aria-hidden="true">·</span>
                 <span>{(selected.sessions ?? []).length} {(selected.sessions ?? []).length === 1 ? "sessão" : "sessões"}</span>
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
-              <Button type="button" variant="ghost" onClick={() => setEditorStep("library")} className="col-span-2 min-h-10 justify-start rounded-xl sm:col-span-1 sm:justify-center">← Biblioteca</Button>
+              <Button type="button" variant="ghost" onClick={returnToLibrary} className="col-span-2 min-h-10 justify-start rounded-xl sm:col-span-1 sm:justify-center">← Biblioteca</Button>
               {selected.status === "draft" ? (
-                <>
-                  <Button type="button" variant="outline" onClick={() => { setModelName(selected.title); setSaveModelOpen(true); }} disabled={!workspaceId || librarySaving} className="w-full rounded-xl sm:w-auto">
-                    <BookOpen className="mr-2 h-4 w-4" aria-hidden="true" />Salvar como modelo
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => void save()} disabled={saving} className="w-full rounded-xl sm:w-auto">
-                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" aria-hidden="true" />}
-                    Salvar rascunho
-                  </Button>
-                  <Button type="button" onClick={() => void publish()} disabled={saving} className="w-full rounded-xl sm:w-auto">
-                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="mr-2 h-4 w-4" aria-hidden="true" />}
-                    Publicar no portal
-                  </Button>
-                </>
+                <Button type="button" variant="outline" onClick={() => { setModelName(selected.title); setSaveModelOpen(true); }} disabled={!workspaceId || librarySaving} className="col-span-2 w-full rounded-xl sm:col-span-1 sm:w-auto">
+                  <BookOpen className="mr-2 h-4 w-4" aria-hidden="true" />Salvar como modelo
+                </Button>
               ) : null}
               {selected.status === "published" ? (
                 <>
@@ -625,46 +753,43 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
             </div>
           ) : null}
 
-          <nav aria-label="Etapas do construtor" className="grid grid-cols-3 gap-1 border-b border-border/60 bg-background px-3 py-2 sm:gap-2 sm:px-5">
-            {([["details", "1", "Ficha"], ["sessions", "2", "Montagem"], ["review", "3", "Revisão"]] as const).map(([step, number, label]) => (
+          <nav aria-label="Etapas do construtor" className="grid grid-cols-4 gap-1 border-b border-border/60 bg-background px-3 py-2 sm:gap-2 sm:px-5">
+            <span className="flex min-h-10 items-center justify-center gap-2 rounded-lg px-1 text-xs font-medium text-muted-foreground sm:text-sm"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">✓</span><span className="hidden sm:inline">Início</span></span>
+            {([["details", "2", "Informações"], ["sessions", "3", "Montagem"], ["review", "4", "Revisão"]] as const).map(([step, number, label]) => (
               <button key={step} type="button" aria-current={editorStep === step ? "step" : undefined} onClick={() => setEditorStep(step)}
-                className={`flex min-h-10 items-center justify-center gap-2 rounded-lg px-2 text-sm font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${editorStep === step ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}>
-                <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${editorStep === step ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground"}`}>{number}</span>{label}
+                className={`flex min-h-10 items-center justify-center gap-2 rounded-lg px-1 text-xs font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-2 sm:text-sm ${editorStep === step ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}>
+                <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${editorStep === step ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground"}`}>{number}</span><span className={step === "review" ? "hidden sm:inline" : "inline"}>{label}</span>
               </button>
             ))}
           </nav>
 
-          <div className="p-4 sm:p-6">
-            {editorStep === "details" ? <div className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-border/70 bg-muted/15">
+          <div className="p-3 sm:p-5">
+            {editorStep === "details" ? <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border border-border/70 bg-muted/15">
               <div className="border-b border-border/60 px-4 py-3 sm:px-5">
-                <p className="text-xs font-medium text-primary">ETAPA 1 · INFORMAÇÕES</p>
+                <p className="text-xs font-medium text-primary">ETAPA 2 · INFORMAÇÕES</p>
                 <p className="mt-1 text-lg font-semibold text-foreground">Contexto da ficha</p>
                 <p className="mt-1 text-sm text-muted-foreground">Defina o que o paciente verá antes de iniciar os treinos.</p>
               </div>
-              <fieldset disabled={selected.status !== "draft"} className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5">
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor={`training-title-${selected.id}`}>Título da ficha</Label>
-                  <Input id={`training-title-${selected.id}`} value={selected.title} onChange={(event) => update({ title: event.target.value })} className="h-11 rounded-xl bg-background" />
+              <fieldset disabled={selected.status !== "draft"} className="divide-y divide-border/60">
+                <div className="grid gap-2 p-4 sm:grid-cols-[190px_minmax(0,1fr)] sm:items-center sm:px-5">
+                  <div><Label htmlFor={`training-title-${selected.id}`}>Título da ficha</Label><p className="mt-1 text-xs text-muted-foreground">Nome exibido no portal.</p></div>
+                  <Input id={`training-title-${selected.id}`} value={selected.title} onChange={(event) => update({ title: event.target.value })} className="h-11 rounded-lg bg-background" />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`training-goal-${selected.id}`}>Objetivo</Label>
-                  <Input id={`training-goal-${selected.id}`} value={selected.goal} onChange={(event) => update({ goal: event.target.value })} className="rounded-xl bg-background" />
+                <div className="grid gap-2 p-4 sm:grid-cols-[190px_minmax(0,1fr)] sm:items-center sm:px-5">
+                  <div><Label htmlFor={`training-goal-${selected.id}`}>Objetivo</Label><p className="mt-1 text-xs text-muted-foreground">Contexto geral da prescrição.</p></div>
+                  <Input id={`training-goal-${selected.id}`} value={selected.goal} onChange={(event) => update({ goal: event.target.value })} className="rounded-lg bg-background" />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`training-frequency-${selected.id}`}>Frequência</Label>
-                  <Input id={`training-frequency-${selected.id}`} value={selected.frequency} onChange={(event) => update({ frequency: event.target.value })} placeholder="Ex.: 3 vezes por semana" className="rounded-xl bg-background" />
+                <div className="grid gap-2 p-4 sm:grid-cols-[190px_minmax(0,1fr)] sm:items-center sm:px-5">
+                  <div><Label htmlFor={`training-frequency-${selected.id}`}>Frequência</Label><p className="mt-1 text-xs text-muted-foreground">Rotina semanal orientada.</p></div>
+                  <Input id={`training-frequency-${selected.id}`} value={selected.frequency} onChange={(event) => update({ frequency: event.target.value })} placeholder="Ex.: 3 vezes por semana" className="rounded-lg bg-background" />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`training-start-${selected.id}`}>Data de início</Label>
-                  <Input id={`training-start-${selected.id}`} type="date" value={selected.valid_from ?? ""} onChange={(event) => update({ valid_from: event.target.value || null })} className="rounded-xl bg-background" />
+                <div className="grid gap-3 p-4 sm:grid-cols-[190px_minmax(0,1fr)] sm:items-start sm:px-5">
+                  <div><Label>Vigência</Label><p className="mt-1 text-xs text-muted-foreground">Período opcional da ficha.</p></div>
+                  <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label htmlFor={`training-start-${selected.id}`} className="text-xs text-muted-foreground">Data de início</Label><Input id={`training-start-${selected.id}`} type="date" value={selected.valid_from ?? ""} onChange={(event) => update({ valid_from: event.target.value || null })} className="rounded-lg bg-background" /></div><div className="space-y-1.5"><Label htmlFor={`training-end-${selected.id}`} className="text-xs text-muted-foreground">Data de término</Label><Input id={`training-end-${selected.id}`} type="date" value={selected.valid_until ?? ""} onChange={(event) => update({ valid_until: event.target.value || null })} className="rounded-lg bg-background" /></div></div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`training-end-${selected.id}`}>Data de término</Label>
-                  <Input id={`training-end-${selected.id}`} type="date" value={selected.valid_until ?? ""} onChange={(event) => update({ valid_until: event.target.value || null })} className="rounded-xl bg-background" />
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor={`training-notes-${selected.id}`}>Orientações gerais</Label>
-                  <Textarea id={`training-notes-${selected.id}`} value={selected.general_notes} onChange={(event) => update({ general_notes: event.target.value })} placeholder="Observações para a ficha completa" className="min-h-24 resize-y rounded-xl bg-background" />
+                <div className="grid gap-2 p-4 sm:grid-cols-[190px_minmax(0,1fr)] sm:items-start sm:px-5">
+                  <div><Label htmlFor={`training-notes-${selected.id}`}>Orientações gerais</Label><p className="mt-1 text-xs text-muted-foreground">Informações visíveis ao paciente.</p></div>
+                  <Textarea id={`training-notes-${selected.id}`} value={selected.general_notes} onChange={(event) => update({ general_notes: event.target.value })} placeholder="Observações para a ficha completa" className="min-h-28 resize-y rounded-lg bg-background" />
                 </div>
               </fieldset>
             </div> : null}
@@ -672,9 +797,9 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
             {editorStep === "sessions" ? <div className="space-y-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="text-xs font-medium text-primary">ETAPA 2 · MONTAGEM</p>
-                  <h4 className="mt-1 font-display text-2xl font-semibold tracking-tight text-foreground">Sessões e exercícios</h4>
-                  <p className="mt-1 text-sm text-muted-foreground">Edite os valores direto na ficha. Abra um exercício para orientações e detalhes.</p>
+                  <p className="text-xs font-medium text-primary">ETAPA 3 · MONTAGEM</p>
+                  <h4 className="training-display text-3xl font-semibold tracking-tight text-foreground">Sessões e exercícios</h4>
+                  <p className="text-xs text-muted-foreground">Edite os valores na ficha. Abra um exercício para orientações.</p>
                 </div>
                 {selected.status === "draft" ? (
                   <Button
@@ -689,15 +814,15 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
               </div>
 
               {(selected.sessions ?? []).length > 0 ? (
-                <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(180px,0.55fr)_minmax(0,1.8fr)]">
+                <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(160px,0.45fr)_minmax(0,1.8fr)]">
                   <aside aria-label="Selecionar sessão" className="h-fit border-b border-border/60 pb-3 lg:sticky lg:top-28 lg:border-b-0 lg:border-r lg:pr-4">
                     <p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessões · {(selected.sessions ?? []).length}</p>
                     <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={session.id ?? sessionIndex} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => setActiveSessionIndex(sessionIndex)} className={`flex min-h-12 min-w-40 items-center gap-2 rounded-lg px-2.5 text-left transition-colors lg:w-full ${activeSessionIndex === sessionIndex ? "border border-primary bg-primary/10 text-primary" : "border border-transparent text-foreground hover:bg-muted/70"}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${activeSessionIndex === sessionIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{String.fromCharCode(65 + sessionIndex)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="block truncate text-xs text-muted-foreground">{session.exercises.length} {session.exercises.length === 1 ? "exercício" : "exercícios"}</span></span></button>)}</div>
                     {(selected.sessions ?? []).length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">Adicione uma sessão para começar.</p> : null}
                   </aside>
                   {(selected.sessions ?? []).map((session, sessionIndex) => sessionIndex === activeSessionIndex ? (
-                    <article key={session.id ?? sessionIndex} className="min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
-                      <div className="flex flex-col gap-3 border-b border-border/60 bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <article key={session.id ?? sessionIndex} className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm">
+                      <div className="flex flex-col gap-2 border-b border-border/60 bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 flex-1 items-center gap-3">
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary" aria-hidden="true">
                             {sessionIndex + 1}
@@ -711,30 +836,28 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                               onChange={(event) => updateSession(sessionIndex, { title: event.target.value })}
                               className="h-10 rounded-xl font-medium"
                             />
+                            <p className="text-xs text-muted-foreground">{session.exercises.length} exercícios · {session.exercises.reduce((total, exercise) => total + (Number.parseInt(exercise.sets, 10) || 0), 0)} séries</p>
                           </div>
                         </div>
                         {selected.status === "draft" ? (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            aria-label={`Remover sessão ${session.title || sessionIndex + 1}`}
-                            onClick={() => {
+                          <div className="flex self-end sm:self-auto">
+                            <Button type="button" size="icon" variant="ghost" aria-label={`Duplicar sessão ${session.title || sessionIndex + 1}`} onClick={() => {
+                              const copyIndex = (selected.sessions?.length ?? 0);
+                              update({ sessions: [...(selected.sessions ?? []), { ...session, id: undefined, title: `${session.title || `Sessão ${sessionIndex + 1}`} (cópia)`, sort_order: copyIndex, exercises: session.exercises.map((exercise, exerciseIndex) => ({ ...exercise, id: undefined, sort_order: exerciseIndex })) }] });
+                              setActiveSessionIndex(copyIndex);
+                            }} className="rounded-lg text-muted-foreground"><Copy className="h-4 w-4" aria-hidden="true" /></Button>
+                            <Button type="button" size="icon" variant="ghost" aria-label={`Remover sessão ${session.title || sessionIndex + 1}`} onClick={() => {
+                              if (!window.confirm(`Remover a sessão “${session.title || `Sessão ${sessionIndex + 1}`}” e seus exercícios?`)) return;
                               const nextSessions = (selected.sessions ?? []).filter((_, index) => index !== sessionIndex);
                               update({ sessions: nextSessions });
-                              setActiveSessionIndex((current) => current > sessionIndex
-                                ? current - 1
-                                : Math.min(current, Math.max(0, nextSessions.length - 1)));
-                            }}
-                            className="self-end rounded-xl text-muted-foreground hover:text-destructive sm:self-auto"
-                          >
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                          </Button>
+                              setActiveSessionIndex((current) => current > sessionIndex ? current - 1 : Math.min(current, Math.max(0, nextSessions.length - 1)));
+                            }} className="rounded-lg text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" aria-hidden="true" /></Button>
+                          </div>
                         ) : null}
                       </div>
 
-                      <div className="space-y-4 p-0">
-                        <div className="space-y-2 px-4 pt-4">
+                      <div className="space-y-3 p-0">
+                        <div className="space-y-2 px-3 pt-3">
                           <Label htmlFor={`training-session-notes-${selected.id}-${sessionIndex}`}>Orientações da sessão</Label>
                           <Textarea
                             id={`training-session-notes-${selected.id}-${sessionIndex}`}
@@ -747,7 +870,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                         </div>
 
                         <div className="space-y-0">
-                          <div className="flex items-center justify-between gap-3 px-4 pb-3">
+                          <div className="flex items-center justify-between gap-3 px-3 pb-2">
                             <h5 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                               <Dumbbell className="h-4 w-4 text-primary" aria-hidden="true" />Exercícios
                             </h5>
@@ -758,22 +881,20 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
 
                           {session.exercises.length > 0 ? (
                             <ol className="border-y border-border/60">
-                              <li className="hidden grid-cols-[minmax(0,1fr)_74px_74px_90px_84px_28px] gap-3 bg-muted/25 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground md:grid"><span>Exercício</span><span>Séries</span><span>Reps</span><span>Carga</span><span>Interv.</span><span /></li>
+                              <li className="hidden grid-cols-[minmax(0,1fr)_74px_74px_90px_84px_28px] gap-3 bg-muted/50 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground md:grid"><span>Exercício</span><span>Séries</span><span>Reps</span><span>Carga</span><span>Interv.</span><span /></li>
                               {session.exercises.map((exercise, exerciseIndex) => {
                                 const fieldId = `training-exercise-${selected.id}-${sessionIndex}-${exerciseIndex}`;
                                 return (
                                   <li key={exercise.id ?? exerciseIndex} className="overflow-hidden border-b border-border/60 bg-background last:border-b-0">
-                                    <details className="group" open={expandedExercises.has(`${sessionIndex}-${exerciseIndex}`) || !exercise.name.trim()} onToggle={(event) => {
-                                      const isOpen = event.currentTarget.open;
-                                      setExpandedExercises((current) => {
-                                        const next = new Set(current);
-                                        if (isOpen) next.add(`${sessionIndex}-${exerciseIndex}`);
-                                        else next.delete(`${sessionIndex}-${exerciseIndex}`);
-                                        return next;
-                                      });
-                                    }}>
-                                      <summary className="grid min-h-16 cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4 md:grid-cols-[minmax(0,1fr)_74px_74px_90px_84px_28px]">
-                                        <span className="min-w-0">
+                                    <div>
+                                      <div className="grid min-h-14 grid-cols-[minmax(0,1fr)_36px] items-center gap-3 px-3 py-2 hover:bg-muted/35 sm:px-4 md:grid-cols-[minmax(0,1fr)_74px_74px_90px_84px_36px]">
+                                        <button type="button" aria-expanded={expandedExercises.has(`${sessionIndex}-${exerciseIndex}`) || !exercise.name.trim()} onClick={() => setExpandedExercises((current) => {
+                                          const next = new Set(current);
+                                          const key = `${sessionIndex}-${exerciseIndex}`;
+                                          if (next.has(key)) next.delete(key);
+                                          else next.add(key);
+                                          return next;
+                                        })} className="min-w-0 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                           <span className="block truncate text-sm font-semibold text-foreground"><span className="mr-2 hidden text-xs font-normal text-muted-foreground md:inline">{String(exerciseIndex + 1).padStart(2, "0")}</span>{exercise.name || "Novo exercício"}</span>
                                           <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 md:hidden">
                                             <ExerciseMetric label="Séries" value={exercise.sets} />
@@ -781,14 +902,22 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                             <ExerciseMetric label="Carga" value={exercise.reference_load} />
                                             <ExerciseMetric label="Intervalo" value={exercise.rest} />
                                           </span>
-                                        </span>
-                                        <span className="hidden text-sm tabular-nums text-foreground md:block">{exercise.sets || "—"}</span>
-                                        <span className="hidden text-sm tabular-nums text-foreground md:block">{exercise.repetitions || "—"}</span>
-                                        <span className="hidden truncate text-sm text-foreground md:block">{exercise.reference_load || "—"}</span>
-                                        <span className="hidden text-sm text-foreground md:block">{exercise.rest || "—"}</span>
-                                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
-                                      </summary>
-                                      <div className="grid gap-3 border-t border-border/60 bg-muted/10 p-3 sm:grid-cols-2 sm:p-4">
+                                        </button>
+                                        <Input aria-label={`Séries de ${exercise.name || `exercício ${exerciseIndex + 1}`}`} disabled={selected.status !== "draft"} value={exercise.sets} placeholder="—" onChange={(event) => updateExercise(sessionIndex, exerciseIndex, { sets: event.target.value })} className="hidden h-8 rounded-md border-transparent bg-muted/60 px-2 text-sm tabular-nums shadow-none hover:border-input focus-visible:border-primary md:block" />
+                                        <Input aria-label={`Repetições de ${exercise.name || `exercício ${exerciseIndex + 1}`}`} disabled={selected.status !== "draft"} value={exercise.repetitions} placeholder="—" onChange={(event) => updateExercise(sessionIndex, exerciseIndex, { repetitions: event.target.value })} className="hidden h-8 rounded-md border-transparent bg-muted/60 px-2 text-sm tabular-nums shadow-none hover:border-input focus-visible:border-primary md:block" />
+                                        <Input aria-label={`Carga de ${exercise.name || `exercício ${exerciseIndex + 1}`}`} disabled={selected.status !== "draft"} value={exercise.reference_load} placeholder="—" onChange={(event) => updateExercise(sessionIndex, exerciseIndex, { reference_load: event.target.value })} className="hidden h-8 rounded-md border-transparent bg-muted/60 px-2 text-sm shadow-none hover:border-input focus-visible:border-primary md:block" />
+                                        <Input aria-label={`Intervalo de ${exercise.name || `exercício ${exerciseIndex + 1}`}`} disabled={selected.status !== "draft"} value={exercise.rest} placeholder="—" onChange={(event) => updateExercise(sessionIndex, exerciseIndex, { rest: event.target.value })} className="hidden h-8 rounded-md border-transparent bg-muted/60 px-2 text-sm shadow-none hover:border-input focus-visible:border-primary md:block" />
+                                        <button type="button" aria-label={`${expandedExercises.has(`${sessionIndex}-${exerciseIndex}`) ? "Recolher" : "Expandir"} ${exercise.name || `exercício ${exerciseIndex + 1}`}`} onClick={() => setExpandedExercises((current) => {
+                                          const next = new Set(current);
+                                          const key = `${sessionIndex}-${exerciseIndex}`;
+                                          if (next.has(key)) next.delete(key);
+                                          else next.add(key);
+                                          return next;
+                                        })} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                          <ChevronDown className={`h-4 w-4 transition-transform motion-reduce:transition-none ${expandedExercises.has(`${sessionIndex}-${exerciseIndex}`) || !exercise.name.trim() ? "rotate-180" : ""}`} aria-hidden="true" />
+                                        </button>
+                                      </div>
+                                      {expandedExercises.has(`${sessionIndex}-${exerciseIndex}`) || !exercise.name.trim() ? <div className="grid gap-3 border-t border-border/60 bg-muted/10 p-3 sm:grid-cols-2 sm:p-4">
                                       <div className="space-y-1.5 sm:col-span-2 xl:col-span-4">
                                         <Label htmlFor={`${fieldId}-name`}>Exercício</Label>
                                         <ExerciseAutocomplete id={`${fieldId}-name`} disabled={selected.status !== "draft"} value={exercise.name} items={exerciseCatalog}
@@ -838,6 +967,12 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                         <Input id={`${fieldId}-demo`} type="url" disabled={selected.status !== "draft"} value={exercise.demo_url} placeholder="https://" onChange={(event) => updateExercise(sessionIndex, exerciseIndex, { demo_url: event.target.value })} className="rounded-xl" />
                                       </div>
                                       {selected.status === "draft" ? <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-4">
+                                        <Button type="button" variant="outline" size="sm" disabled={exerciseIndex === 0} onClick={() => moveExercise(sessionIndex, exerciseIndex, -1)} className="min-h-10 rounded-xl">
+                                          <ArrowUp className="mr-2 h-4 w-4" aria-hidden="true" />Subir
+                                        </Button>
+                                        <Button type="button" variant="outline" size="sm" disabled={exerciseIndex === session.exercises.length - 1} onClick={() => moveExercise(sessionIndex, exerciseIndex, 1)} className="min-h-10 rounded-xl">
+                                          <ArrowDown className="mr-2 h-4 w-4" aria-hidden="true" />Descer
+                                        </Button>
                                         <Button type="button" variant="outline" size="sm" disabled={!workspaceId} onClick={() => openSaveExercisePreset(sessionIndex, exerciseIndex)} className="min-h-10 rounded-xl">
                                           <Star className="mr-2 h-4 w-4" aria-hidden="true" />Salvar prescrição favorita
                                         </Button>
@@ -848,8 +983,8 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                           <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />Remover exercício
                                         </Button>
                                       </div> : null}
-                                      </div>
-                                    </details>
+                                      </div> : null}
+                                    </div>
                                   </li>
                                 );
                               })}
@@ -909,28 +1044,29 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
             {editorStep === "review" ? <section aria-labelledby="training-review-heading" className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[minmax(0,1fr)_270px] lg:items-start">
               <div className="space-y-4">
                 <div>
-                  <p className="text-xs font-medium text-primary">ETAPA 3 · REVISÃO</p>
-                  <h4 id="training-review-heading" className="mt-1 font-display text-2xl font-semibold tracking-tight">{selected.title || "Nova ficha de treino"}</h4>
-                  <p className="mt-1 text-sm text-muted-foreground">{selected.goal || "Objetivo não definido"} · {selected.frequency || "Frequência não definida"}</p>
+                  <p className="text-xs font-medium text-primary">ETAPA 4 · REVISÃO</p>
+                  <h4 id="training-review-heading" className="training-display text-3xl font-semibold tracking-tight">{selected.title || "Nova ficha de treino"}</h4>
+                  <p className="text-sm text-muted-foreground">{selected.goal || "Objetivo não definido"} · {selected.frequency || "Frequência não definida"}</p>
+                  <p className="mt-2 border-l-2 border-primary pl-3 text-xs font-medium text-foreground">{(selected.sessions ?? []).length} sessões · {(selected.sessions ?? []).reduce((total, session) => total + session.exercises.length, 0)} exercícios · versão {selected.version}</p>
                 </div>
-                <article className="rounded-2xl border border-border/70 bg-card p-4">
+                <article className="rounded-xl border border-border/70 bg-muted/20 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div><p className="text-xs text-muted-foreground">Ficha · versão {selected.version}</p><p className="mt-1 text-sm text-muted-foreground">{selected.valid_from || "Sem início"} – {selected.valid_until || "Sem término"}</p></div>
                     <div className="flex items-center gap-2"><StatusBadge status={selected.status} /><Button type="button" variant="outline" onClick={() => setEditorStep("details")} className="min-h-10 rounded-lg">Editar ficha</Button></div>
                   </div>
                   {selected.general_notes ? <p className="mt-3 whitespace-pre-wrap border-t border-border/60 pt-3 text-sm text-muted-foreground">{selected.general_notes}</p> : null}
                 </article>
-                <div className="space-y-4">
-                  {(selected.sessions ?? []).map((session, sessionIndex) => <article key={session.id ?? sessionIndex} className="overflow-hidden rounded-2xl border border-border/70 bg-card">
+                <div className="space-y-3">
+                  {(selected.sessions ?? []).map((session, sessionIndex) => <article key={session.id ?? sessionIndex} className="overflow-hidden rounded-xl border border-border/70 bg-card">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
                       <div><h5 className="font-semibold">{session.title || `Sessão ${sessionIndex + 1}`}</h5><p className="mt-0.5 text-xs text-muted-foreground">{session.notes || `${session.exercises.length} ${session.exercises.length === 1 ? "exercício" : "exercícios"}`}</p></div>
                       <Button type="button" variant="ghost" onClick={() => { setActiveSessionIndex(sessionIndex); setEditorStep("sessions"); }} className="min-h-10 rounded-lg text-primary">Editar</Button>
                     </div>
-                    <div className="hidden grid-cols-[minmax(0,1fr)_120px_100px_110px_90px] gap-3 bg-muted/25 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground md:grid"><span>Exercício</span><span>Séries × reps</span><span>Carga</span><span>Intervalo</span><span /></div>
+                    <div className="hidden grid-cols-[minmax(0,1fr)_110px_90px_80px] gap-3 bg-muted/50 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground md:grid"><span>Exercício</span><span>Séries × reps</span><span>Carga</span><span>Intervalo</span></div>
                     <ol className="divide-y divide-border/60">
-                      {session.exercises.map((exercise, exerciseIndex) => <li key={exercise.id ?? exerciseIndex} className="grid gap-x-3 gap-y-1 px-4 py-3 md:grid-cols-[minmax(0,1fr)_120px_100px_110px_90px] md:items-center">
+                      {session.exercises.map((exercise, exerciseIndex) => <li key={exercise.id ?? exerciseIndex} className="grid gap-x-3 gap-y-1 px-4 py-2.5 md:grid-cols-[minmax(0,1fr)_110px_90px_80px] md:items-center">
                         <span className="min-w-0"><span className="mr-2 text-xs text-muted-foreground">{exerciseIndex + 1}</span><span className="text-sm font-medium">{exercise.name || "Exercício sem nome"}</span>{exercise.instructions ? <span className="mt-1 block truncate text-xs text-muted-foreground">{exercise.instructions}</span> : null}</span>
-                        <span className="text-sm text-foreground">{[exercise.sets, exercise.repetitions].filter(Boolean).join(" × ") || "—"}</span><span className="text-sm text-foreground">{exercise.reference_load || "—"}</span><span className="text-sm text-foreground">{exercise.rest || "—"}</span>
+                        <span className="text-sm text-foreground"><span className="mr-1 text-xs text-muted-foreground md:hidden">Séries × reps:</span>{[exercise.sets, exercise.repetitions].filter(Boolean).join(" × ") || "—"}</span><span className="text-sm text-foreground"><span className="mr-1 text-xs text-muted-foreground md:hidden">Carga:</span>{exercise.reference_load || "—"}</span><span className="text-sm text-foreground"><span className="mr-1 text-xs text-muted-foreground md:hidden">Intervalo:</span>{exercise.rest || "—"}</span>
                       </li>)}
                       {session.exercises.length === 0 ? <li className="px-4 py-5 text-sm text-muted-foreground">Nenhum exercício nesta sessão.</li> : null}
                     </ol>
@@ -939,72 +1075,28 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                 {(selected.sessions ?? []).length === 0 ? <div className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">Ainda não há sessões para revisar.</div> : null}
               </div>
               <aside className="space-y-3 lg:sticky lg:top-28">
-                <article className="rounded-2xl border border-border/70 bg-card p-4"><h5 className="text-sm font-semibold">Antes de publicar</h5><p className="mt-2 text-sm leading-5 text-muted-foreground">Revise sessões, exercícios e orientações. Você pode voltar e ajustar a ficha antes de publicar.</p></article>
-                <article className="rounded-2xl border border-border/70 bg-card p-4"><h5 className="text-sm font-semibold">Ao publicar</h5><p className="mt-2 text-sm leading-5 text-muted-foreground">A ficha ficará disponível no Portal do Paciente. As versões anteriores permanecem preservadas.</p></article>
+                <article className="rounded-xl border border-border/70 bg-muted/20 p-4"><h5 className="text-sm font-bold">Antes de publicar</h5>{reviewWarnings.length > 0 ? <ul className="mt-3 space-y-2">{reviewWarnings.map((warning) => <li key={warning} className="flex gap-2 text-sm leading-5 text-muted-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" /><span>{warning}</span></li>)}</ul> : <p className="mt-2 flex items-center gap-2 text-sm leading-5 text-muted-foreground"><CheckCircle2 className="h-4 w-4 text-primary" aria-hidden="true" />Ficha pronta para publicação.</p>}</article>
+                <article className="rounded-xl border border-primary/20 bg-primary/[0.035] p-4"><h5 className="text-sm font-bold text-primary">Ao publicar</h5><p className="mt-2 text-sm leading-5 text-muted-foreground">A ficha ficará disponível no Portal do Paciente. As versões anteriores permanecem preservadas.</p></article>
               </aside>
-              {selected.status === "draft" ? <div className="sticky bottom-0 z-10 col-span-full flex flex-col gap-2 border-t border-border/60 bg-card/95 px-4 py-3 backdrop-blur sm:flex-row sm:items-center sm:justify-end"><Button type="button" variant="outline" onClick={() => void save()} disabled={saving} className="min-h-11 rounded-lg">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" aria-hidden="true" />}Salvar rascunho</Button><Button type="button" onClick={() => void publish()} disabled={saving} className="min-h-11 rounded-lg">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="mr-2 h-4 w-4" aria-hidden="true" />}Publicar no portal</Button></div> : null}
             </section> : null}
+          </div>
+          <div className="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 bg-card/95 px-3 py-3 backdrop-blur sm:px-5">
+            <Button type="button" variant="ghost" onClick={() => editorStep === "details" ? returnToLibrary() : setEditorStep(editorStep === "review" ? "sessions" : "details")}>
+              {editorStep === "details" ? "Biblioteca" : "Voltar"}
+            </Button>
+            <div className="ml-auto flex flex-wrap justify-end gap-2">
+              {selected.status === "draft" ? <Button type="button" variant="outline" onClick={() => void save()} disabled={saving || !isDirty}>
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" aria-hidden="true" />}Salvar rascunho
+              </Button> : null}
+              {editorStep === "details" ? <Button type="button" onClick={() => setEditorStep("sessions")}>Continuar<ChevronRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button> : null}
+              {editorStep === "sessions" ? <Button type="button" onClick={() => setEditorStep("review")}>Revisar ficha<ChevronRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button> : null}
+              {editorStep === "review" && selected.status === "draft" ? <Button type="button" onClick={() => void publish()} disabled={saving}>
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="mr-2 h-4 w-4" aria-hidden="true" />}Publicar no portal
+              </Button> : null}
+            </div>
           </div>
         </section>
       ) : null}
-      <Dialog open={showCreateFlow} onOpenChange={setShowCreateFlow}>
-        <DialogContent className="max-w-lg rounded-3xl p-5 sm:p-6">
-          {showPresetPicker ? <>
-            <DialogHeader>
-              <DialogTitle>Escolher modelo</DialogTitle>
-              <DialogDescription>Modelos publicados são copiados para uma nova ficha deste paciente.</DialogDescription>
-            </DialogHeader>
-            <Input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder="Buscar modelo" aria-label="Buscar modelo de treino" className="rounded-xl" />
-            <div className="max-h-80 space-y-2 overflow-y-auto py-1">
-              {libraryLoading ? <p className="p-3 text-sm text-muted-foreground">Carregando modelos…</p> : null}
-              {!libraryLoading && filteredWorkoutPresets.length === 0 ? <p className="p-3 text-sm text-muted-foreground">Nenhum modelo publicado encontrado.</p> : null}
-              {filteredWorkoutPresets.filter((preset) => preset.latest_published_version_id).map((preset) => (
-                <div key={preset.id} className="flex items-center gap-2 rounded-2xl border border-border/60 p-3">
-                  <button type="button" aria-label={favoriteWorkoutPresetIds.has(preset.id) ? `Remover ${preset.name} dos favoritos` : `Favoritar ${preset.name}`} onClick={() => void toggleWorkoutPresetFavorite(preset)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl hover:bg-muted">
-                    <Star className={`h-4 w-4 ${favoriteWorkoutPresetIds.has(preset.id) ? "fill-primary text-primary" : "text-muted-foreground"}`} aria-hidden="true" />
-                  </button>
-                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{preset.name}</p><p className="truncate text-xs text-muted-foreground">{preset.description || `Versão ${preset.latest_published_version ?? "publicada"}`}</p></div>
-                  <Button type="button" size="sm" disabled={creating} onClick={() => void applyWorkoutPreset(preset)} className="min-h-10 rounded-xl">Usar</Button>
-                </div>
-              ))}
-            </div>
-            <DialogFooter className="flex-row justify-between sm:justify-between">
-              <Button type="button" variant="ghost" onClick={() => setShowPresetPicker(false)} className="rounded-xl">Voltar</Button>
-              <Button type="button" variant="ghost" disabled={creating} onClick={() => setShowCreateFlow(false)} className="rounded-xl">Cancelar</Button>
-            </DialogFooter>
-          </> : <>
-          <DialogHeader>
-            <DialogTitle>Como deseja começar?</DialogTitle>
-            <DialogDescription>Escolha uma base para a nova ficha. Ela será criada como rascunho e poderá ser editada antes de publicar.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 py-2">
-            <button type="button" disabled={creating} onClick={() => void createBlank()}
-              className="rounded-2xl border border-border/60 p-4 text-left transition hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
-              <span className="flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Plus size={18} aria-hidden="true" /></span>
-                <span><span className="block font-semibold text-foreground">Começar vazia</span><span className="mt-1 block text-sm text-muted-foreground">Crie sessões e exercícios do início.</span></span>
-              </span>
-            </button>
-            <button type="button" disabled={creating || plans.length === 0} onClick={() => void createFromLast()}
-              className="rounded-2xl border border-border/60 p-4 text-left transition hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
-              <span className="flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><ClipboardPlus size={18} aria-hidden="true" /></span>
-                <span><span className="block font-semibold text-foreground">Usar a última ficha</span><span className="mt-1 block text-sm text-muted-foreground">Crie uma nova versão baseada na ficha mais recente deste paciente.</span></span>
-              </span>
-            </button>
-            <button type="button" disabled={creating || !workspaceId || libraryLoading || workoutPresets.every((preset) => !preset.latest_published_version_id)} onClick={() => { setPresetSearch(""); setShowPresetPicker(true); }}
-              className="rounded-2xl border border-border/60 p-4 text-left transition hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
-              <span className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><BookOpen size={18} aria-hidden="true" /></span><span><span className="block font-semibold text-foreground">Escolher da biblioteca</span><span className="mt-1 block text-sm text-muted-foreground">Aplique um modelo publicado à ficha deste paciente.</span></span></span>
-            </button>
-          </div>
-          {creating ? <p role="status" className="text-sm text-muted-foreground">Preparando nova ficha…</p> : null}
-          <DialogFooter>
-            <Button type="button" variant="ghost" disabled={creating} onClick={() => setShowCreateFlow(false)} className="rounded-xl">Cancelar</Button>
-          </DialogFooter>
-          </>}
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={Boolean(saveExercisePresetTarget)} onOpenChange={(open) => { if (!open) setSaveExercisePresetTarget(null); }}>
         <DialogContent className="rounded-3xl p-5 sm:p-6">
           <DialogHeader><DialogTitle>Salvar prescrição favorita</DialogTitle><DialogDescription>Os dados ficam salvos como um modelo reutilizável e não alteram a ficha atual.</DialogDescription></DialogHeader>
