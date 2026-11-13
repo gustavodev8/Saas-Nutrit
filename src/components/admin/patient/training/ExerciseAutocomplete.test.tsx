@@ -35,4 +35,24 @@ describe("ExerciseAutocomplete", () => {
 
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining(exercises[0]));
   });
+
+  it("keeps suggestions in the document flow so editor bars cannot clip them", () => {
+    render(<ControlledAutocomplete onSelect={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "supino" } });
+
+    const listbox = screen.getByRole("listbox", { name: "Sugestões de exercícios" });
+    expect(listbox).not.toHaveClass("absolute");
+    expect(listbox).toHaveClass("overflow-y-auto");
+  });
+
+  it("shows a useful empty state without closing the combobox", () => {
+    render(<ControlledAutocomplete onSelect={vi.fn()} />);
+
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "exercicio inexistente" } });
+
+    expect(input).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Nenhum exercício encontrado");
+  });
 });

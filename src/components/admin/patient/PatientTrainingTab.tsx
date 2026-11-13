@@ -121,7 +121,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
   const [activeSessionIndex, setActiveSessionIndex] = useState(0);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
   const [catalogSearch, setCatalogSearch] = useState("");
-  const [exercisePickerOpen, setExercisePickerOpen] = useState(false);
+  const [exercisePickerSessionIndex, setExercisePickerSessionIndex] = useState<number | null>(null);
 
   const refreshLibrary = useCallback(async () => {
     setLibraryLoading(true);
@@ -806,7 +806,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => { const next = selected.sessions?.length ?? 0; update({ sessions: [...(selected.sessions ?? []), { title: `Treino ${String.fromCharCode(65 + next)}`, notes: "", sort_order: next, exercises: [] }] }); setActiveSessionIndex(next); }}
+                    onClick={() => { const next = selected.sessions?.length ?? 0; update({ sessions: [...(selected.sessions ?? []), { title: `Treino ${String.fromCharCode(65 + next)}`, notes: "", sort_order: next, exercises: [] }] }); setActiveSessionIndex(next); setExercisePickerSessionIndex(null); setCatalogSearch(""); }}
                     className="w-full rounded-xl sm:w-auto"
                   >
                     <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Adicionar sessão
@@ -818,7 +818,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                 <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(160px,0.45fr)_minmax(0,1.8fr)]">
                   <aside aria-label="Selecionar sessão" className="h-fit border-b border-border/60 pb-3 lg:sticky lg:top-28 lg:border-b-0 lg:border-r lg:pr-4">
                     <p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessões · {(selected.sessions ?? []).length}</p>
-                    <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={session.id ?? sessionIndex} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => { setActiveSessionIndex(sessionIndex); setExercisePickerOpen(false); setCatalogSearch(""); }} className={`flex min-h-12 min-w-40 items-center gap-2 rounded-lg px-2.5 text-left transition-colors lg:w-full ${activeSessionIndex === sessionIndex ? "border border-primary bg-primary/10 text-primary" : "border border-transparent text-foreground hover:bg-muted/70"}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${activeSessionIndex === sessionIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{String.fromCharCode(65 + sessionIndex)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="block truncate text-xs text-muted-foreground">{session.exercises.length} {session.exercises.length === 1 ? "exercício" : "exercícios"}</span></span></button>)}</div>
+                    <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={session.id ?? sessionIndex} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => { setActiveSessionIndex(sessionIndex); setExercisePickerSessionIndex(null); setCatalogSearch(""); }} className={`flex min-h-12 min-w-40 items-center gap-2 rounded-lg px-2.5 text-left transition-colors lg:w-full ${activeSessionIndex === sessionIndex ? "border border-primary bg-primary/10 text-primary" : "border border-transparent text-foreground hover:bg-muted/70"}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${activeSessionIndex === sessionIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{String.fromCharCode(65 + sessionIndex)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="block truncate text-xs text-muted-foreground">{session.exercises.length} {session.exercises.length === 1 ? "exercício" : "exercícios"}</span></span></button>)}</div>
                     {(selected.sessions ?? []).length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">Adicione uma sessão para começar.</p> : null}
                   </aside>
                   {(selected.sessions ?? []).map((session, sessionIndex) => sessionIndex === activeSessionIndex ? (
@@ -846,12 +846,16 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                               const copyIndex = (selected.sessions?.length ?? 0);
                               update({ sessions: [...(selected.sessions ?? []), { ...session, id: undefined, title: `${session.title || `Sessão ${sessionIndex + 1}`} (cópia)`, sort_order: copyIndex, exercises: session.exercises.map((exercise, exerciseIndex) => ({ ...exercise, id: undefined, sort_order: exerciseIndex })) }] });
                               setActiveSessionIndex(copyIndex);
+                              setExercisePickerSessionIndex(null);
+                              setCatalogSearch("");
                             }} className="rounded-lg text-muted-foreground"><Copy className="h-4 w-4" aria-hidden="true" /></Button>
                             <Button type="button" size="icon" variant="ghost" aria-label={`Remover sessão ${session.title || sessionIndex + 1}`} onClick={() => {
                               if (!window.confirm(`Remover a sessão “${session.title || `Sessão ${sessionIndex + 1}`}” e seus exercícios?`)) return;
                               const nextSessions = (selected.sessions ?? []).filter((_, index) => index !== sessionIndex);
                               update({ sessions: nextSessions });
                               setActiveSessionIndex((current) => current > sessionIndex ? current - 1 : Math.min(current, Math.max(0, nextSessions.length - 1)));
+                              setExercisePickerSessionIndex(null);
+                              setCatalogSearch("");
                             }} className="rounded-lg text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" aria-hidden="true" /></Button>
                           </div>
                         ) : null}
@@ -998,10 +1002,10 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
 
                           {selected.status === "draft" ? (
                             <div className="p-3 sm:p-4">
-                              <Button type="button" variant="outline" aria-expanded={exercisePickerOpen} aria-controls={`exercise-picker-${selected.id}-${sessionIndex}`} onClick={() => { setExercisePickerOpen((current) => !current); setCatalogSearch(""); }} className="w-full rounded-lg sm:w-auto">
+                              <Button type="button" variant="outline" aria-expanded={exercisePickerSessionIndex === sessionIndex} aria-controls={`exercise-picker-${selected.id}-${sessionIndex}`} onClick={() => { setExercisePickerSessionIndex((current) => current === sessionIndex ? null : sessionIndex); setCatalogSearch(""); }} className="w-full rounded-lg sm:w-auto">
                                 <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Adicionar exercício
                               </Button>
-                              {exercisePickerOpen ? (
+                              {exercisePickerSessionIndex === sessionIndex ? (
                                 <div id={`exercise-picker-${selected.id}-${sessionIndex}`} className="relative z-20 mt-3 rounded-lg border border-primary/20 bg-primary/[0.025] p-3 shadow-sm">
                                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                     <div><p className="text-sm font-semibold text-foreground">Adicionar à {session.title || `sessão ${sessionIndex + 1}`}</p><p className="text-xs text-muted-foreground">Busque no catálogo ou reutilize uma prescrição salva.</p></div>
@@ -1009,7 +1013,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                                       const exerciseIndex = session.exercises.length;
                                       updateSession(sessionIndex, { exercises: [...session.exercises, { name: "", sets: "", repetitions: "", reference_load: "", rest: "", instructions: "", demo_url: "", sort_order: exerciseIndex }] });
                                       setExpandedExercises((current) => new Set(current).add(`${sessionIndex}-${exerciseIndex}`));
-                                      setExercisePickerOpen(false);
+                                      setExercisePickerSessionIndex(null);
                                     }} className="self-start rounded-lg">Inserir manualmente</Button>
                                   </div>
                                   <div className="mt-3">

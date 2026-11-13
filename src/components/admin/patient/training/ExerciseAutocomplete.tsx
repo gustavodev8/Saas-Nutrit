@@ -104,7 +104,7 @@ export function ExerciseAutocomplete({
         className="h-10 rounded-md border-border/70 pl-9 shadow-none focus-visible:ring-primary/20"
       />
       {open && suggestions.length > 0 ? (
-        <div id={`${id}-suggestions`} role="listbox" aria-label="Sugestões de exercícios" className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border/70 bg-popover p-1 shadow-lg shadow-foreground/[0.08]">
+        <div id={`${id}-suggestions`} role="listbox" aria-label="Sugestões de exercícios" className="mt-1 max-h-56 w-full scroll-mb-24 overflow-y-auto overscroll-contain rounded-lg border border-border/70 bg-popover p-1 shadow-sm">
           {suggestions.map((item, index) => {
             return (
               <div key={item.id} role="option" aria-selected={index === activeIndex} className={`flex items-center rounded-md ${index === activeIndex ? "bg-primary/10" : ""}`}>
@@ -123,7 +123,7 @@ export function ExerciseAutocomplete({
         </div>
       ) : null}
       {open && value.trim() && suggestions.length === 0 ? (
-        <div id={`${id}-suggestions`} role="status" className="absolute z-30 mt-1 w-full rounded-lg border border-border/70 bg-popover px-3 py-2.5 text-sm text-muted-foreground shadow-lg shadow-foreground/[0.08]">
+        <div id={`${id}-suggestions`} role="status" aria-live="polite" className="mt-1 w-full rounded-lg border border-border/70 bg-popover px-3 py-2.5 text-sm text-muted-foreground shadow-sm">
           Nenhum exercício encontrado. Você pode inserir manualmente.
         </div>
       ) : null}
