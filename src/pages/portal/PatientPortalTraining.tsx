@@ -229,8 +229,8 @@ export default function PatientPortalTraining() {
   }
 
   return (
-    <div className="training-sans space-y-4 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:pb-2">
-      <section className="border-b border-border/70 pb-4 max-[390px]:pb-3">
+    <div className="training-sans -mx-2 space-y-4 rounded-2xl bg-muted/20 p-2 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:mx-0 sm:p-4 sm:pb-4">
+      <section className="rounded-xl border border-border/70 bg-card p-4 shadow-sm max-[390px]:p-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-xl">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Acompanhamento</p>
@@ -282,7 +282,7 @@ export default function PatientPortalTraining() {
       ) : null}
 
       {plans.length > 1 ? (
-        <section aria-labelledby="training-plan-list-title" className="space-y-3 rounded-xl border border-border/70 bg-card p-3 sm:p-4">
+        <section aria-labelledby="training-plan-list-title" className="space-y-3 rounded-xl border border-border/70 bg-card p-3 shadow-sm sm:p-4">
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Suas fichas</p>
@@ -371,7 +371,7 @@ export default function PatientPortalTraining() {
             ) : null}
           </Card>
 
-          <section aria-labelledby="training-sessions-title" className="space-y-4">
+          <section aria-labelledby="training-sessions-title" className="space-y-4 rounded-xl border border-border/60 bg-card/65 p-3 shadow-sm sm:p-4">
             <div className="flex items-end justify-between gap-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Programa</p>

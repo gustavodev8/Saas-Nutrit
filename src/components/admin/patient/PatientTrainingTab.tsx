@@ -89,6 +89,12 @@ function ExerciseMetric({ label, value }: { label: string; value?: string | null
   );
 }
 
+function formatTrainingDate(value?: string | null): string {
+  if (!value) return "Não definida";
+  const [year, month, day] = value.slice(0, 10).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : "Não definida";
+}
+
 export function PatientTrainingTab({ patientId }: { patientId: number }) {
   const [plans, setPlans] = useState<TrainingPlan[]>([]);
   const [selected, setSelected] = useState<TrainingPlan | null>(null);
@@ -293,6 +299,8 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
   const latestPlan = useMemo(() => [...plans].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null, [plans]);
 
   const reviewWarnings = useMemo(() => selected ? getTrainingReviewWarnings(selected) : [], [selected]);
+  const selectedExerciseCount = useMemo(() => (selected?.sessions ?? []).reduce((total, session) => total + session.exercises.length, 0), [selected]);
+  const selectedSeriesCount = useMemo(() => (selected?.sessions ?? []).reduce((total, session) => total + session.exercises.reduce((sessionTotal, exercise) => sessionTotal + (Number.parseInt(exercise.sets, 10) || 0), 0), 0), [selected]);
 
   const openSaveExercisePreset = (sessionIndex: number, exerciseIndex: number) => {
     const exercise = selected?.sessions?.[sessionIndex]?.exercises[exerciseIndex];
@@ -494,7 +502,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
 
   return (
     <div className="training-sans space-y-4">
-      <header className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Acompanhamento</p>
           <h2 className="training-display text-2xl font-semibold tracking-tight text-foreground">Treinos</h2>
@@ -525,7 +533,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       ) : null}
 
       {plans.length > 0 && editorStep === "library" ? (
-        <section aria-labelledby="training-plan-list-heading" className="space-y-4">
+        <section aria-labelledby="training-plan-list-heading" className="space-y-4 rounded-2xl bg-muted/20 p-3 sm:p-4">
           {plans.find((plan) => plan.status === "published") ? (() => {
             const publishedPlan = plans.find((plan) => plan.status === "published");
             if (!publishedPlan) return null;
@@ -543,6 +551,13 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
 
           <h3 id="training-plan-list-heading" className="sr-only">Fichas cadastradas</h3>
           <span className="sr-only">{filteredPlans.length} de {plans.length} fichas</span>
+
+          <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm lg:grid-cols-4 lg:divide-x lg:divide-border/60">
+            <div className="border-b border-r border-border/60 p-3 lg:border-b-0"><p className="text-xs text-muted-foreground">Total de fichas</p><p className="mt-1 text-xl font-semibold tabular-nums text-foreground">{plans.length}</p></div>
+            <div className="border-b border-border/60 p-3 lg:border-b-0"><p className="text-xs text-muted-foreground">Publicadas</p><p className="mt-1 text-xl font-semibold tabular-nums text-primary">{plans.filter((plan) => plan.status === "published").length}</p></div>
+            <div className="border-r border-border/60 p-3"><p className="text-xs text-muted-foreground">Rascunhos</p><p className="mt-1 text-xl font-semibold tabular-nums text-foreground">{plans.filter((plan) => plan.status === "draft").length}</p></div>
+            <div className="p-3"><p className="text-xs text-muted-foreground">Modelos disponíveis</p><p className="mt-1 text-xl font-semibold tabular-nums text-foreground">{workoutPresets.filter((preset) => preset.latest_published_version_id).length}</p></div>
+          </div>
 
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_240px] md:items-center">
             <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Filtrar fichas por status">
@@ -670,7 +685,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       ) : null}
 
       {selected && editorStep !== "library" ? (
-        <section className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm" aria-labelledby="training-editor-heading">
+        <section className="overflow-hidden rounded-2xl border border-border/70 bg-muted/20 shadow-sm" aria-labelledby="training-editor-heading">
           <div className="sticky top-2 z-20 flex flex-col gap-3 border-b border-border/70 bg-card/95 p-3 backdrop-blur-xl sm:flex-row sm:items-start sm:justify-between sm:px-5 sm:py-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -754,7 +769,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
             </div>
           ) : null}
 
-          <nav aria-label="Etapas do construtor" className="grid grid-cols-4 gap-1 border-b border-border/60 bg-background px-3 py-2 sm:gap-2 sm:px-5">
+          <nav aria-label="Etapas do construtor" className="grid grid-cols-4 gap-1 border-b border-border/60 bg-card px-3 py-2 sm:gap-2 sm:px-5">
             <span className="flex min-h-10 items-center justify-center gap-2 rounded-lg px-1 text-xs font-medium text-muted-foreground sm:text-sm"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">✓</span><span className="hidden sm:inline">Início</span></span>
             {([["details", "2", "Informações"], ["sessions", "3", "Montagem"], ["review", "4", "Revisão"]] as const).map(([step, number, label]) => (
               <button key={step} type="button" aria-current={editorStep === step ? "step" : undefined} onClick={() => setEditorStep(step)}
@@ -765,10 +780,11 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
           </nav>
 
           <div className="p-3 sm:p-5">
-            {editorStep === "details" ? <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border border-border/70 bg-muted/15">
-              <div className="border-b border-border/60 px-4 py-3 sm:px-5">
+            {editorStep === "details" ? <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_320px] xl:items-start">
+              <section className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm" aria-labelledby="training-details-heading">
+              <div className="border-b border-border/60 bg-primary/[0.035] px-4 py-3 sm:px-5">
                 <p className="text-xs font-medium text-primary">ETAPA 2 · INFORMAÇÕES</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">Contexto da ficha</p>
+                <h4 id="training-details-heading" className="mt-1 text-lg font-semibold text-foreground">Contexto da ficha</h4>
                 <p className="mt-1 text-sm text-muted-foreground">Defina o que o paciente verá antes de iniciar os treinos.</p>
               </div>
               <fieldset disabled={selected.status !== "draft"} className="divide-y divide-border/60">
@@ -793,10 +809,39 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                   <Textarea id={`training-notes-${selected.id}`} value={selected.general_notes} onChange={(event) => update({ general_notes: event.target.value })} placeholder="Observações para a ficha completa" className="min-h-28 resize-y rounded-lg bg-background" />
                 </div>
               </fieldset>
+              </section>
+
+              <aside className="space-y-3 xl:sticky xl:top-28" aria-label="Prévia e resumo da ficha">
+                <article className="overflow-hidden rounded-xl border border-primary/20 bg-card shadow-sm">
+                  <div className="border-b border-primary/15 bg-primary/[0.06] px-4 py-3">
+                    <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-[0.1em] text-primary">Prévia no portal</p><StatusBadge status={selected.status} /></div>
+                    <h4 className="mt-3 break-words text-lg font-semibold text-foreground">{selected.title.trim() || "Nova ficha de treino"}</h4>
+                    <p className="mt-1 text-sm text-muted-foreground">{selected.goal.trim() || "Objetivo não definido"}</p>
+                  </div>
+                  <div className="space-y-3 p-4">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg bg-muted/55 p-2.5"><p className="text-[11px] text-muted-foreground">Frequência</p><p className="mt-1 text-sm font-medium text-foreground">{selected.frequency.trim() || "Não definida"}</p></div>
+                      <div className="rounded-lg bg-muted/55 p-2.5"><p className="text-[11px] text-muted-foreground">Versão</p><p className="mt-1 text-sm font-medium text-foreground">v{selected.version}</p></div>
+                    </div>
+                    <div className="border-l-2 border-primary/40 pl-3"><p className="text-xs text-muted-foreground">Vigência</p><p className="mt-1 text-sm text-foreground">{formatTrainingDate(selected.valid_from)} – {formatTrainingDate(selected.valid_until)}</p></div>
+                    {selected.general_notes.trim() ? <p className="line-clamp-4 whitespace-pre-wrap text-sm leading-5 text-muted-foreground">{selected.general_notes}</p> : <p className="text-sm text-muted-foreground">As orientações gerais aparecerão aqui.</p>}
+                  </div>
+                </article>
+
+                <article className="rounded-xl border border-border/70 bg-card p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3"><h4 className="text-sm font-semibold text-foreground">Resumo da ficha</h4><span className={`text-xs font-medium ${isDirty ? "text-amber-700" : "text-primary"}`}>{isDirty ? "Alterações não salvas" : "Tudo salvo"}</span></div>
+                  <dl className="mt-3 grid grid-cols-3 divide-x divide-border/60 rounded-lg bg-muted/45 py-3 text-center">
+                    <div><dt className="text-[11px] text-muted-foreground">Sessões</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{selected.sessions?.length ?? 0}</dd></div>
+                    <div><dt className="text-[11px] text-muted-foreground">Exercícios</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{selectedExerciseCount}</dd></div>
+                    <div><dt className="text-[11px] text-muted-foreground">Séries</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{selectedSeriesCount}</dd></div>
+                  </dl>
+                  <p className="mt-3 text-xs leading-5 text-muted-foreground">A ficha só ficará visível no Portal do Paciente após a publicação.</p>
+                </article>
+              </aside>
             </div> : null}
 
             {editorStep === "sessions" ? <div className="space-y-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-2 rounded-xl border border-border/70 bg-card p-4 shadow-sm sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-xs font-medium text-primary">ETAPA 3 · MONTAGEM</p>
                   <h4 className="training-display text-2xl font-semibold tracking-tight text-foreground">Sessões e exercícios</h4>
@@ -815,14 +860,14 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
               </div>
 
               {(selected.sessions ?? []).length > 0 ? (
-                <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(160px,0.45fr)_minmax(0,1.8fr)]">
-                  <aside aria-label="Selecionar sessão" className="h-fit border-b border-border/60 pb-3 lg:sticky lg:top-28 lg:border-b-0 lg:border-r lg:pr-4">
+                <div className="grid min-w-0 gap-3 rounded-xl border border-border/60 bg-muted/35 p-2 sm:p-3 lg:grid-cols-[210px_minmax(0,1fr)]">
+                  <aside aria-label="Selecionar sessão" className="h-fit rounded-lg border border-border/60 bg-card p-2 shadow-sm lg:sticky lg:top-28">
                     <p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessões · {(selected.sessions ?? []).length}</p>
                     <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={session.id ?? sessionIndex} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => { setActiveSessionIndex(sessionIndex); setExercisePickerSessionIndex(null); setCatalogSearch(""); }} className={`flex min-h-12 min-w-40 items-center gap-2 rounded-lg px-2.5 text-left transition-colors lg:w-full ${activeSessionIndex === sessionIndex ? "border border-primary bg-primary/10 text-primary" : "border border-transparent text-foreground hover:bg-muted/70"}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${activeSessionIndex === sessionIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{String.fromCharCode(65 + sessionIndex)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="block truncate text-xs text-muted-foreground">{session.exercises.length} {session.exercises.length === 1 ? "exercício" : "exercícios"}</span></span></button>)}</div>
                     {(selected.sessions ?? []).length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">Adicione uma sessão para começar.</p> : null}
                   </aside>
                   {(selected.sessions ?? []).map((session, sessionIndex) => sessionIndex === activeSessionIndex ? (
-                    <article key={session.id ?? sessionIndex} className="min-w-0 overflow-visible rounded-xl border border-border/70 bg-card shadow-sm">
+                    <article key={session.id ?? sessionIndex} className="min-w-0 overflow-visible rounded-xl border border-border/70 bg-card shadow-sm ring-1 ring-black/[0.015]">
                       <div className="flex flex-col gap-2 border-b border-border/60 bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 flex-1 items-center gap-3">
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary" aria-hidden="true">
@@ -1049,21 +1094,21 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
 
             {editorStep === "review" ? <section aria-labelledby="training-review-heading" className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[minmax(0,1fr)_270px] lg:items-start">
               <div className="space-y-4">
-                <div>
+                <div className="rounded-xl border border-primary/15 bg-primary/[0.045] p-4 shadow-sm">
                   <p className="text-xs font-medium text-primary">ETAPA 4 · REVISÃO</p>
                   <h4 id="training-review-heading" className="training-display text-2xl font-semibold tracking-tight">{selected.title || "Nova ficha de treino"}</h4>
                   <p className="text-sm text-muted-foreground">{selected.goal || "Objetivo não definido"} · {selected.frequency || "Frequência não definida"}</p>
-                  <p className="mt-2 border-l-2 border-primary pl-3 text-xs font-medium text-foreground">{(selected.sessions ?? []).length} sessões · {(selected.sessions ?? []).reduce((total, session) => total + session.exercises.length, 0)} exercícios · versão {selected.version}</p>
+                  <p className="mt-3 border-l-2 border-primary pl-3 text-xs font-medium text-foreground">{(selected.sessions ?? []).length} sessões · {selectedExerciseCount} exercícios · {selectedSeriesCount} séries · versão {selected.version}</p>
                 </div>
-                <article className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                <article className="rounded-xl border border-border/70 bg-card p-3 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div><p className="text-xs text-muted-foreground">Ficha · versão {selected.version}</p><p className="mt-1 text-sm text-muted-foreground">{selected.valid_from || "Sem início"} – {selected.valid_until || "Sem término"}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Ficha · versão {selected.version}</p><p className="mt-1 text-sm text-muted-foreground">{formatTrainingDate(selected.valid_from)} – {formatTrainingDate(selected.valid_until)}</p></div>
                     <div className="flex items-center gap-2"><StatusBadge status={selected.status} /><Button type="button" variant="outline" onClick={() => setEditorStep("details")} className="min-h-10 rounded-lg">Editar ficha</Button></div>
                   </div>
                   {selected.general_notes ? <p className="mt-3 whitespace-pre-wrap border-t border-border/60 pt-3 text-sm text-muted-foreground">{selected.general_notes}</p> : null}
                 </article>
                 <div className="space-y-3">
-                  {(selected.sessions ?? []).map((session, sessionIndex) => <article key={session.id ?? sessionIndex} className="overflow-hidden rounded-xl border border-border/70 bg-card">
+                  {(selected.sessions ?? []).map((session, sessionIndex) => <article key={session.id ?? sessionIndex} className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
                       <div><h5 className="font-semibold">{session.title || `Sessão ${sessionIndex + 1}`}</h5><p className="mt-0.5 text-xs text-muted-foreground">{session.notes || `${session.exercises.length} ${session.exercises.length === 1 ? "exercício" : "exercícios"}`}</p></div>
                       <Button type="button" variant="ghost" onClick={() => { setActiveSessionIndex(sessionIndex); setEditorStep("sessions"); }} className="min-h-10 rounded-lg text-primary">Editar</Button>
@@ -1081,7 +1126,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                 {(selected.sessions ?? []).length === 0 ? <div className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">Ainda não há sessões para revisar.</div> : null}
               </div>
               <aside className="space-y-3 lg:sticky lg:top-28">
-                <article className="rounded-xl border border-border/70 bg-muted/20 p-4"><h5 className="text-sm font-bold">Antes de publicar</h5>{reviewWarnings.length > 0 ? <ul className="mt-3 space-y-2">{reviewWarnings.map((warning) => <li key={warning} className="flex gap-2 text-sm leading-5 text-muted-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" /><span>{warning}</span></li>)}</ul> : <p className="mt-2 flex items-center gap-2 text-sm leading-5 text-muted-foreground"><CheckCircle2 className="h-4 w-4 text-primary" aria-hidden="true" />Ficha pronta para publicação.</p>}</article>
+                <article className="rounded-xl border border-border/70 bg-card p-4 shadow-sm"><h5 className="text-sm font-bold">Antes de publicar</h5>{reviewWarnings.length > 0 ? <ul className="mt-3 space-y-2">{reviewWarnings.map((warning) => <li key={warning} className="flex gap-2 text-sm leading-5 text-muted-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" /><span>{warning}</span></li>)}</ul> : <p className="mt-2 flex items-center gap-2 text-sm leading-5 text-muted-foreground"><CheckCircle2 className="h-4 w-4 text-primary" aria-hidden="true" />Ficha pronta para publicação.</p>}</article>
                 <article className="rounded-xl border border-primary/20 bg-primary/[0.035] p-4"><h5 className="text-sm font-bold text-primary">Ao publicar</h5><p className="mt-2 text-sm leading-5 text-muted-foreground">A ficha ficará disponível no Portal do Paciente. As versões anteriores permanecem preservadas.</p></article>
               </aside>
             </section> : null}
