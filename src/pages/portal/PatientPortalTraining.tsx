@@ -234,7 +234,7 @@ export default function PatientPortalTraining() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-xl">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Acompanhamento</p>
-            <h1 className="training-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Meus treinos</h1>
+            <h1 className="training-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Meus treinos</h1>
             <p className="text-sm leading-6 text-muted-foreground">
               Consulte sua ficha e registre cada sessão realizada no seu ritmo.
             </p>
@@ -345,7 +345,7 @@ export default function PatientPortalTraining() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="training-display text-2xl font-semibold leading-snug sm:text-3xl">{selectedPlan.title}</CardTitle>
+                    <CardTitle className="training-display text-xl font-semibold leading-snug sm:text-2xl">{selectedPlan.title}</CardTitle>
                     <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">Ficha publicada</span>
                   </div>
                   <CardDescription className="mt-1.5 text-sm">
@@ -375,7 +375,7 @@ export default function PatientPortalTraining() {
             <div className="flex items-end justify-between gap-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Programa</p>
-                <h2 id="training-sessions-title" className="training-display text-2xl font-semibold text-foreground">Sessões da ficha</h2>
+                <h2 id="training-sessions-title" className="training-display text-xl font-semibold text-foreground sm:text-2xl">Sessões da ficha</h2>
               </div>
               <span className="text-xs text-muted-foreground">{selectedPlan.sessions.length} no total</span>
             </div>
@@ -426,7 +426,7 @@ export default function PatientPortalTraining() {
                               <span className="text-sm font-bold">{String.fromCharCode(65 + sessionIndex)}</span>
                             </div>
                             <div className="min-w-0">
-                              <CardTitle className="training-display break-words text-2xl font-semibold sm:text-3xl">{session.title}</CardTitle>
+                              <CardTitle className="training-display break-words text-xl font-semibold sm:text-2xl">{session.title}</CardTitle>
                               {session.notes?.trim() ? <CardDescription className="mt-1.5 leading-5">{session.notes}</CardDescription> : null}
                             </div>
                           </div>

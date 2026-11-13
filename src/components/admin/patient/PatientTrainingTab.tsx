@@ -121,6 +121,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
   const [activeSessionIndex, setActiveSessionIndex] = useState(0);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
   const [catalogSearch, setCatalogSearch] = useState("");
+  const [exercisePickerOpen, setExercisePickerOpen] = useState(false);
 
   const refreshLibrary = useCallback(async () => {
     setLibraryLoading(true);
@@ -496,7 +497,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
       <header className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Acompanhamento</p>
-          <h2 className="training-display text-3xl font-semibold tracking-tight text-foreground">Treinos</h2>
+          <h2 className="training-display text-2xl font-semibold tracking-tight text-foreground">Treinos</h2>
         </div>
         <Button onClick={beginCreation} className="w-full shrink-0 rounded-lg sm:w-auto">
           <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Nova ficha
@@ -616,7 +617,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
           </nav>
           <div className="mx-auto max-w-5xl p-4 pb-24 sm:p-7 sm:pb-24">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Etapa 1 · Início</p>
-            <h3 id="training-start-heading" className="training-display mt-1 text-3xl font-semibold tracking-tight text-foreground">Como deseja começar?</h3>
+            <h3 id="training-start-heading" className="training-display mt-1 text-2xl font-semibold tracking-tight text-foreground">Como deseja começar?</h3>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Escolha uma base. A ficha só será criada quando você continuar.</p>
 
             <div className="mt-6 grid gap-3 lg:grid-cols-3">
@@ -673,7 +674,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
           <div className="sticky top-2 z-20 flex flex-col gap-3 border-b border-border/70 bg-card/95 p-3 backdrop-blur-xl sm:flex-row sm:items-start sm:justify-between sm:px-5 sm:py-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 id="training-editor-heading" className="training-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                <h3 id="training-editor-heading" className="training-display text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                   {selected.title || "Nova ficha de treino"}
                 </h3>
                 <StatusBadge status={selected.status} />
@@ -798,7 +799,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-xs font-medium text-primary">ETAPA 3 · MONTAGEM</p>
-                  <h4 className="training-display text-3xl font-semibold tracking-tight text-foreground">Sessões e exercícios</h4>
+                  <h4 className="training-display text-2xl font-semibold tracking-tight text-foreground">Sessões e exercícios</h4>
                   <p className="text-xs text-muted-foreground">Edite os valores na ficha. Abra um exercício para orientações.</p>
                 </div>
                 {selected.status === "draft" ? (
@@ -817,11 +818,11 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                 <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(160px,0.45fr)_minmax(0,1.8fr)]">
                   <aside aria-label="Selecionar sessão" className="h-fit border-b border-border/60 pb-3 lg:sticky lg:top-28 lg:border-b-0 lg:border-r lg:pr-4">
                     <p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessões · {(selected.sessions ?? []).length}</p>
-                    <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={session.id ?? sessionIndex} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => setActiveSessionIndex(sessionIndex)} className={`flex min-h-12 min-w-40 items-center gap-2 rounded-lg px-2.5 text-left transition-colors lg:w-full ${activeSessionIndex === sessionIndex ? "border border-primary bg-primary/10 text-primary" : "border border-transparent text-foreground hover:bg-muted/70"}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${activeSessionIndex === sessionIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{String.fromCharCode(65 + sessionIndex)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="block truncate text-xs text-muted-foreground">{session.exercises.length} {session.exercises.length === 1 ? "exercício" : "exercícios"}</span></span></button>)}</div>
+                    <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={session.id ?? sessionIndex} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => { setActiveSessionIndex(sessionIndex); setExercisePickerOpen(false); setCatalogSearch(""); }} className={`flex min-h-12 min-w-40 items-center gap-2 rounded-lg px-2.5 text-left transition-colors lg:w-full ${activeSessionIndex === sessionIndex ? "border border-primary bg-primary/10 text-primary" : "border border-transparent text-foreground hover:bg-muted/70"}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${activeSessionIndex === sessionIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{String.fromCharCode(65 + sessionIndex)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="block truncate text-xs text-muted-foreground">{session.exercises.length} {session.exercises.length === 1 ? "exercício" : "exercícios"}</span></span></button>)}</div>
                     {(selected.sessions ?? []).length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">Adicione uma sessão para começar.</p> : null}
                   </aside>
                   {(selected.sessions ?? []).map((session, sessionIndex) => sessionIndex === activeSessionIndex ? (
-                    <article key={session.id ?? sessionIndex} className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm">
+                    <article key={session.id ?? sessionIndex} className="min-w-0 overflow-visible rounded-xl border border-border/70 bg-card shadow-sm">
                       <div className="flex flex-col gap-2 border-b border-border/60 bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 flex-1 items-center gap-3">
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary" aria-hidden="true">
@@ -996,41 +997,42 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
                           )}
 
                           {selected.status === "draft" ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => updateSession(sessionIndex, {
-                                exercises: [...session.exercises, { name: "", sets: "", repetitions: "", reference_load: "", rest: "", instructions: "", demo_url: "", sort_order: session.exercises.length }],
-                              })}
-                              className="mx-4 mb-4 w-[calc(100%-2rem)] rounded-xl sm:w-auto"
-                            >
-                              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Adicionar exercício
-                            </Button>
+                            <div className="p-3 sm:p-4">
+                              <Button type="button" variant="outline" aria-expanded={exercisePickerOpen} aria-controls={`exercise-picker-${selected.id}-${sessionIndex}`} onClick={() => { setExercisePickerOpen((current) => !current); setCatalogSearch(""); }} className="w-full rounded-lg sm:w-auto">
+                                <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Adicionar exercício
+                              </Button>
+                              {exercisePickerOpen ? (
+                                <div id={`exercise-picker-${selected.id}-${sessionIndex}`} className="relative z-20 mt-3 rounded-lg border border-primary/20 bg-primary/[0.025] p-3 shadow-sm">
+                                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                    <div><p className="text-sm font-semibold text-foreground">Adicionar à {session.title || `sessão ${sessionIndex + 1}`}</p><p className="text-xs text-muted-foreground">Busque no catálogo ou reutilize uma prescrição salva.</p></div>
+                                    <Button type="button" variant="ghost" size="sm" onClick={() => {
+                                      const exerciseIndex = session.exercises.length;
+                                      updateSession(sessionIndex, { exercises: [...session.exercises, { name: "", sets: "", repetitions: "", reference_load: "", rest: "", instructions: "", demo_url: "", sort_order: exerciseIndex }] });
+                                      setExpandedExercises((current) => new Set(current).add(`${sessionIndex}-${exerciseIndex}`));
+                                      setExercisePickerOpen(false);
+                                    }} className="self-start rounded-lg">Inserir manualmente</Button>
+                                  </div>
+                                  <div className="mt-3">
+                                    <ExerciseAutocomplete id={`training-library-${selected.id}-${sessionIndex}`} value={catalogSearch} items={exerciseCatalog} onChange={setCatalogSearch} onSelect={(item) => {
+                                      const exerciseIndex = session.exercises.length;
+                                      updateSession(sessionIndex, { exercises: [...session.exercises, { name: item.name, sets: "", repetitions: "", reference_load: "", rest: "", instructions: item.instructions || "", demo_url: item.demo_url || "", sort_order: exerciseIndex }] });
+                                      setExpandedExercises((current) => new Set(current).add(`${sessionIndex}-${exerciseIndex}`));
+                                      setCatalogSearch("");
+                                    }} />
+                                  </div>
+                                  {workspaceId && exercisePresets.length > 0 ? <div className="mt-3 border-t border-border/60 pt-3"><p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Prescrições salvas</p><div className="grid gap-2 sm:grid-cols-2">{exercisePresets.slice(0, 4).map((preset) => <button key={preset.id} type="button" onClick={() => {
+                                    const exerciseIndex = session.exercises.length;
+                                    updateSession(sessionIndex, { exercises: [...session.exercises, { name: preset.name, sets: preset.sets, repetitions: preset.repetitions, reference_load: preset.reference_load, rest: preset.rest, instructions: preset.instructions, demo_url: preset.demo_url, sort_order: exerciseIndex }] });
+                                    setExpandedExercises((current) => new Set(current).add(`${sessionIndex}-${exerciseIndex}`));
+                                  }} className="min-w-0 rounded-lg border border-border/60 bg-background px-3 py-2 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="block truncate text-sm font-medium">{preset.name}</span><span className="block truncate text-xs text-muted-foreground">{[preset.sets && `${preset.sets} séries`, preset.repetitions && `${preset.repetitions} rep.`, preset.reference_load].filter(Boolean).join(" · ")}</span></button>)}</div></div> : null}
+                                </div>
+                              ) : null}
+                            </div>
                           ) : null}
                         </div>
                       </div>
                     </article>
                   ) : null)}
-                  <aside aria-label="Biblioteca contextual de exercícios" className="min-w-0 space-y-4 rounded-2xl border border-border/70 bg-muted/20 p-3 sm:p-4 lg:col-span-2">
-                    <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Biblioteca contextual</p><h5 className="mt-1 font-semibold">Exercícios</h5><p className="mt-1 text-xs text-muted-foreground">{selected.sessions?.[activeSessionIndex]?.title || "Selecione uma sessão"}</p></div>
-                    {selected.status === "draft" ? <>
-                      <div className="space-y-2"><Label htmlFor={`training-library-${selected.id}`}>Buscar no catálogo</Label><ExerciseAutocomplete id={`training-library-${selected.id}`} value={catalogSearch} items={exerciseCatalog} onChange={setCatalogSearch} onSelect={(item) => {
-                        const session = selected.sessions?.[activeSessionIndex];
-                        if (!session) return;
-                        const exerciseIndex = session.exercises.length;
-                        updateSession(activeSessionIndex, { exercises: [...session.exercises, { name: item.name, sets: "", repetitions: "", reference_load: "", rest: "", instructions: item.instructions || "", demo_url: item.demo_url || "", sort_order: exerciseIndex }] });
-                        setExpandedExercises((current) => new Set(current).add(`${activeSessionIndex}-${exerciseIndex}`));
-                        setCatalogSearch("");
-                      }} /></div>
-                      {workspaceId ? <div className="space-y-1 border-t border-border/60 pt-3"><p className="pb-1 text-sm font-semibold">Prescrições salvas</p>{exercisePresets.slice(0, 5).map((preset) => <button key={preset.id} type="button" disabled={!selected.sessions?.[activeSessionIndex]} onClick={() => {
-                        const session = selected.sessions?.[activeSessionIndex];
-                        if (!session) return;
-                        const exerciseIndex = session.exercises.length;
-                        updateSession(activeSessionIndex, { exercises: [...session.exercises, { name: preset.name, sets: preset.sets, repetitions: preset.repetitions, reference_load: preset.reference_load, rest: preset.rest, instructions: preset.instructions, demo_url: preset.demo_url, sort_order: exerciseIndex }] });
-                        setExpandedExercises((current) => new Set(current).add(`${activeSessionIndex}-${exerciseIndex}`));
-                      }} className="block min-h-11 w-full rounded-xl px-2 py-2 text-left hover:bg-background disabled:opacity-50"><span className="block truncate text-sm font-medium">{preset.name}</span><span className="block truncate text-xs text-muted-foreground">{[preset.sets && `${preset.sets} séries`, preset.repetitions && `${preset.repetitions} rep.`, preset.reference_load].filter(Boolean).join(" · ")}</span></button>)}{exercisePresets.length === 0 ? <p className="text-xs text-muted-foreground">Suas prescrições favoritas aparecerão aqui.</p> : null}</div> : null}
-                    </> : <p className="text-sm text-muted-foreground">Versão somente para consulta.</p>}
-                  </aside>
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-border/70 bg-muted/[0.08] px-4 py-8 text-center">
@@ -1045,7 +1047,7 @@ export function PatientTrainingTab({ patientId }: { patientId: number }) {
               <div className="space-y-4">
                 <div>
                   <p className="text-xs font-medium text-primary">ETAPA 4 · REVISÃO</p>
-                  <h4 id="training-review-heading" className="training-display text-3xl font-semibold tracking-tight">{selected.title || "Nova ficha de treino"}</h4>
+                  <h4 id="training-review-heading" className="training-display text-2xl font-semibold tracking-tight">{selected.title || "Nova ficha de treino"}</h4>
                   <p className="text-sm text-muted-foreground">{selected.goal || "Objetivo não definido"} · {selected.frequency || "Frequência não definida"}</p>
                   <p className="mt-2 border-l-2 border-primary pl-3 text-xs font-medium text-foreground">{(selected.sessions ?? []).length} sessões · {(selected.sessions ?? []).reduce((total, session) => total + session.exercises.length, 0)} exercícios · versão {selected.version}</p>
                 </div>

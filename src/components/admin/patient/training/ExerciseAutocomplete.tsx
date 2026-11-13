@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { searchNormalizedRecords } from "@/lib/normalizedSearch";
+import { normalizeSearchText } from "@/lib/normalizedSearch";
 
 export interface ExerciseCatalogSuggestion {
   id: number;
@@ -34,15 +34,28 @@ export function ExerciseAutocomplete({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
+  const indexedItems = useMemo(() => items.map((item) => ({
+    item,
+    normalizedName: normalizeSearchText(item.name),
+    normalizedSearch: normalizeSearchText([
+      item.name,
+      ...(item.search_aliases ?? []),
+      item.category,
+      item.equipment,
+      item.instructions,
+    ].filter(Boolean).join(" ")),
+  })).sort((a, b) => a.item.name.localeCompare(b.item.name)), [items]);
+
   const suggestions = useMemo(() => {
-    if (!value.trim()) return [];
-    return searchNormalizedRecords(items.map((item) => ({
-          ...item,
-          search_text: [item.category, item.equipment, item.instructions].filter(Boolean).join(" "),
-        })), value)
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .slice(0, 8);
-  }, [items, value]);
+    const normalizedQuery = normalizeSearchText(value);
+    if (!normalizedQuery) return [];
+    const tokens = normalizedQuery.split(" ");
+    return indexedItems
+      .filter(({ normalizedSearch }) => tokens.every((token) => normalizedSearch.includes(token)))
+      .sort((a, b) => Number(b.normalizedName.startsWith(normalizedQuery)) - Number(a.normalizedName.startsWith(normalizedQuery)))
+      .slice(0, 8)
+      .map(({ item }) => item);
+  }, [indexedItems, value]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (!open || suggestions.length === 0) {
@@ -86,7 +99,7 @@ export function ExerciseAutocomplete({
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
         aria-autocomplete="list"
-        aria-expanded={open && suggestions.length > 0}
+        aria-expanded={open && Boolean(value.trim())}
         aria-controls={`${id}-suggestions`}
         className="h-10 rounded-md border-border/70 pl-9 shadow-none focus-visible:ring-primary/20"
       />
@@ -107,6 +120,11 @@ export function ExerciseAutocomplete({
               </div>
             );
           })}
+        </div>
+      ) : null}
+      {open && value.trim() && suggestions.length === 0 ? (
+        <div id={`${id}-suggestions`} role="status" className="absolute z-30 mt-1 w-full rounded-lg border border-border/70 bg-popover px-3 py-2.5 text-sm text-muted-foreground shadow-lg shadow-foreground/[0.08]">
+          Nenhum exercício encontrado. Você pode inserir manualmente.
         </div>
       ) : null}
     </div>
