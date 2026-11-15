@@ -22,6 +22,10 @@ for (const viewport of viewports) {
       if (route !== "/") {
         await expect.soft(page.getByRole("heading", { level: 1 }), `${route} should show its page heading`).toBeVisible();
       }
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      });
       const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
       expect.soft(documentWidth, `${route} should fit ${viewport.width}px without horizontal overflow`)
         .toBeLessThanOrEqual(viewport.width);
