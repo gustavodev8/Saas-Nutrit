@@ -26,9 +26,12 @@ for (const viewport of viewports) {
         await document.fonts.ready;
         await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       });
-      const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-      expect.soft(documentWidth, `${route} should fit ${viewport.width}px without horizontal overflow`)
-        .toBeLessThanOrEqual(viewport.width);
+      const dimensions = await page.evaluate(() => ({
+        contentWidth: document.documentElement.scrollWidth,
+        viewportWidth: document.documentElement.clientWidth,
+      }));
+      expect.soft(dimensions.contentWidth, `${route} should fit its mobile viewport without horizontal overflow`)
+        .toBeLessThanOrEqual(dimensions.viewportWidth);
     }
 
     await page.goto("/admin");
