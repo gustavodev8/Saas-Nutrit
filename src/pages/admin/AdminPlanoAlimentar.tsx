@@ -21,8 +21,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
-  fetchFullMealPlan, saveMeals, upsertMealPlan, fetchMealPlans,
-  upsertMealPreset, saveMealPresetFoods, upsertDietTemplate, saveDietTemplateMeals,
+  fetchFullMealPlan, saveMealPlanAggregate, fetchMealPlans,
+  saveMealPresetAggregate, saveDietTemplateAggregate,
   type Meal, type MealFood, type MealPlan, type MealPresetFood, type AlternativeMeal
 } from "@/lib/supabase";
 import {
@@ -523,7 +523,7 @@ export default function AdminPlanoAlimentar() {
 
     setSavingMealPreset(true);
     try {
-      const savedPreset = await upsertMealPreset({
+      const savedPreset = await saveMealPresetAggregate({
         name,
         description: mealPresetDraftDescription.trim() || undefined,
         search_aliases: mealPresetDraftAliases,
@@ -536,20 +536,10 @@ export default function AdminPlanoAlimentar() {
         carbs_g: totals.carbs > 0 ? parseFloat(totals.carbs.toFixed(1)) : undefined,
         fat_g: totals.fat > 0 ? parseFloat(totals.fat.toFixed(1)) : undefined,
         is_active: true,
-      });
+      }, foods);
 
       if (!savedPreset?.id) {
         toast.error("Erro ao salvar o modelo.");
-        return;
-      }
-
-      const ok = await saveMealPresetFoods(savedPreset.id, foods.map((food) => ({
-        ...food,
-        preset_id: savedPreset.id,
-      })));
-
-      if (!ok) {
-        toast.error("Modelo criado, mas houve erro ao salvar os alimentos.");
         return;
       }
 
@@ -745,7 +735,11 @@ export default function AdminPlanoAlimentar() {
         get_kcal: suggestedKcal ?? plan.get_kcal,
       };
 
-      const savedPlan = await upsertMealPlan(planWithLineage);
+      const dbMeals = meals.map((meal) => editorToMeal(meal, planWithLineage.id ?? 0));
+      const savedPlan = await saveMealPlanAggregate(planWithLineage, dbMeals, {
+        source: autosave ? "autosave" : "manual",
+        mergeWindowMinutes: autosave ? 5 : 2,
+      });
       if (!savedPlan?.id) {
         if (!silent) toast.error("Erro ao salvar o plano.");
         if (autosave) {
@@ -756,20 +750,6 @@ export default function AdminPlanoAlimentar() {
       }
 
       setPlan((current) => ({ ...current, id: savedPlan.id }));
-
-      const dbMeals = meals.map((meal) => editorToMeal(meal, savedPlan.id));
-      const saveErr = await saveMeals(savedPlan.id, dbMeals, {
-        source: autosave ? "autosave" : "manual",
-        mergeWindowMinutes: autosave ? 5 : 2,
-      });
-      if (saveErr) {
-        if (!silent) toast.error(`Erro ao salvar as refeições: ${saveErr}`);
-        if (autosave) {
-          setAutosaveState("error");
-          setAutosaveError("As alterações ficaram pendentes. Tente salvar novamente.");
-        }
-        return false;
-      }
 
       lastSavedSnapshotRef.current = buildPlanSnapshot(
         { ...planWithLineage, id: savedPlan.id },
@@ -819,7 +799,7 @@ export default function AdminPlanoAlimentar() {
 
     setSavingPlanTemplate(true);
     try {
-      const savedTemplate = await upsertDietTemplate({
+      const savedTemplate = await saveDietTemplateAggregate({
         name,
         description: planTemplateDraftDescription.trim() || undefined,
         search_aliases: planTemplateDraftAliases,
@@ -829,16 +809,10 @@ export default function AdminPlanoAlimentar() {
         carbs_g: grand.carbs > 0 ? parseFloat(grand.carbs.toFixed(1)) : undefined,
         fat_g: grand.fat > 0 ? parseFloat(grand.fat.toFixed(1)) : undefined,
         is_active: true,
-      });
+      }, templateMeals);
 
       if (!savedTemplate?.id) {
         toast.error("Erro ao salvar o modelo de dieta.");
-        return;
-      }
-
-      const ok = await saveDietTemplateMeals(savedTemplate.id, templateMeals);
-      if (!ok) {
-        toast.error("Modelo criado, mas houve erro ao salvar as refeições.");
         return;
       }
 

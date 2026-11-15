@@ -1567,31 +1567,73 @@ export async function fetchMealPlans(patientId: number): Promise<MealPlan[]> {
 
 export async function upsertMealPlan(plan: MealPlan): Promise<MealPlan | null> {
   const { id, ...fields } = plan;
-  if (id) {
-    const { error } = await supabaseAdmin.from("meal_plans").update(fields).eq("id", id);
-    if (error) { console.error("[Supabase] upsertMealPlan update:", error.message); return null; }
-    return { id, ...fields };
-  } else {
-    const { data, error } = await supabaseAdmin.from("meal_plans").insert(fields).select().single();
-    if (error) { console.error("[Supabase] upsertMealPlan insert:", error.message); return null; }
+  const { data, error } = await supabaseAdmin.rpc("save_admin_meal_plan_aggregate", {
+    p_plan_id: id ?? null,
+    p_plan: fields,
+    p_meals: [],
+    p_replace_meals: false,
+  });
+  if (error || !data) { console.error("[Supabase] upsertMealPlan RPC:", error?.message); return null; }
+  const saved = data as MealPlan;
+  if (!id) {
     await insertPatientAuditLog({
-      patientId: data.patient_id,
+      patientId: saved.patient_id,
       sectionKey: "plano_alimentar",
       sectionLabel: "Plano alimentar",
       action: "create",
       entityType: "meal_plan",
-      entityId: data.id,
-      summary: `Plano "${data.title}" criado.`,
+      entityId: saved.id,
+      summary: `Plano "${saved.title}" criado.`,
       changedFields: Object.keys(compactAuditMetadata(fields as Record<string, unknown>)),
       metadata: compactAuditMetadata({
-        title: data.title,
-        daily_calories: data.daily_calories,
-        strategy_type: data.strategy_type,
-        measurement_id: data.measurement_id,
+        title: saved.title,
+        daily_calories: saved.daily_calories,
+        strategy_type: saved.strategy_type,
+        measurement_id: saved.measurement_id,
       }),
     });
-    return data;
   }
+  return saved;
+}
+
+export async function saveMealPlanAggregate(
+  plan: MealPlan,
+  meals: Meal[],
+  auditOptions?: { source?: "manual" | "autosave"; mergeWindowMinutes?: number },
+): Promise<MealPlan | null> {
+  const { id, ...fields } = plan;
+  const { data, error } = await supabaseAdmin.rpc("save_admin_meal_plan_aggregate", {
+    p_plan_id: id ?? null,
+    p_plan: fields,
+    p_meals: meals,
+    p_replace_meals: true,
+  });
+  if (error || !data) { console.error("[Supabase] saveMealPlanAggregate RPC:", error?.message); return null; }
+  const saved = data as MealPlan;
+  if (!id) {
+    await insertPatientAuditLog({
+      patientId: saved.patient_id, sectionKey: "plano_alimentar", sectionLabel: "Plano alimentar",
+      action: "create", entityType: "meal_plan", entityId: saved.id,
+      summary: `Plano "${saved.title}" criado.`,
+      changedFields: Object.keys(compactAuditMetadata(fields as Record<string, unknown>)),
+      metadata: compactAuditMetadata({ title: saved.title, daily_calories: saved.daily_calories,
+        strategy_type: saved.strategy_type, measurement_id: saved.measurement_id }),
+    });
+  }
+  if (saved.patient_id) {
+    await mergeRecentPatientAuditLog({
+      patientId: saved.patient_id, sectionKey: "plano_alimentar", sectionLabel: "Plano alimentar",
+      entityType: "meal_plan", entityId: saved.id ?? null,
+      summary: `Plano "${saved.title}" atualizado${auditOptions?.source === "autosave" ? " via salvamento automático" : ""}.`,
+      changedFields: ["meals"],
+      metadata: compactAuditMetadata({ title: saved.title, meals_count: meals.length,
+        foods_count: meals.reduce((acc, meal) => acc + (meal.foods?.filter((food) => food.food_name.trim() !== "").length ?? 0), 0),
+        source: auditOptions?.source ?? "manual", daily_calories: saved.daily_calories,
+        strategy_type: saved.strategy_type }),
+      mergeWindowMinutes: auditOptions?.mergeWindowMinutes ?? 5,
+    });
+  }
+  return saved;
 }
 
 export async function deleteMealPlan(id: number): Promise<boolean> {
@@ -1638,49 +1680,10 @@ export async function saveMeals(
     .eq("id", planId)
     .maybeSingle();
 
-  const { error: delError } = await supabaseAdmin.from("meals").delete().eq("plan_id", planId);
-  if (delError) { console.error("[Supabase] saveMeals delete:", delError.message); return delError.message; }
-
-  for (let i = 0; i < meals.length; i++) {
-    const meal = meals[i];
-    const { data: mealData, error: mealErr } = await supabaseAdmin
-      .from("meals")
-      .insert({ plan_id: planId, meal_name: meal.meal_name, time_suggestion: meal.time_suggestion ?? "", sort_order: i, notes: meal.notes ?? "", substitution_items: meal.substitution_items ?? [], alternative_meals: meal.alternative_meals ?? [] })
-      .select()
-      .single();
-    if (mealErr || !mealData) {
-      console.error("[Supabase] saveMeals insert meal:", mealErr?.message);
-      return mealErr?.message ?? "Erro ao inserir refeição";
-    }
-
-    const validFoods = (meal.foods ?? []).filter((f) => f.food_name.trim() !== "");
-    if (validFoods.length > 0) {
-      const foodRows = validFoods.map((f, fi) => ({
-        meal_id:           mealData.id,
-        food_name:         f.food_name,
-        quantity:          f.quantity          ?? null,
-        unit:              f.unit              ?? "g",
-        calories:          f.calories          ?? null,
-        protein:           f.protein           ?? null,
-        carbs:             f.carbs             ?? null,
-        fat:               f.fat               ?? null,
-        notes:             f.notes             ?? null,
-        sort_order:        fi,
-        kcal_per_100g:     f.kcal_per_100g     ?? null,
-        protein_per_100g:  f.protein_per_100g  ?? null,
-        carbs_per_100g:    f.carbs_per_100g    ?? null,
-        fat_per_100g:      f.fat_per_100g      ?? null,
-        household_measure: f.household_measure ?? null,
-        measure_amount:    f.measure_amount    ?? null,
-        food_group:        f.food_group        ?? null,
-      }));
-      const { error: foodErr } = await supabaseAdmin.from("meal_foods").insert(foodRows);
-      if (foodErr) {
-        console.error("[Supabase] saveMeals insert foods:", foodErr.message);
-        return foodErr.message;
-      }
-    }
-  }
+  const { error } = await supabaseAdmin.rpc("save_admin_meal_plan_aggregate", {
+    p_plan_id: planId, p_plan: null, p_meals: meals, p_replace_meals: true,
+  });
+  if (error) { console.error("[Supabase] saveMeals RPC:", error.message); return error.message; }
 
   if (planSnapshot?.patient_id) {
     await mergeRecentPatientAuditLog({
@@ -2232,18 +2235,23 @@ export async function upsertDietTemplate(
   template: Omit<DietTemplate, "meals" | "created_at">
 ): Promise<DietTemplate | null> {
   const { id, ...fields } = template;
-  if (id) {
-    const { error } = await supabaseAdmin.from("diet_templates").update(fields).eq("id", id);
-    if (error) { console.error("[Supabase] upsertDietTemplate update:", error.message); return null; }
-    return { id, ...fields } as DietTemplate;
-  }
-  const { data, error } = await supabaseAdmin
-    .from("diet_templates")
-    .insert(fields)
-    .select()
-    .single();
-  if (error) { console.error("[Supabase] upsertDietTemplate insert:", error.message); return null; }
-  return data;
+  const { data, error } = await supabaseAdmin.rpc("save_admin_diet_template_aggregate", {
+    p_template_id: id ?? null, p_template: fields, p_meals: [], p_replace_meals: false,
+  });
+  if (error || !data) { console.error("[Supabase] upsertDietTemplate RPC:", error?.message); return null; }
+  return data as DietTemplate;
+}
+
+export async function saveDietTemplateAggregate(
+  template: Omit<DietTemplate, "meals" | "created_at">,
+  meals: TemplateMealInput[],
+): Promise<DietTemplate | null> {
+  const { id, ...fields } = template;
+  const { data, error } = await supabaseAdmin.rpc("save_admin_diet_template_aggregate", {
+    p_template_id: id ?? null, p_template: fields, p_meals: meals, p_replace_meals: true,
+  });
+  if (error || !data) { console.error("[Supabase] saveDietTemplateAggregate RPC:", error?.message); return null; }
+  return data as DietTemplate;
 }
 
 export async function deleteDietTemplate(id: number): Promise<boolean> {
@@ -2277,70 +2285,16 @@ type TemplateMealInput = {
   substitutions?:   Omit<TemplateMealInput, "substitutions">[];
 };
 
-async function insertTemplateMealWithFoods(
-  templateId: number,
-  meal: Omit<TemplateMealInput, "substitutions">,
-  isSubstitutionOf?: number,
-): Promise<number | null> {
-  const { data, error } = await supabaseAdmin
-    .from("diet_template_meals")
-    .insert({
-      template_id:        templateId,
-      meal_name:          meal.meal_name,
-      time_suggestion:    meal.time_suggestion ?? "",
-      order_index:        meal.order_index,
-      notes:              meal.notes ?? null,
-      is_substitution_of: isSubstitutionOf ?? null,
-    })
-    .select()
-    .single();
-  if (error || !data) { console.error("[Supabase] insertTemplateMealWithFoods:", error?.message); return null; }
-
-  const validFoods = meal.foods.filter((f) => f.food_name.trim() !== "");
-  if (validFoods.length > 0) {
-    const foodRows = validFoods.map((f) => ({
-      template_meal_id:  data.id,
-      food_name:         f.food_name,
-      quantity:          f.quantity          ?? null,
-      unit:              f.unit              ?? "g",
-      kcal_per_100g:     f.kcal_per_100g     ?? null,
-      protein_per_100g:  f.protein_per_100g  ?? null,
-      carbs_per_100g:    f.carbs_per_100g    ?? null,
-      fat_per_100g:      f.fat_per_100g      ?? null,
-      household_measure: f.household_measure ?? null,
-      measure_amount:    f.measure_amount    ?? null,
-      food_group:        f.food_group        ?? null,
-      notes:             f.notes             ?? null,
-      order_index:       f.order_index,
-    }));
-    const { error: foodErr } = await supabaseAdmin.from("diet_template_foods").insert(foodRows);
-    if (foodErr) { console.error("[Supabase] insertTemplateMealWithFoods foods:", foodErr.message); return null; }
-  }
-  return data.id;
-}
-
 /** Apaga e re-insere todas as refei??es (+ alimentos) de um template. */
 export async function saveDietTemplateMeals(
   templateId: number,
   meals: TemplateMealInput[],
 ): Promise<boolean> {
   try {
-    const { error: delErr } = await supabaseAdmin
-      .from("diet_template_meals")
-      .delete()
-      .eq("template_id", templateId);
-    if (delErr) { console.error("[Supabase] saveDietTemplateMeals delete:", delErr.message); return false; }
-
-    for (const meal of meals) {
-      const { substitutions, ...mealData } = meal;
-      const parentId = await insertTemplateMealWithFoods(templateId, mealData);
-      if (!parentId) return false;
-
-      for (const sub of (substitutions ?? [])) {
-        const ok = await insertTemplateMealWithFoods(templateId, sub, parentId);
-        if (!ok) return false;
-      }
-    }
+    const { error } = await supabaseAdmin.rpc("save_admin_diet_template_aggregate", {
+      p_template_id: templateId, p_template: null, p_meals: meals, p_replace_meals: true,
+    });
+    if (error) { console.error("[Supabase] saveDietTemplateMeals RPC:", error.message); return false; }
     return true;
   } catch (err) {
     console.error("[Supabase] saveDietTemplateMeals exception:", err);
@@ -2415,27 +2369,22 @@ export async function upsertMealPreset(
   preset: Omit<MealPreset, "foods" | "created_at"> & { id?: number },
 ): Promise<MealPreset | null> {
   const { id, ...fields } = preset;
+  const { data, error } = await supabaseAdmin.rpc("save_admin_meal_preset_aggregate", {
+    p_preset_id: id ?? null, p_preset: fields, p_foods: [], p_replace_foods: false,
+  });
+  if (error || !data) { console.error("[Supabase] upsertMealPreset RPC:", error?.message); return null; }
+  return data as MealPreset;
+}
 
-  if (id) {
-    const { error } = await supabaseAdmin.from("meal_presets").update(fields).eq("id", id);
-    if (error) {
-      console.error("[Supabase] upsertMealPreset update:", error.message);
-      return null;
-    }
-    return { id, ...(fields as Omit<MealPreset, "foods" | "created_at">) } as MealPreset;
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("meal_presets")
-    .insert(fields)
-    .select()
-    .single();
-
-  if (error) {
-    console.error("[Supabase] upsertMealPreset insert:", error.message);
-    return null;
-  }
-
+export async function saveMealPresetAggregate(
+  preset: Omit<MealPreset, "foods" | "created_at"> & { id?: number },
+  foods: Array<Omit<MealPresetFood, "preset_id">>,
+): Promise<MealPreset | null> {
+  const { id, ...fields } = preset;
+  const { data, error } = await supabaseAdmin.rpc("save_admin_meal_preset_aggregate", {
+    p_preset_id: id ?? null, p_preset: fields, p_foods: foods, p_replace_foods: true,
+  });
+  if (error || !data) { console.error("[Supabase] saveMealPresetAggregate RPC:", error?.message); return null; }
   return data as MealPreset;
 }
 
@@ -2450,47 +2399,10 @@ export async function deleteMealPreset(id: number): Promise<boolean> {
 
 export async function saveMealPresetFoods(presetId: number, foods: MealPresetFood[]): Promise<boolean> {
   try {
-    const { error: deleteError } = await supabaseAdmin
-      .from("meal_preset_foods")
-      .delete()
-      .eq("preset_id", presetId);
-
-    if (deleteError) {
-      console.error("[Supabase] saveMealPresetFoods delete:", deleteError.message);
-      return false;
-    }
-
-    const validFoods = foods.filter((food) => food.food_name.trim() !== "");
-    if (validFoods.length === 0) {
-      return true;
-    }
-
-    const rows = validFoods.map((food, index) => ({
-      preset_id: presetId,
-      food_name: food.food_name,
-      quantity: food.quantity ?? null,
-      unit: food.unit ?? "g",
-      calories: food.calories ?? null,
-      protein: food.protein ?? null,
-      carbs: food.carbs ?? null,
-      fat: food.fat ?? null,
-      kcal_per_100g: food.kcal_per_100g ?? null,
-      protein_per_100g: food.protein_per_100g ?? null,
-      carbs_per_100g: food.carbs_per_100g ?? null,
-      fat_per_100g: food.fat_per_100g ?? null,
-      notes: food.notes ?? null,
-      sort_order: food.sort_order ?? index,
-      household_measure: food.household_measure ?? null,
-      measure_amount: food.measure_amount ?? null,
-      food_group: food.food_group ?? null,
-    }));
-
-    const { error: insertError } = await supabaseAdmin.from("meal_preset_foods").insert(rows);
-    if (insertError) {
-      console.error("[Supabase] saveMealPresetFoods insert:", insertError.message);
-      return false;
-    }
-
+    const { error } = await supabaseAdmin.rpc("save_admin_meal_preset_aggregate", {
+      p_preset_id: presetId, p_preset: null, p_foods: foods, p_replace_foods: true,
+    });
+    if (error) { console.error("[Supabase] saveMealPresetFoods RPC:", error.message); return false; }
     return true;
   } catch (err) {
     console.error("[Supabase] saveMealPresetFoods exception:", err);
