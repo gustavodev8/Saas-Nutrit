@@ -1,5 +1,5 @@
-﻿import { useState, useEffect } from "react";
-import { useParams, useSearchParams, Link } from "react-router-dom";
+﻿import { useState, useEffect, useRef, useCallback } from "react";
+import { useParams, useSearchParams, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   User,
@@ -78,6 +78,10 @@ const isTabKey = (value: string | null): value is TabKey =>
 export default function AdminPaciente() {
   const { id } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routeLocationRef = useRef(location);
+  routeLocationRef.current = location;
   const rawTab = searchParams.get("tab");
   const activeTab: TabKey = isTabKey(rawTab) ? rawTab : "central";
 
@@ -86,20 +90,57 @@ export default function AdminPaciente() {
 
   const [loading, setLoading] = useState(true);
   const [patient, setPatient] = useState<Patient | null>(null);
-  const [trainingDirty, setTrainingDirty] = useState(false);
+
+  const trainingDirtyRef = useRef(false);
+  const patientRequestRef = useRef(0);
+  const currentPatientIdRef = useRef<string | undefined>(id);
+  const lastPatientLocationRef = useRef(`${location.pathname}${location.search}`);
+
+  const updateTrainingDirty = useCallback((dirty: boolean) => {
+    trainingDirtyRef.current = dirty;
+  }, []);
 
   useEffect(() => {
     if (!id) return;
+    const previousId = currentPatientIdRef.current;
+    if (previousId !== id && trainingDirtyRef.current) {
+      if (!window.confirm("Há alterações não salvas no treino. Deseja sair mesmo assim?")) {
+        navigate(lastPatientLocationRef.current, { replace: true });
+        return;
+      }
+      updateTrainingDirty(false);
+    }
+    currentPatientIdRef.current = id;
+    lastPatientLocationRef.current = `${routeLocationRef.current.pathname}${routeLocationRef.current.search}`;
+
+    const requestId = ++patientRequestRef.current;
     setLoading(true);
+    setPatient(null);
     fetchPatient(id)
-      .then((p) => setPatient(p))
-      .catch(() => toast.error("Erro ao carregar paciente"))
-      .finally(() => setLoading(false));
-  }, [id]);
+      .then((p) => {
+        if (requestId === patientRequestRef.current) setPatient(p);
+      })
+      .catch(() => {
+        if (requestId === patientRequestRef.current) toast.error("Erro ao carregar paciente");
+      })
+      .finally(() => {
+        if (requestId === patientRequestRef.current) setLoading(false);
+      });
+    return () => {
+      patientRequestRef.current += 1;
+    };
+  }, [id, navigate, updateTrainingDirty]);
+
+  useEffect(() => {
+    if (currentPatientIdRef.current === id) {
+      lastPatientLocationRef.current = `${location.pathname}${location.search}`;
+    }
+  }, [id, location.pathname, location.search]);
 
   const setTab = (tab: TabKey) => {
-    if (activeTab === "treinos" && tab !== "treinos" && trainingDirty
+    if (activeTab === "treinos" && tab !== "treinos" && trainingDirtyRef.current
       && !window.confirm("Há alterações não salvas no treino. Deseja sair mesmo assim?")) return;
+    if (activeTab === "treinos" && tab !== "treinos") updateTrainingDirty(false);
     setSearchParams({ tab });
   };
 
@@ -110,7 +151,7 @@ export default function AdminPaciente() {
     !!patient.phone &&
     !!patient.city;
 
-  if (loading) {
+  if (loading || (patient && String(patient.id) !== id)) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -244,7 +285,7 @@ export default function AdminPaciente() {
             {activeTab === "planos" && (
               <PatientMealPlansTab patientId={id!} patientRouteId={id!} patient={patient} />
             )}
-            {activeTab === "treinos" && <PatientTrainingTab patientId={Number(id)} onDirtyChange={setTrainingDirty} />}
+            {activeTab === "treinos" && <PatientTrainingTab patientId={Number(id)} onDirtyChange={updateTrainingDirty} />}
             {activeTab === "protocolos" && (
               <ExamProtocolsTab
                 patientId={Number(id)}

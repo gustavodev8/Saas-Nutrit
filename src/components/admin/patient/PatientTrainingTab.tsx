@@ -227,10 +227,17 @@ export function PatientTrainingTab({
       if (!window.confirm("Há alterações não salvas. Deseja sair mesmo assim?")) {
         event.preventDefault();
         event.stopPropagation();
+      } else {
+        setIsDirty(false);
+        onDirtyChange?.(false);
       }
     };
     const warnHistoryNavigation = () => {
       if (!window.confirm("Há alterações não salvas. Deseja sair mesmo assim?")) window.history.forward();
+      else {
+        setIsDirty(false);
+        onDirtyChange?.(false);
+      }
     };
     window.addEventListener("beforeunload", warnBeforeUnload);
     document.addEventListener("click", warnInternalNavigation, true);
@@ -240,7 +247,7 @@ export function PatientTrainingTab({
       document.removeEventListener("click", warnInternalNavigation, true);
       window.removeEventListener("popstate", warnHistoryNavigation);
     };
-  }, [isDirty]);
+  }, [isDirty, onDirtyChange]);
 
   const update = (patch: Partial<TrainingPlan>) => {
     setIsDirty(true);
