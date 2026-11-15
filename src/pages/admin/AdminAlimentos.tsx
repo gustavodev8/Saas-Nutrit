@@ -33,6 +33,7 @@ import {
 } from "@/components/admin/adminStyles";
 import { FOOD_CATEGORIES, type FoodItem } from "@/lib/foodDatabase";
 import { deleteFoodFromSupabase, fetchFoodsFromSupabase, upsertFoodInSupabase } from "@/lib/supabase";
+import { invalidateFoodSearchCatalog } from "@/components/admin/foodSearchCatalog";
 import { matchesNormalizedSearch, matchesNumericSearchRange } from "@/lib/normalizedSearch";
 import { SearchAliasesField } from "@/components/admin/SearchAliasesField";
 import { cn } from "@/lib/utils";
@@ -352,6 +353,7 @@ export default function AdminAlimentos() {
       return;
     }
 
+    invalidateFoodSearchCatalog();
     toast.success(`Alimento "${food.name}" salvo com sucesso.`);
     setShowForm(false);
     setEditingItem(null);
@@ -367,6 +369,7 @@ export default function AdminAlimentos() {
       return;
     }
 
+    invalidateFoodSearchCatalog();
     toast.success(`Alimento "${confirmDelete.name}" removido.`);
     setConfirmDelete(null);
     await loadFoods();

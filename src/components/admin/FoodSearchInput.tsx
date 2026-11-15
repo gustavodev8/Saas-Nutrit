@@ -16,7 +16,8 @@ import {
   adminSurfaceClass,
 } from "@/components/admin/adminStyles";
 import { fetchCustomFoods, saveCustomFood } from "@/components/admin/customFoods";
-import { fetchFoodSearchCatalog } from "@/components/admin/foodSearchCatalog";
+import { fetchFoodSearchCatalog, getFoodSearchDropdownPosition } from "@/components/admin/foodSearchCatalog";
+import { validateCustomFoodForm } from "@/components/admin/foodSearchValidation";
 import { SearchAliasesField } from "@/components/admin/SearchAliasesField";
 import { searchNormalizedRecords } from "@/lib/normalizedSearch";
 import { FOOD_CATEGORIES, getFoodHouseholdMeasures, type FoodItem, type HouseholdMeasure } from "@/lib/foodDatabase";
@@ -71,12 +72,13 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
   const [searchAliases, setSearchAliases] = useState<string[]>([]);
   const [formErrors, setFormErrors] = useState<Partial<CustomFoodForm>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const apiAbortRef = useRef<AbortController | null>(null);
   const apiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchGenerationRef = useRef(0);
 
   useEffect(() => {
@@ -86,11 +88,10 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
   const updatePos = useCallback(() => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    setDropdownPos(getFoodSearchDropdownPosition(rect, window.innerWidth, window.innerHeight));
   }, []);
 
-  const runSearch = useCallback(async (nextQuery: string) => {
-    const generation = ++searchGenerationRef.current;
+  const runSearch = useCallback(async (nextQuery: string, generation: number) => {
     if (nextQuery.trim().length < 2) {
       setResults([]);
       setApiResults([]);
@@ -99,7 +100,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
       return;
     }
 
-    const [catalogFoods, customFoods] = await Promise.all([fetchFoodSearchCatalog(), fetchCustomFoods()]);
+    const [catalogFoods, customFoods] = await Promise.all([fetchFoodSearchCatalog(nextQuery), fetchCustomFoods()]);
     if (generation !== searchGenerationRef.current) return;
     const merged = searchNormalizedRecords([...customFoods, ...catalogFoods], nextQuery)
       .filter((food, index, array) => {
@@ -124,10 +125,11 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
 
       try {
         const offResults = await searchOpenFoodFacts(nextQuery, controller.signal);
+        if (generation !== searchGenerationRef.current) return;
         setApiResults(offResults);
         setApiStatus("done");
       } catch (error) {
-        if ((error as Error)?.name !== "AbortError") {
+        if (generation === searchGenerationRef.current && (error as Error)?.name !== "AbortError") {
           setApiStatus("error");
         }
       }
@@ -136,6 +138,8 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
 
   useEffect(() => {
     return () => {
+      searchGenerationRef.current += 1;
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
       if (apiTimerRef.current) clearTimeout(apiTimerRef.current);
       if (apiAbortRef.current) apiAbortRef.current.abort();
     };
@@ -173,10 +177,24 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
     setQuery(nextQuery);
     onCustomName(nextQuery);
     updatePos();
-    void runSearch(nextQuery);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (apiTimerRef.current) clearTimeout(apiTimerRef.current);
+    if (apiAbortRef.current) apiAbortRef.current.abort();
+    const generation = ++searchGenerationRef.current;
+    if (nextQuery.trim().length < 2) {
+      void runSearch(nextQuery, generation);
+      return;
+    }
+    searchTimerRef.current = setTimeout(() => {
+      void runSearch(nextQuery, generation);
+    }, 180);
   };
 
   const handleSelect = (food: FoodItem) => {
+    searchGenerationRef.current += 1;
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (apiTimerRef.current) clearTimeout(apiTimerRef.current);
+    if (apiAbortRef.current) apiAbortRef.current.abort();
     setQuery(food.name);
     setIsOpen(false);
     onSelect({
@@ -190,6 +208,8 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
   };
 
   const handleClear = () => {
+    searchGenerationRef.current += 1;
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     setQuery("");
     setIsOpen(false);
     setResults([]);
@@ -226,14 +246,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
   };
 
   const validateForm = () => {
-    const errors: Partial<CustomFoodForm> = {};
-
-    if (!form.name.trim()) errors.name = "Nome é obrigatório";
-    if (!form.kcal_per_100g || Number.isNaN(Number(form.kcal_per_100g))) errors.kcal_per_100g = "Informe as calorias";
-    if (!form.protein_per_100g || Number.isNaN(Number(form.protein_per_100g))) errors.protein_per_100g = "Informe a proteína";
-    if (!form.carbs_per_100g || Number.isNaN(Number(form.carbs_per_100g))) errors.carbs_per_100g = "Informe os carboidratos";
-    if (!form.fat_per_100g || Number.isNaN(Number(form.fat_per_100g))) errors.fat_per_100g = "Informe a gordura";
-
+    const errors = validateCustomFoodForm(form);
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -312,7 +325,10 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
                   position: "fixed",
                   top: dropdownPos.top,
                   left: dropdownPos.left,
-                  width: Math.max(dropdownPos.width, 380),
+                  width: dropdownPos.width,
+                  maxHeight: dropdownPos.maxHeight,
+                  display: "flex",
+                  flexDirection: "column",
                   zIndex: 9999,
                 }}
                 className={cn(adminSurfaceClass, "overflow-hidden rounded-2xl bg-popover shadow-2xl")}
@@ -331,7 +347,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
                   </div>
                 </div>
 
-                <div className="max-h-[28rem] overflow-y-auto">
+                <div className="min-h-0 flex-1 overflow-y-auto">
                   <div className="border-b border-border/70">
                     <div className="flex items-center justify-between gap-2 bg-background px-4 py-2.5">
                       <div>
