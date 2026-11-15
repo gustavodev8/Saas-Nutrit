@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate, Outlet, useLocation } from "react-router-dom";
-import { useEffect, lazy, Suspense } from "react";
+import { Component, useEffect, lazy, Suspense, type ErrorInfo, type ReactNode } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,71 +11,68 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { PatientPortalAuthProvider } from "@/contexts/PatientPortalAuthContext";
 import { PatientPortalSettingsProvider } from "@/contexts/PatientPortalSettingsContext";
 
-// Public pages
-import Index from "./pages/Index";
-import ConsultasPage from "./pages/ConsultasPage";
-import ResultadosPage from "./pages/ResultadosPage";
-import LojaPage from "./pages/LojaPage";
-import Blog from "./pages/Blog";
-import BlogPost from "./pages/BlogPost";
-import ProdutoPage from "./pages/ProdutoPage";
-import ClientGate from "@/components/ClientGate";
-import BookingPage from "./pages/BookingPage";
-import PaymentSuccess from "./pages/PaymentSuccess";
-import PaymentPending from "./pages/PaymentPending";
-import PaymentFailure from "./pages/PaymentFailure";
-import PrivacidadePage from "./pages/PrivacidadePage";
-import NotFound from "./pages/NotFound";
+// Route modules load only when their URL is active.
+const Index = lazy(() => import("./pages/Index"));
+const ConsultasPage = lazy(() => import("./pages/ConsultasPage"));
+const ResultadosPage = lazy(() => import("./pages/ResultadosPage"));
+const LojaPage = lazy(() => import("./pages/LojaPage"));
+const Blog = lazy(() => import("./pages/Blog"));
+const BlogPost = lazy(() => import("./pages/BlogPost"));
+const ProdutoPage = lazy(() => import("./pages/ProdutoPage"));
+const BookingPage = lazy(() => import("./pages/BookingPage"));
+const PaymentSuccess = lazy(() => import("./pages/PaymentSuccess"));
+const PaymentPending = lazy(() => import("./pages/PaymentPending"));
+const PaymentFailure = lazy(() => import("./pages/PaymentFailure"));
+const PrivacidadePage = lazy(() => import("./pages/PrivacidadePage"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
-// Admin
-import AdminLogin from "./pages/AdminLogin";
-import AdminLayout from "@/components/admin/AdminLayout";
-import ProtectedRoute from "@/components/admin/ProtectedRoute";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AdminPerfil from "./pages/admin/AdminPerfil";
-import AdminHero from "./pages/admin/AdminHero";
-import AdminSobre from "./pages/admin/AdminSobre";
-import AdminServicos from "./pages/admin/AdminServicos";
-import AdminPrecos from "./pages/admin/AdminPrecos";
-import AdminHorarios from "./pages/admin/AdminHorarios";
-import AdminDepoimentos from "./pages/admin/AdminDepoimentos";
-import AdminFAQ from "./pages/admin/AdminFAQ";
-import AdminCTA from "./pages/admin/AdminCTA";
-import AdminContato from "./pages/admin/AdminContato";
-import AdminModalidades from "./pages/admin/AdminModalidades";
-import AdminProdutosDigitais from "./pages/admin/AdminProdutosDigitais";
-import AdminResultados from "./pages/admin/AdminResultados";
-import AdminSenha from "./pages/admin/AdminSenha";
-import AdminPagamentos from "./pages/admin/AdminPagamentos";
-import AdminDisponibilidade from "./pages/admin/AdminDisponibilidade";
-import AdminAgendamentos from "./pages/admin/AdminAgendamentos";
-import AdminBlog from "./pages/admin/AdminBlog";
-import AdminPacientes from "./pages/admin/AdminPacientes";
-import AdminPaciente from "./pages/admin/AdminPaciente";
-import AdminPlanoAlimentar from "./pages/admin/AdminPlanoAlimentar";
-import AdminRelatorioAntropometrico from "./pages/admin/AdminRelatorioAntropometrico";
-import PatientLayout from "./pages/admin/PatientLayout";
-import AdminAlimentos from "./pages/admin/AdminAlimentos";
-import AdminLoja from "./pages/admin/AdminLoja";
-import AdminDesconto from "./pages/admin/AdminDesconto";
-import AdminDisparo from "./pages/admin/AdminDisparo";
-import AdminLeads from "./pages/admin/AdminLeads";
-import AdminAuditoria from "./pages/admin/AdminAuditoria";
-import AdminOperacao from "./pages/admin/AdminOperacao";
-import AdminPortal from "./pages/admin/AdminPortal";
-import AdminTemplates from "./pages/admin/AdminTemplates";
-import AdminTemplateEditor from "./pages/admin/AdminTemplateEditor";
+const AdminLogin = lazy(() => import("./pages/AdminLogin"));
+const AdminLayout = lazy(() => import("@/components/admin/AdminLayout"));
+const ProtectedRoute = lazy(() => import("@/components/admin/ProtectedRoute"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminPerfil = lazy(() => import("./pages/admin/AdminPerfil"));
+const AdminHero = lazy(() => import("./pages/admin/AdminHero"));
+const AdminSobre = lazy(() => import("./pages/admin/AdminSobre"));
+const AdminServicos = lazy(() => import("./pages/admin/AdminServicos"));
+const AdminPrecos = lazy(() => import("./pages/admin/AdminPrecos"));
+const AdminHorarios = lazy(() => import("./pages/admin/AdminHorarios"));
+const AdminDepoimentos = lazy(() => import("./pages/admin/AdminDepoimentos"));
+const AdminFAQ = lazy(() => import("./pages/admin/AdminFAQ"));
+const AdminCTA = lazy(() => import("./pages/admin/AdminCTA"));
+const AdminContato = lazy(() => import("./pages/admin/AdminContato"));
+const AdminModalidades = lazy(() => import("./pages/admin/AdminModalidades"));
+const AdminProdutosDigitais = lazy(() => import("./pages/admin/AdminProdutosDigitais"));
+const AdminResultados = lazy(() => import("./pages/admin/AdminResultados"));
+const AdminSenha = lazy(() => import("./pages/admin/AdminSenha"));
+const AdminPagamentos = lazy(() => import("./pages/admin/AdminPagamentos"));
+const AdminDisponibilidade = lazy(() => import("./pages/admin/AdminDisponibilidade"));
+const AdminAgendamentos = lazy(() => import("./pages/admin/AdminAgendamentos"));
+const AdminBlog = lazy(() => import("./pages/admin/AdminBlog"));
+const AdminPacientes = lazy(() => import("./pages/admin/AdminPacientes"));
+const AdminPaciente = lazy(() => import("./pages/admin/AdminPaciente"));
+const AdminPlanoAlimentar = lazy(() => import("./pages/admin/AdminPlanoAlimentar"));
+const AdminRelatorioAntropometrico = lazy(() => import("./pages/admin/AdminRelatorioAntropometrico"));
+const PatientLayout = lazy(() => import("./pages/admin/PatientLayout"));
+const AdminAlimentos = lazy(() => import("./pages/admin/AdminAlimentos"));
+const AdminBiblioteca = lazy(() => import("./pages/admin/AdminBiblioteca"));
+const AdminTemplates = lazy(() => import("./pages/admin/AdminTemplates"));
+const AdminTemplateEditor = lazy(() => import("./pages/admin/AdminTemplateEditor"));
 const AdminFerramentas = lazy(() => import("./pages/admin/AdminFerramentas"));
-import AdminBiblioteca from "./pages/admin/AdminBiblioteca";
-import PatientPortalProtectedRoute from "@/components/patient/PatientPortalProtectedRoute";
-import PatientPortalLogin from "./pages/portal/PatientPortalLogin";
-import PatientPortalLayout from "./pages/portal/PatientPortalLayout";
-import PatientPortalHome from "./pages/portal/PatientPortalHome";
-import PatientPortalPlan from "./pages/portal/PatientPortalPlan";
-import PatientPortalTraining from "./pages/portal/PatientPortalTraining";
-import PatientPortalConsultas from "./pages/portal/PatientPortalConsultas";
-import PatientPortalDocuments from "./pages/portal/PatientPortalDocuments";
-
+const AdminLoja = lazy(() => import("./pages/admin/AdminLoja"));
+const AdminDesconto = lazy(() => import("./pages/admin/AdminDesconto"));
+const AdminDisparo = lazy(() => import("./pages/admin/AdminDisparo"));
+const AdminLeads = lazy(() => import("./pages/admin/AdminLeads"));
+const AdminAuditoria = lazy(() => import("./pages/admin/AdminAuditoria"));
+const AdminOperacao = lazy(() => import("./pages/admin/AdminOperacao"));
+const AdminPortal = lazy(() => import("./pages/admin/AdminPortal"));
+const PatientPortalProtectedRoute = lazy(() => import("@/components/patient/PatientPortalProtectedRoute"));
+const PatientPortalLogin = lazy(() => import("./pages/portal/PatientPortalLogin"));
+const PatientPortalLayout = lazy(() => import("./pages/portal/PatientPortalLayout"));
+const PatientPortalHome = lazy(() => import("./pages/portal/PatientPortalHome"));
+const PatientPortalPlan = lazy(() => import("./pages/portal/PatientPortalPlan"));
+const PatientPortalTraining = lazy(() => import("./pages/portal/PatientPortalTraining"));
+const PatientPortalConsultas = lazy(() => import("./pages/portal/PatientPortalConsultas"));
+const PatientPortalDocuments = lazy(() => import("./pages/portal/PatientPortalDocuments"));
 const queryClient = new QueryClient();
 
 const ScrollToTop = () => {
@@ -83,6 +80,38 @@ const ScrollToTop = () => {
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
   return null;
 };
+
+const RouteLoadingFallback = () => (
+  <div className="flex min-h-[35vh] items-center justify-center p-6 text-sm text-muted-foreground" role="status" aria-live="polite">
+    Carregando página…
+  </div>
+);
+
+class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidCatch(_error: Error, _info: ErrorInfo): void {
+    // A reload obtains the current hashed route chunk after a new deployment.
+  }
+
+  render(): ReactNode {
+    if (this.state.failed) {
+      return (
+        <div className="flex min-h-[35vh] flex-col items-center justify-center gap-3 p-6 text-center" role="alert">
+          <p className="text-sm text-muted-foreground">Não foi possível carregar esta página.</p>
+          <button type="button" onClick={() => window.location.reload()} className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">
+            Atualizar página
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const PatientPortalRoot = () => (
   <PatientPortalAuthProvider>
@@ -100,6 +129,8 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
               <ScrollToTop />
+              <RouteErrorBoundary>
+              <Suspense fallback={<RouteLoadingFallback />}>
               <Routes>
               {/* Landing page */}
               <Route path="/" element={<Index />} />
@@ -190,7 +221,7 @@ const App = () => (
                 <Route path="desconto" element={<AdminDesconto />} />
                 <Route path="disparo" element={<AdminDisparo />} />
                 <Route path="leads" element={<AdminLeads />} />
-                <Route path="ferramentas" element={<Suspense fallback={null}><AdminFerramentas /></Suspense>} />
+                <Route path="ferramentas" element={<AdminFerramentas />} />
                 {/* Fallback inside admin */}
                 <Route path="*" element={<Navigate to="/admin" replace />} />
               </Route>
@@ -198,6 +229,8 @@ const App = () => (
               {/* 404 */}
               <Route path="*" element={<NotFound />} />
               </Routes>
+              </Suspense>
+              </RouteErrorBoundary>
             </BrowserRouter>
           </TooltipProvider>
         </AuthProvider>
