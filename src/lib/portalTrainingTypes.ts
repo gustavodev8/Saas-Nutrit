@@ -60,6 +60,7 @@ export interface PortalTrainingLogExercise {
 }
 
 export interface PortalTrainingLogInput {
+  requestId: string;
   versionId: number;
   sessionId: number;
   patientId: number;

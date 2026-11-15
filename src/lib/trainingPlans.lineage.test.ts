@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   getUser: vi.fn(),
+  rpc: vi.fn(),
   responses: new Map<string, Array<{ data: unknown; error: unknown }>>(),
   calls: new Map<string, number>(),
   inserts: [] as Array<{ table: string; payload: unknown }>,
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/supabase", () => ({
   supabaseAdmin: {
     from: mocks.from,
+    rpc: mocks.rpc,
     auth: { getUser: mocks.getUser },
   },
 }));
@@ -45,11 +47,10 @@ function configureScenario(firstInsertError: { code: string } | null) {
       ...(firstInsertError ? [response(null, firstInsertError)] : []),
       response(newVersion), // initial insert, or legacy fallback insert
       response(plan), // load source version
-      response(newVersion), // save draft metadata
       response(newVersion), // reload saved draft
     ]],
     ["workout_plans", [response({ patient_id: plan.patient_id }), response({ patient_id: plan.patient_id })]],
-    ["workout_sessions", [response([]), response(null), response([])]],
+    ["workout_sessions", [response([]), response([])]],
     ["patients", [response({ name: "Paciente teste" })]],
     ["patient_audit_logs", [response(null)]],
   ]);
@@ -60,6 +61,7 @@ describe("createTrainingPlanVersion lineage compatibility", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.inserts = [];
+    mocks.rpc.mockResolvedValue({ data: 1, error: null });
     mocks.getUser.mockResolvedValue({ data: { user: { email: "test@example.invalid" } }, error: null });
     mocks.from.mockImplementation((table: string) => {
       const index = mocks.calls.get(table) ?? 0;

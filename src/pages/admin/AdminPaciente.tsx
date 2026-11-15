@@ -86,6 +86,7 @@ export default function AdminPaciente() {
 
   const [loading, setLoading] = useState(true);
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [trainingDirty, setTrainingDirty] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -97,6 +98,8 @@ export default function AdminPaciente() {
   }, [id]);
 
   const setTab = (tab: TabKey) => {
+    if (activeTab === "treinos" && tab !== "treinos" && trainingDirty
+      && !window.confirm("Há alterações não salvas no treino. Deseja sair mesmo assim?")) return;
     setSearchParams({ tab });
   };
 
@@ -241,7 +244,7 @@ export default function AdminPaciente() {
             {activeTab === "planos" && (
               <PatientMealPlansTab patientId={id!} patientRouteId={id!} patient={patient} />
             )}
-            {activeTab === "treinos" && <PatientTrainingTab patientId={Number(id)} />}
+            {activeTab === "treinos" && <PatientTrainingTab patientId={Number(id)} onDirtyChange={setTrainingDirty} />}
             {activeTab === "protocolos" && (
               <ExamProtocolsTab
                 patientId={Number(id)}

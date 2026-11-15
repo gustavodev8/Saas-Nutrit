@@ -1,4 +1,37 @@
-import type { TrainingExercise, TrainingPlan } from "@/lib/trainingPlans";
+import type { TrainingExercise, TrainingPlan, TrainingSession } from "@/lib/trainingPlans";
+
+let clientKeySequence = 0;
+
+export function createTrainingClientKey(prefix: "session" | "exercise"): string {
+  clientKeySequence += 1;
+  return `${prefix}-${Date.now()}-${clientKeySequence}`;
+}
+
+export function getTrainingSessionKey(session: TrainingSession): string {
+  return session.client_key ?? (session.id ? `session-${session.id}` : createTrainingClientKey("session"));
+}
+
+export function getTrainingExerciseKey(exercise: TrainingExercise): string {
+  return exercise.client_key ?? (exercise.id ? `exercise-${exercise.id}` : createTrainingClientKey("exercise"));
+}
+
+export function getTrainingExerciseStateKey(session: TrainingSession, exercise: TrainingExercise): string {
+  return `${getTrainingSessionKey(session)}:${getTrainingExerciseKey(exercise)}`;
+}
+
+export function withTrainingClientKeys(plan: TrainingPlan): TrainingPlan {
+  return {
+    ...plan,
+    sessions: (plan.sessions ?? []).map((session) => ({
+      ...session,
+      client_key: getTrainingSessionKey(session),
+      exercises: session.exercises.map((exercise) => ({
+        ...exercise,
+        client_key: getTrainingExerciseKey(exercise),
+      })),
+    })),
+  };
+}
 
 export function getTrainingReviewWarnings(plan: TrainingPlan): string[] {
   const warnings: string[] = [];

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { TrainingExercise, TrainingPlan } from "@/lib/trainingPlans";
-import { getTrainingReviewWarnings, moveTrainingExercise } from "./trainingEditorUtils";
+import {
+  getTrainingExerciseStateKey,
+  getTrainingReviewWarnings,
+  moveTrainingExercise,
+  withTrainingClientKeys,
+} from "./trainingEditorUtils";
 
 const exercise = (name: string, sortOrder: number): TrainingExercise => ({
   name,
@@ -59,5 +64,29 @@ describe("trainingEditorUtils", () => {
     expect(moved.map((item) => item.name)).toEqual(["B", "A", "C"]);
     expect(moved.map((item) => item.sort_order)).toEqual([0, 1, 2]);
     expect(original.map((item) => item.name)).toEqual(["A", "B", "C"]);
+  });
+
+  it("mantém a identidade visual do exercício após reordenação", () => {
+    const keyedPlan = withTrainingClientKeys(plan({
+      sessions: [{ title: "Treino A", notes: "", sort_order: 0, exercises: [exercise("A", 0), exercise("B", 1)] }],
+    }));
+    const session = keyedPlan.sessions![0];
+    const originalKey = getTrainingExerciseStateKey(session, session.exercises[1]);
+    const moved = moveTrainingExercise(session.exercises, 1, -1);
+
+    expect(getTrainingExerciseStateKey(session, moved[0])).toBe(originalKey);
+    expect(moved[0].name).toBe("B");
+  });
+
+  it("gera chaves locais distintas para itens ainda não persistidos", () => {
+    const keyedPlan = withTrainingClientKeys(plan({
+      sessions: [
+        { title: "Treino A", notes: "", sort_order: 0, exercises: [exercise("A", 0)] },
+        { title: "Treino B", notes: "", sort_order: 1, exercises: [exercise("A", 0)] },
+      ],
+    }));
+
+    expect(keyedPlan.sessions![0].client_key).not.toBe(keyedPlan.sessions![1].client_key);
+    expect(keyedPlan.sessions![0].exercises[0].client_key).not.toBe(keyedPlan.sessions![1].exercises[0].client_key);
   });
 });

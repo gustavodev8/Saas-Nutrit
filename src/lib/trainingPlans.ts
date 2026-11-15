@@ -4,9 +4,11 @@ export type TrainingStatus = "draft" | "published" | "archived";
 export interface TrainingExercise {
   id?: number; session_id?: number; name: string; sets: string; repetitions: string;
   reference_load: string; rest: string; instructions: string; demo_url: string; sort_order: number;
+  client_key?: string;
 }
 export interface TrainingSession {
   id?: number; version_id?: number; title: string; notes: string; sort_order: number; exercises: TrainingExercise[];
+  client_key?: string;
 }
 export interface TrainingPlan {
   id: number; workout_plan_id: number; patient_id: number; workspace_id: string | null;
@@ -14,7 +16,7 @@ export interface TrainingPlan {
   source_preset_version_id?: number | null;
   title: string; goal: string; frequency: string; valid_from: string | null; valid_until: string | null;
   general_notes: string; status: TrainingStatus; version: number; created_at: string;
-  published_at: string | null; sessions?: TrainingSession[];
+  published_at: string | null; revision?: number; updated_at?: string; sessions?: TrainingSession[];
 }
 export interface TrainingLog {
   id: number; version_id: number; workout_session_id: number; patient_id: number;
@@ -66,29 +68,36 @@ export async function saveTrainingPlan(plan: TrainingPlan): Promise<TrainingPlan
   if (plan.status !== "draft") throw new Error("A ficha publicada é imutável. Crie uma nova versão para editar.");
   const title = plan.title.trim();
   if (!title) throw new Error("Informe o título da ficha.");
-  const { data: updated, error } = await supabaseAdmin.from("workout_plan_versions").update({
-    title, goal: plan.goal, frequency: plan.frequency, valid_from: plan.valid_from || null,
-    valid_until: plan.valid_until || null, general_notes: plan.general_notes,
-  }).eq("id", plan.id).eq("status", "draft").select("*").single();
+  const { error } = await supabaseAdmin.rpc("save_workout_plan_draft", {
+    p_version_id: plan.id,
+    p_expected_revision: plan.revision ?? 0,
+    p_title: title,
+    p_goal: plan.goal,
+    p_frequency: plan.frequency,
+    p_valid_from: plan.valid_from || null,
+    p_valid_until: plan.valid_until || null,
+    p_general_notes: plan.general_notes,
+    p_sessions: (plan.sessions ?? []).map((session, sessionIndex) => ({
+      title: session.title,
+      notes: session.notes,
+      sort_order: sessionIndex,
+      exercises: session.exercises.map((exercise, exerciseIndex) => ({
+        name: exercise.name,
+        sets: exercise.sets,
+        repetitions: exercise.repetitions,
+        reference_load: exercise.reference_load,
+        rest: exercise.rest,
+        instructions: exercise.instructions,
+        demo_url: exercise.demo_url,
+        sort_order: exerciseIndex,
+      })),
+    })),
+  });
   if (error) throw error;
-  const { error: deleteError } = await supabaseAdmin.from("workout_sessions").delete().eq("version_id", plan.id);
-  if (deleteError) throw deleteError;
-  for (const [sessionOrder, session] of (plan.sessions ?? []).entries()) {
-    const { data: savedSession, error: sessionError } = await supabaseAdmin.from("workout_sessions")
-      .insert({ version_id: plan.id, title: session.title.trim(), notes: session.notes, sort_order: sessionOrder }).select("id").single();
-    if (sessionError) throw sessionError;
-    const rows = session.exercises.filter((item) => item.name.trim()).map((item, index) => ({
-      session_id: savedSession.id, name: item.name.trim(), sets: item.sets, repetitions: item.repetitions,
-      reference_load: item.reference_load, rest: item.rest, instructions: item.instructions,
-      demo_url: item.demo_url, sort_order: index,
-    }));
-    if (rows.length) {
-      const { error: insertError } = await supabaseAdmin.from("workout_plan_exercises").insert(rows);
-      if (insertError) throw insertError;
-    }
-  }
   await auditTrainingPlan(plan.patient_id, plan.id, title, "update", `Ficha de treino "${title}" atualizada.`);
-  return (await fetchFullTrainingPlan(plan.id)) ?? { ...updated, patient_id: plan.patient_id } as TrainingPlan;
+  const saved = await fetchFullTrainingPlan(plan.id);
+  if (!saved) throw new Error("A ficha salva não está disponível.");
+  return saved;
 }
 
 export async function publishTrainingPlan(plan: TrainingPlan): Promise<void> {

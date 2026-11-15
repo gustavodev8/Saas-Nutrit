@@ -14,7 +14,7 @@ vi.mock("@/lib/patientPortalSupabase", () => ({
   },
 }));
 
-import { fetchCurrentPortalPatient } from "@/lib/patientPortalApi";
+import { createPortalTrainingLog, fetchCurrentPortalPatient } from "@/lib/patientPortalApi";
 
 describe("fetchCurrentPortalPatient linked profiles", () => {
   afterEach(() => vi.clearAllMocks());
@@ -55,5 +55,29 @@ describe("fetchCurrentPortalPatient linked profiles", () => {
     await expect(fetchCurrentPortalPatient()).resolves.toBeNull();
     expect(mocks.from).not.toHaveBeenCalled();
     expect(mocks.rpc).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("createPortalTrainingLog idempotency", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("envia a mesma chave de requisição para a RPC idempotente", async () => {
+    mocks.rpc.mockResolvedValue({ data: 91, error: null });
+
+    await expect(createPortalTrainingLog({
+      requestId: "10000000-0000-4000-8000-000000000010",
+      versionId: 20,
+      sessionId: 30,
+      patientId: 40,
+      performedAt: "2026-11-15T12:00:00.000Z",
+      difficulty: "moderate",
+      notes: "Teste",
+      loads: [{ exerciseId: 50, exerciseName: "Agachamento", loadUsed: "20 kg" }],
+    })).resolves.toBe(true);
+
+    expect(mocks.rpc).toHaveBeenCalledWith("create_workout_session_log_v2", expect.objectContaining({
+      p_request_id: "10000000-0000-4000-8000-000000000010",
+      p_workout_session_id: 30,
+    }));
   });
 });

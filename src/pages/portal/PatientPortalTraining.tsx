@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Activity,
   CalendarDays,
@@ -48,6 +48,7 @@ function MetaChip({ icon: Icon, children }: { icon: typeof Activity; children: s
 }
 
 type TrainingLogDraft = {
+  requestId: string;
   performedAt: string;
   difficulty: "easy" | "moderate" | "hard";
   notes: string;
@@ -55,7 +56,7 @@ type TrainingLogDraft = {
 };
 
 function emptyTrainingLogDraft(): TrainingLogDraft {
-  return { performedAt: today(), difficulty: "moderate", notes: "", loads: {} };
+  return { requestId: crypto.randomUUID(), performedAt: today(), difficulty: "moderate", notes: "", loads: {} };
 }
 
 export default function PatientPortalTraining() {
@@ -69,18 +70,22 @@ export default function PatientPortalTraining() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [performedAt, setPerformedAt] = useState(today());
   const [difficulty, setDifficulty] = useState<"easy" | "moderate" | "hard">("moderate");
   const [notes, setNotes] = useState("");
   const [loads, setLoads] = useState<Record<number, string>>({});
   const [logDrafts, setLogDrafts] = useState<Record<number, TrainingLogDraft>>({});
+  const loadGeneration = useRef(0);
 
   const loadData = useCallback(async (patientId: number) => {
+    const generation = ++loadGeneration.current;
     setLoading(true);
     setError(null);
     try {
       const nextPlans = await fetchPortalTrainingPlans(patientId);
       const nextLogs = await fetchPortalTrainingLogs(patientId, nextPlans.map((plan) => plan.id));
+      if (generation !== loadGeneration.current) return;
       setPlans(nextPlans);
       setLogs(nextLogs);
       setSelectedVersionId((current) => nextPlans.some((plan) => plan.id === current)
@@ -94,14 +99,19 @@ export default function PatientPortalTraining() {
           : nextPlans[0]?.sessions[0]?.id ?? null;
       });
     } catch (loadError) {
+      if (generation !== loadGeneration.current) return;
       setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar os treinos.");
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    setPlans([]);
+    setLogs([]);
+    setLogDrafts({});
     if (patient?.id) void loadData(patient.id);
+    return () => { loadGeneration.current += 1; };
   }, [patient?.id, loadData]);
 
   const selectedPlan = plans.find((plan) => plan.id === selectedVersionId) ?? null;
@@ -123,6 +133,7 @@ export default function PatientPortalTraining() {
   }
 
   const resetForm = (draft: TrainingLogDraft = emptyTrainingLogDraft()) => {
+    setRequestId(draft.requestId);
     setPerformedAt(draft.performedAt);
     setDifficulty(draft.difficulty);
     setNotes(draft.notes);
@@ -133,7 +144,7 @@ export default function PatientPortalTraining() {
     if (activeSessionId === null) return;
     setLogDrafts((current) => ({
       ...current,
-      [activeSessionId]: { performedAt, difficulty, notes, loads: { ...loads } },
+      [activeSessionId]: { requestId, performedAt, difficulty, notes, loads: { ...loads } },
     }));
   };
 
@@ -170,6 +181,7 @@ export default function PatientPortalTraining() {
     let success = false;
     try {
       success = await createPortalTrainingLog({
+        requestId,
         versionId: selectedPlan.id,
         sessionId: activeSession.id,
         patientId: patient.id,

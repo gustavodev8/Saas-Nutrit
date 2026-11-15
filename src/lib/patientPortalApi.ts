@@ -113,11 +113,12 @@ export async function fetchPortalTrainingLogs(
 
 export async function createPortalTrainingLog(input: PortalTrainingLogInput): Promise<boolean> {
   const difficulty = { easy: 1, moderate: 2, hard: 3 }[input.difficulty];
-  const { error } = await patientPortalSupabase.rpc("create_workout_session_log", {
+  const { error } = await patientPortalSupabase.rpc("create_workout_session_log_v2", {
     p_workout_session_id: input.sessionId,
     p_performed_at: input.performedAt,
     p_difficulty: difficulty,
     p_notes: input.notes.trim() || null,
+    p_request_id: input.requestId,
     p_exercises: input.loads
       .filter((load) => load.loadUsed.trim().length > 0)
       .map((load) => ({
