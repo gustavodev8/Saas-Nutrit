@@ -2,12 +2,12 @@
 
 ## Redesign da listagem de pacientes — 2026-11-15
 
-- **Estado local:** redesign visual implementado, ainda não commitado, em `src/pages/admin/AdminPacientes.tsx` e `src/components/admin/AdminLayout.tsx`. Nenhuma ação remota, migration, segredo ou deploy foi executado.
-- **Escopo:** somente `/admin/pacientes` recebeu o shell horizontal de clínica, sem sidebar e sem navegação móvel inferior; as demais rotas, inclusive o prontuário individual, mantêm o shell administrativo anterior.
+- **Estado local:** redesign visual publicado no commit `34faf2b`; a correção que preserva a navegação lateral e móvel em `/admin/pacientes` está local, ainda não commitada, em `src/components/admin/AdminLayout.tsx`. Nenhuma migration, segredo ou deploy foi executado.
+- **Escopo:** somente `/admin/pacientes` recebeu o cabeçalho horizontal de clínica; a sidebar desktop e a navegação móvel padrão foram preservadas nessa rota e as demais rotas, inclusive o prontuário individual, mantêm o shell administrativo anterior.
 - **Entrega:** cartão de total verde, painel único de atenção com seis filtros operacionais clicáveis e tabela reorganizada em Paciente, Contato, Pendências, Perfil e Cadastro. Busca, filtros, ordenação, paginação, exclusão e cadastro permanecem no mesmo fluxo.
 - **Validações:** `npm run build`, `npm run test -- --run` (146 testes), ESLint direcionado aos dois arquivos e `git diff --check` passaram. O lint global segue com 56 erros pré-existentes fora desse escopo.
-- **QA:** revisão independente em modo read-only: `QA_PASS`. Observação não bloqueadora: o texto de variação mensal do cartão total omite o sinal positivo antes do valor, com impacto apenas de fidelidade visual.
-- **Próximo passo seguro:** revisar visualmente com sessão autenticada em desktop e mobile; se aprovado, criar commit e solicitar autorização explícita antes de publicar.
+- **QA:** revisão independente em modo read-only: `QA_PASS` para o redesign e para a restauração posterior da navegação. Observação não bloqueadora: o texto de variação mensal do cartão total omite o sinal positivo antes do valor, com impacto apenas de fidelidade visual.
+- **Próximo passo seguro:** revisar visualmente com sessão autenticada em desktop e mobile; se aprovado, criar commit e solicitar autorização explícita antes de publicar a correção da navegação.
 
 ## Fundação SaaS — sincronização de histórico — 2026-11-04
 

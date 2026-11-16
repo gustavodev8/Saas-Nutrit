@@ -248,7 +248,7 @@ const AdminLayout = () => {
 
   return (
     <div className="min-h-screen bg-muted/20">
-      {!isPatientsIndex && sidebarOpen && (
+      {sidebarOpen && (
         <button
           type="button"
           aria-label="Fechar menu"
@@ -257,7 +257,7 @@ const AdminLayout = () => {
         />
       )}
 
-      {!isPatientsIndex && <aside
+      <aside
         className={cn(
           "print-hide fixed left-0 top-0 z-40 flex h-full w-[272px] flex-col border-r border-border/80 bg-card shadow-sm transition-transform duration-300",
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
@@ -319,9 +319,9 @@ const AdminLayout = () => {
             </Button>
           </div>
         </div>
-      </aside>}
+      </aside>
 
-      <div className={cn("flex min-h-screen flex-col", !isPatientsIndex && "lg:ml-[272px]")}>
+      <div className="flex min-h-screen flex-col lg:ml-[272px]">
         {isPatientsIndex ? (
           <header className="print-hide sticky top-0 z-20 border-b border-[#dce5df] bg-white/95 px-4 py-2.5 backdrop-blur-sm sm:px-6">
             <div className="mx-auto flex w-full max-w-[1232px] items-center justify-between gap-4">
@@ -381,7 +381,7 @@ const AdminLayout = () => {
           </div>
         </header>}
 
-        <main className={cn("flex-1 px-4 py-4 pb-24 sm:px-5 sm:py-5 lg:px-6 lg:py-6", isPatientsIndex && "bg-[#f7faf8] pb-10 sm:px-6 sm:py-7 lg:px-6")}>
+        <main className={cn("flex-1 px-4 py-4 pb-24 sm:px-5 sm:py-5 lg:px-6 lg:py-6", isPatientsIndex && "bg-[#f7faf8] sm:px-6 sm:py-7 lg:px-6")}>
           <div className={cn("mx-auto w-full max-w-[1500px]", isPatientsIndex && "max-w-[1232px]")}>
             {loading ? (
               <div className="flex h-64 items-center justify-center rounded-2xl border border-border bg-card">
@@ -394,7 +394,7 @@ const AdminLayout = () => {
         </main>
       </div>
 
-      {!isPatientsIndex && <nav className="print-hide fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
+      <nav className="print-hide fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
         <div className="flex h-[58px] items-stretch">
           <NavLink
             to="/admin"
@@ -458,7 +458,7 @@ const AdminLayout = () => {
             <span>Menu</span>
           </button>
         </div>
-      </nav>}
+      </nav>
     </div>
   );
 };
