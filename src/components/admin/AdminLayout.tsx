@@ -236,6 +236,7 @@ const AdminLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const currentItem = useMemo(() => getCurrentItem(location.pathname), [location.pathname]);
+  const isPatientsIndex = location.pathname === "/admin/pacientes";
 
   const groupDefaultOpen = (items: NavItem[]) =>
     items.some((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`));
@@ -247,7 +248,7 @@ const AdminLayout = () => {
 
   return (
     <div className="min-h-screen bg-muted/20">
-      {sidebarOpen && (
+      {!isPatientsIndex && sidebarOpen && (
         <button
           type="button"
           aria-label="Fechar menu"
@@ -256,7 +257,7 @@ const AdminLayout = () => {
         />
       )}
 
-      <aside
+      {!isPatientsIndex && <aside
         className={cn(
           "print-hide fixed left-0 top-0 z-40 flex h-full w-[272px] flex-col border-r border-border/80 bg-card shadow-sm transition-transform duration-300",
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
@@ -318,10 +319,34 @@ const AdminLayout = () => {
             </Button>
           </div>
         </div>
-      </aside>
+      </aside>}
 
-      <div className="flex min-h-screen flex-col lg:ml-[272px]">
-        <header className="print-hide sticky top-0 z-20 border-b border-border/80 bg-background/90 px-4 py-3 backdrop-blur-sm sm:px-5">
+      <div className={cn("flex min-h-screen flex-col", !isPatientsIndex && "lg:ml-[272px]")}>
+        {isPatientsIndex ? (
+          <header className="print-hide sticky top-0 z-20 border-b border-[#dce5df] bg-white/95 px-4 py-2.5 backdrop-blur-sm sm:px-6">
+            <div className="mx-auto flex w-full max-w-[1232px] items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#14583d] text-sm font-bold text-white">
+                  {content.identity.brandName.trim().charAt(0).toUpperCase() || "N"}
+                </div>
+                <div className="leading-tight">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#718078]">Admin</p>
+                  <p className="truncate text-sm font-medium text-[#17221d]">Clínica</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <a href="/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full px-2 py-2 text-sm text-[#617168] transition hover:text-[#14583d]">
+                  <ExternalLink className="h-4 w-4" />
+                  <span className="hidden sm:inline">Ver site</span>
+                </a>
+                <div className="flex items-center gap-2 rounded-full border border-[#dce5df] py-1 pl-1 pr-3 text-sm text-[#26352d]">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#e9f2ec] text-xs font-semibold text-[#14583d]">A</span>
+                  <span>Admin</span>
+                </div>
+              </div>
+            </div>
+          </header>
+        ) : <header className="print-hide sticky top-0 z-20 border-b border-border/80 bg-background/90 px-4 py-3 backdrop-blur-sm sm:px-5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <button
@@ -354,10 +379,10 @@ const AdminLayout = () => {
               </p>
             </div>
           </div>
-        </header>
+        </header>}
 
-        <main className="flex-1 px-4 py-4 pb-24 sm:px-5 sm:py-5 lg:px-6 lg:py-6">
-          <div className="mx-auto w-full max-w-[1500px]">
+        <main className={cn("flex-1 px-4 py-4 pb-24 sm:px-5 sm:py-5 lg:px-6 lg:py-6", isPatientsIndex && "bg-[#f7faf8] pb-10 sm:px-6 sm:py-7 lg:px-6")}>
+          <div className={cn("mx-auto w-full max-w-[1500px]", isPatientsIndex && "max-w-[1232px]")}>
             {loading ? (
               <div className="flex h-64 items-center justify-center rounded-2xl border border-border bg-card">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -369,7 +394,7 @@ const AdminLayout = () => {
         </main>
       </div>
 
-      <nav className="print-hide fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
+      {!isPatientsIndex && <nav className="print-hide fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
         <div className="flex h-[58px] items-stretch">
           <NavLink
             to="/admin"
@@ -433,7 +458,7 @@ const AdminLayout = () => {
             <span>Menu</span>
           </button>
         </div>
-      </nav>
+      </nav>}
     </div>
   );
 };
