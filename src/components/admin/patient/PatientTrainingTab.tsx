@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExerciseAutocomplete } from "@/components/admin/patient/training/ExerciseAutocomplete";
+import { TrainingConfirmationDialog, type TrainingConfirmation } from "@/components/admin/patient/training/TrainingConfirmationDialog";
 import {
   createTrainingClientKey,
   getTrainingExerciseKey,
@@ -136,6 +137,8 @@ export function PatientTrainingTab({
   const [error, setError] = useState<string | null>(null);
   const [editorStep, setEditorStep] = useState<"library" | "start" | "details" | "sessions" | "review">("library");
   const [isDirty, setIsDirty] = useState(false);
+  const [confirmation, setConfirmation] = useState<TrainingConfirmation | null>(null);
+  const allowInternalNavigationRef = useRef<string | null>(null);
   const [librarySearch, setLibrarySearch] = useState("");
   const [libraryStatus, setLibraryStatus] = useState<TrainingPlan["status"] | "all">("all");
   const [activeSessionIndex, setActiveSessionIndex] = useState(0);
@@ -223,13 +226,29 @@ export function PatientTrainingTab({
       const target = event.target instanceof Element ? event.target.closest("a[href]") : null;
       if (!target || !(target instanceof HTMLAnchorElement)) return;
       if (target.target === "_blank" || target.href === window.location.href) return;
-      if (!window.confirm("Há alterações não salvas. Deseja sair mesmo assim?")) {
-        event.preventDefault();
-        event.stopPropagation();
-      } else {
-        setIsDirty(false);
-        onDirtyChange?.(false);
+      if (allowInternalNavigationRef.current === target.href) {
+        allowInternalNavigationRef.current = null;
+        return;
       }
+      event.preventDefault();
+      event.stopPropagation();
+      const destination = target.href;
+      setConfirmation({
+        title: "Sair sem salvar?",
+        description: "As alterações desta ficha ainda não foram salvas. Se continuar, elas serão descartadas.",
+        confirmLabel: "Sair sem salvar",
+        variant: "destructive",
+        onConfirm: () => {
+          setIsDirty(false);
+          onDirtyChange?.(false);
+          if (target.isConnected) {
+            allowInternalNavigationRef.current = destination;
+            target.click();
+          } else {
+            window.location.assign(destination);
+          }
+        },
+      });
     };
     const warnHistoryNavigation = () => {
       if (!window.confirm("Há alterações não salvas. Deseja sair mesmo assim?")) window.history.forward();
@@ -327,8 +346,17 @@ export function PatientTrainingTab({
     if (!exercise || selected?.status !== "draft") return;
     const hasValues = Boolean(exercise.sets.trim() || exercise.repetitions.trim());
     const alreadyApplied = exercise.sets.trim() === sets && exercise.repetitions.trim() === repetitions;
-    if (hasValues && !alreadyApplied && !window.confirm(`Substituir séries e repetições atuais por ${sets} × ${repetitions}?`)) return;
-    updateExercise(sessionIndex, exerciseIndex, { sets, repetitions });
+    const apply = () => updateExercise(sessionIndex, exerciseIndex, { sets, repetitions });
+    if (hasValues && !alreadyApplied) {
+      setConfirmation({
+        title: "Substituir séries e repetições?",
+        description: `Os valores preenchidos serão trocados por ${sets} séries × ${repetitions} repetições. Você pode cancelar e manter os valores atuais.`,
+        confirmLabel: "Substituir valores",
+        onConfirm: apply,
+      });
+      return;
+    }
+    apply();
   };
 
   const filteredWorkoutPresets = useMemo(() => {
@@ -405,22 +433,33 @@ export function PatientTrainingTab({
     const hasDifferences = current.name !== preset.name || current.sets !== preset.sets || current.repetitions !== preset.repetitions
       || current.reference_load !== preset.reference_load || current.rest !== preset.rest
       || current.instructions !== preset.instructions || current.demo_url !== preset.demo_url;
-    if (hasCurrentValues && hasDifferences && !window.confirm(`Aplicar “${preset.name}” substituirá os dados deste exercício. Continuar?`)) return;
-    updateExercise(exercisePresetTarget.sessionIndex, exercisePresetTarget.exerciseIndex, {
-      name: preset.name,
-      sets: preset.sets,
-      repetitions: preset.repetitions,
-      reference_load: preset.reference_load,
-      rest: preset.rest,
-      instructions: preset.instructions,
-      demo_url: preset.demo_url,
-    });
-    setShowExercisePresetPicker(false);
-    setExercisePresetTarget(null);
+    const apply = () => {
+      updateExercise(exercisePresetTarget.sessionIndex, exercisePresetTarget.exerciseIndex, {
+        name: preset.name,
+        sets: preset.sets,
+        repetitions: preset.repetitions,
+        reference_load: preset.reference_load,
+        rest: preset.rest,
+        instructions: preset.instructions,
+        demo_url: preset.demo_url,
+      });
+      setShowExercisePresetPicker(false);
+      setExercisePresetTarget(null);
+    };
+    if (hasCurrentValues && hasDifferences) {
+      setConfirmation({
+        title: "Aplicar prescrição salva?",
+        description: `“${preset.name}” substituirá os dados preenchidos neste exercício. A ficha só será alterada depois que você salvar.`,
+        confirmLabel: "Aplicar prescrição",
+        onConfirm: apply,
+      });
+      return;
+    }
+    apply();
   };
 
   const archiveExercisePreset = async (preset: WorkoutExercisePreset) => {
-    if (!workspaceId || !window.confirm(`Arquivar a prescrição favorita “${preset.name}”?`)) return;
+    if (!workspaceId) return;
     try {
       await archiveWorkoutExercisePreset(preset.id, workspaceId);
       await refreshLibrary();
@@ -512,20 +551,50 @@ export function PatientTrainingTab({
     }
   };
 
+  const confirmPendingAction = () => {
+    const action = confirmation?.onConfirm;
+    setConfirmation(null);
+    if (action) void action();
+  };
+
   const beginCreation = () => {
-    if (isDirty && !window.confirm("Há alterações não salvas. Deseja sair mesmo assim?")) return;
-    setSelected(null);
-    setCreationChoice(latestPlan ? "last" : "blank");
-    setSelectedPresetId(null);
-    setPresetSearch("");
-    setEditorStep("start");
-    setIsDirty(false);
+    const start = () => {
+      setSelected(null);
+      setCreationChoice(latestPlan ? "last" : "blank");
+      setSelectedPresetId(null);
+      setPresetSearch("");
+      setEditorStep("start");
+      setIsDirty(false);
+    };
+    if (isDirty) {
+      setConfirmation({
+        title: "Descartar alterações?",
+        description: "A ficha atual ainda não foi salva. Suas alterações serão descartadas para iniciar outra ficha.",
+        confirmLabel: "Descartar e continuar",
+        variant: "destructive",
+        onConfirm: start,
+      });
+      return;
+    }
+    start();
   };
 
   const returnToLibrary = () => {
-    if (isDirty && !window.confirm("Há alterações não salvas. Deseja voltar à biblioteca?")) return;
-    setEditorStep("library");
-    setIsDirty(false);
+    const back = () => {
+      setEditorStep("library");
+      setIsDirty(false);
+    };
+    if (isDirty) {
+      setConfirmation({
+        title: "Descartar alterações?",
+        description: "A ficha atual ainda não foi salva. Suas alterações serão descartadas ao voltar à biblioteca.",
+        confirmLabel: "Descartar e voltar",
+        variant: "destructive",
+        onConfirm: back,
+      });
+      return;
+    }
+    back();
   };
 
   const continueCreation = async () => {
@@ -948,11 +1017,19 @@ export function PatientTrainingTab({
                               setCatalogSearch("");
                             }} className="rounded-lg text-muted-foreground"><Copy className="h-4 w-4" aria-hidden="true" /></Button>
                             <Button type="button" size="icon" variant="ghost" aria-label={`Remover sessão ${session.title || sessionIndex + 1}`} onClick={() => {
-                              if (!window.confirm(`Remover a sessão “${session.title || `Sessão ${sessionIndex + 1}`}” e seus exercícios?`)) return;
-                              const nextSessions = (selected.sessions ?? []).filter((_, index) => index !== sessionIndex);
-                              update({ sessions: nextSessions });
-                              setActiveSessionIndex((current) => current > sessionIndex ? current - 1 : Math.min(current, Math.max(0, nextSessions.length - 1)));
-                              setCatalogSearch("");
+                              const sessionTitle = session.title || `Sessão ${sessionIndex + 1}`;
+                              setConfirmation({
+                                title: "Remover sessão?",
+                                description: `“${sessionTitle}” e seus exercícios serão removidos desta ficha. A alteração só será persistida quando você salvar.`,
+                                confirmLabel: "Remover sessão",
+                                variant: "destructive",
+                                onConfirm: () => {
+                                  const nextSessions = (selected.sessions ?? []).filter((_, index) => index !== sessionIndex);
+                                  update({ sessions: nextSessions });
+                                  setActiveSessionIndex((current) => current > sessionIndex ? current - 1 : Math.min(current, Math.max(0, nextSessions.length - 1)));
+                                  setCatalogSearch("");
+                                },
+                              });
                             }} className="rounded-lg text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" aria-hidden="true" /></Button>
                           </div>
                         ) : null}
@@ -1211,7 +1288,7 @@ export function PatientTrainingTab({
         <DialogContent className="max-w-lg rounded-3xl p-5 sm:p-6">
           <DialogHeader><DialogTitle>Prescrições favoritas</DialogTitle><DialogDescription>Aplicar uma prescrição substitui os campos deste exercício após confirmação.</DialogDescription></DialogHeader>
           <Input value={exercisePresetSearch} onChange={(event) => setExercisePresetSearch(event.target.value)} placeholder="Buscar prescrição" aria-label="Buscar prescrição favorita" className="rounded-xl" />
-          <div className="max-h-80 space-y-2 overflow-y-auto">{filteredExercisePresets.length === 0 ? <p className="p-3 text-sm text-muted-foreground">Nenhuma prescrição favorita encontrada.</p> : filteredExercisePresets.map((preset) => <div key={preset.id} className="flex items-center gap-2 rounded-2xl border border-border/60 p-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{preset.name}</p><p className="text-xs text-muted-foreground">{[preset.sets && `${preset.sets} séries`, preset.repetitions && `${preset.repetitions} rep.`, preset.reference_load, preset.rest].filter(Boolean).join(" · ")}</p></div><Button type="button" size="sm" onClick={() => applyExercisePreset(preset)} className="min-h-10 rounded-xl">Usar</Button><Button type="button" size="sm" variant="ghost" onClick={() => void archiveExercisePreset(preset)} aria-label={`Arquivar ${preset.name}`} className="min-h-10 rounded-xl text-muted-foreground hover:text-destructive"><Archive className="h-4 w-4" aria-hidden="true" /></Button></div>)}</div>
+          <div className="max-h-80 space-y-2 overflow-y-auto">{filteredExercisePresets.length === 0 ? <p className="p-3 text-sm text-muted-foreground">Nenhuma prescrição favorita encontrada.</p> : filteredExercisePresets.map((preset) => <div key={preset.id} className="flex items-center gap-2 rounded-2xl border border-border/60 p-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{preset.name}</p><p className="text-xs text-muted-foreground">{[preset.sets && `${preset.sets} séries`, preset.repetitions && `${preset.repetitions} rep.`, preset.reference_load, preset.rest].filter(Boolean).join(" · ")}</p></div><Button type="button" size="sm" onClick={() => applyExercisePreset(preset)} className="min-h-10 rounded-xl">Usar</Button><Button type="button" size="sm" variant="ghost" onClick={() => setConfirmation({ title: "Arquivar prescrição favorita?", description: `“${preset.name}” deixará de aparecer na biblioteca de prescrições salvas. Fichas já montadas não serão alteradas.`, confirmLabel: "Arquivar prescrição", variant: "destructive", onConfirm: () => archiveExercisePreset(preset) })} aria-label={`Arquivar ${preset.name}`} className="min-h-10 rounded-xl text-muted-foreground hover:text-destructive"><Archive className="h-4 w-4" aria-hidden="true" /></Button></div>)}</div>
           <DialogFooter><Button type="button" variant="ghost" onClick={() => setShowExercisePresetPicker(false)} className="rounded-xl">Fechar</Button></DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1223,6 +1300,8 @@ export function PatientTrainingTab({
           <DialogFooter><Button type="button" variant="ghost" onClick={() => setSaveModelOpen(false)} className="rounded-xl">Cancelar</Button><Button type="button" disabled={librarySaving || !modelName.trim()} onClick={() => void saveSelectedAsWorkoutPreset()} className="rounded-xl">{librarySaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar modelo</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TrainingConfirmationDialog confirmation={confirmation} onCancel={() => setConfirmation(null)} onConfirm={confirmPendingAction} />
     </div>
   );
 }
