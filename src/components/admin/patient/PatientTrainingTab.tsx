@@ -141,7 +141,6 @@ export function PatientTrainingTab({
   const [activeSessionIndex, setActiveSessionIndex] = useState(0);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
   const [catalogSearch, setCatalogSearch] = useState("");
-  const [exercisePickerSessionIndex, setExercisePickerSessionIndex] = useState<number | null>(null);
   const refreshGeneration = useRef(0);
   const libraryGeneration = useRef(0);
 
@@ -906,7 +905,7 @@ export function PatientTrainingTab({
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => { const next = selected.sessions?.length ?? 0; update({ sessions: [...(selected.sessions ?? []), { client_key: createTrainingClientKey("session"), title: `Treino ${String.fromCharCode(65 + next)}`, notes: "", sort_order: next, exercises: [] }] }); setActiveSessionIndex(next); setExercisePickerSessionIndex(null); setCatalogSearch(""); }}
+                    onClick={() => { const next = selected.sessions?.length ?? 0; update({ sessions: [...(selected.sessions ?? []), { client_key: createTrainingClientKey("session"), title: `Treino ${String.fromCharCode(65 + next)}`, notes: "", sort_order: next, exercises: [] }] }); setActiveSessionIndex(next); setCatalogSearch(""); }}
                     className="w-full rounded-xl sm:w-auto"
                   >
                     <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Adicionar sessão
@@ -918,7 +917,7 @@ export function PatientTrainingTab({
                 <div className="grid min-w-0 gap-3 rounded-xl border border-border/60 bg-muted/35 p-2 sm:p-3 lg:grid-cols-[210px_minmax(0,1fr)]">
                   <aside aria-label="Selecionar sessão" className="h-fit rounded-lg border border-border/60 bg-card p-2 shadow-sm lg:sticky lg:top-28">
                     <p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessões · {(selected.sessions ?? []).length}</p>
-                    <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={getTrainingSessionKey(session)} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => { setActiveSessionIndex(sessionIndex); setExercisePickerSessionIndex(null); setCatalogSearch(""); }} className={`flex min-h-12 min-w-40 items-center gap-2 rounded-lg px-2.5 text-left transition-colors lg:w-full ${activeSessionIndex === sessionIndex ? "border border-primary bg-primary/10 text-primary" : "border border-transparent text-foreground hover:bg-muted/70"}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${activeSessionIndex === sessionIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{String.fromCharCode(65 + sessionIndex)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="block truncate text-xs text-muted-foreground">{session.exercises.length} {session.exercises.length === 1 ? "exercício" : "exercícios"}</span></span></button>)}</div>
+                    <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">{(selected.sessions ?? []).map((session, sessionIndex) => <button key={getTrainingSessionKey(session)} type="button" aria-pressed={activeSessionIndex === sessionIndex} onClick={() => { setActiveSessionIndex(sessionIndex); setCatalogSearch(""); }} className={`flex min-h-12 min-w-40 items-center gap-2 rounded-lg px-2.5 text-left transition-colors lg:w-full ${activeSessionIndex === sessionIndex ? "border border-primary bg-primary/10 text-primary" : "border border-transparent text-foreground hover:bg-muted/70"}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${activeSessionIndex === sessionIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{String.fromCharCode(65 + sessionIndex)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{session.title || `Sessão ${sessionIndex + 1}`}</span><span className="block truncate text-xs text-muted-foreground">{session.exercises.length} {session.exercises.length === 1 ? "exercício" : "exercícios"}</span></span></button>)}</div>
                     {(selected.sessions ?? []).length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">Adicione uma sessão para começar.</p> : null}
                   </aside>
                   {(selected.sessions ?? []).map((session, sessionIndex) => sessionIndex === activeSessionIndex ? (
@@ -946,7 +945,6 @@ export function PatientTrainingTab({
                               const copyIndex = (selected.sessions?.length ?? 0);
                               update({ sessions: [...(selected.sessions ?? []), { ...session, id: undefined, client_key: createTrainingClientKey("session"), title: `${session.title || `Sessão ${sessionIndex + 1}`} (cópia)`, sort_order: copyIndex, exercises: session.exercises.map((exercise, exerciseIndex) => ({ ...exercise, id: undefined, client_key: createTrainingClientKey("exercise"), sort_order: exerciseIndex })) }] });
                               setActiveSessionIndex(copyIndex);
-                              setExercisePickerSessionIndex(null);
                               setCatalogSearch("");
                             }} className="rounded-lg text-muted-foreground"><Copy className="h-4 w-4" aria-hidden="true" /></Button>
                             <Button type="button" size="icon" variant="ghost" aria-label={`Remover sessão ${session.title || sessionIndex + 1}`} onClick={() => {
@@ -954,7 +952,6 @@ export function PatientTrainingTab({
                               const nextSessions = (selected.sessions ?? []).filter((_, index) => index !== sessionIndex);
                               update({ sessions: nextSessions });
                               setActiveSessionIndex((current) => current > sessionIndex ? current - 1 : Math.min(current, Math.max(0, nextSessions.length - 1)));
-                              setExercisePickerSessionIndex(null);
                               setCatalogSearch("");
                             }} className="rounded-lg text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" aria-hidden="true" /></Button>
                           </div>
@@ -1101,39 +1098,35 @@ export function PatientTrainingTab({
                           )}
 
                           {selected.status === "draft" ? (
-                            <div className="p-3 sm:p-4">
-                              <Button type="button" variant="outline" aria-expanded={exercisePickerSessionIndex === sessionIndex} aria-controls={`exercise-picker-${selected.id}-${sessionIndex}`} onClick={() => { setExercisePickerSessionIndex((current) => current === sessionIndex ? null : sessionIndex); setCatalogSearch(""); }} className="w-full rounded-lg sm:w-auto">
-                                <Plus className="mr-2 h-4 w-4" aria-hidden="true" />Adicionar exercício
-                              </Button>
-                              {exercisePickerSessionIndex === sessionIndex ? (
-                                <div id={`exercise-picker-${selected.id}-${sessionIndex}`} className="relative z-20 mt-3 rounded-lg border border-primary/20 bg-primary/[0.025] p-3 shadow-sm">
-                                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                                    <div><p className="text-sm font-semibold text-foreground">Adicionar à {session.title || `sessão ${sessionIndex + 1}`}</p><p className="text-xs text-muted-foreground">Busque no catálogo ou reutilize uma prescrição salva.</p></div>
-                                    <Button type="button" variant="ghost" size="sm" onClick={() => {
-                                      const exerciseIndex = session.exercises.length;
-                                      const nextExercise = { client_key: createTrainingClientKey("exercise"), name: "", sets: "", repetitions: "", reference_load: "", rest: "", instructions: "", demo_url: "", sort_order: exerciseIndex };
-                                      updateSession(sessionIndex, { exercises: [...session.exercises, nextExercise] });
-                                      setExpandedExercises((current) => new Set(current).add(getTrainingExerciseStateKey(session, nextExercise)));
-                                      setExercisePickerSessionIndex(null);
-                                    }} className="self-start rounded-lg">Inserir manualmente</Button>
-                                  </div>
-                                  <div className="mt-3">
-                                    <ExerciseAutocomplete id={`training-library-${selected.id}-${sessionIndex}`} value={catalogSearch} items={exerciseCatalog} onChange={setCatalogSearch} onSelect={(item) => {
-                                      const exerciseIndex = session.exercises.length;
-                                      const nextExercise = { client_key: createTrainingClientKey("exercise"), name: item.name, sets: "", repetitions: "", reference_load: "", rest: "", instructions: item.instructions || "", demo_url: item.demo_url || "", sort_order: exerciseIndex };
-                                      updateSession(sessionIndex, { exercises: [...session.exercises, nextExercise] });
-                                      setExpandedExercises((current) => new Set(current).add(getTrainingExerciseStateKey(session, nextExercise)));
-                                      setCatalogSearch("");
-                                    }} />
-                                  </div>
-                                  {workspaceId && exercisePresets.length > 0 ? <div className="mt-3 border-t border-border/60 pt-3"><p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Prescrições salvas</p><div className="grid gap-2 sm:grid-cols-2">{exercisePresets.slice(0, 4).map((preset) => <button key={preset.id} type="button" onClick={() => {
-                                    const exerciseIndex = session.exercises.length;
-                                    const nextExercise = { client_key: createTrainingClientKey("exercise"), name: preset.name, sets: preset.sets, repetitions: preset.repetitions, reference_load: preset.reference_load, rest: preset.rest, instructions: preset.instructions, demo_url: preset.demo_url, sort_order: exerciseIndex };
-                                    updateSession(sessionIndex, { exercises: [...session.exercises, nextExercise] });
-                                    setExpandedExercises((current) => new Set(current).add(getTrainingExerciseStateKey(session, nextExercise)));
-                                  }} className="min-w-0 rounded-lg border border-border/60 bg-background px-3 py-2 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="block truncate text-sm font-medium">{preset.name}</span><span className="block truncate text-xs text-muted-foreground">{[preset.sets && `${preset.sets} séries`, preset.repetitions && `${preset.repetitions} rep.`, preset.reference_load].filter(Boolean).join(" · ")}</span></button>)}</div></div> : null}
-                                </div>
-                              ) : null}
+                            <div id={`exercise-picker-${selected.id}-${sessionIndex}`} className="relative z-20 border-t border-border/60 bg-muted/15 p-3 sm:p-4">
+                              <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                <div><p className="text-sm font-semibold text-foreground">Adicionar à {session.title || `sessão ${sessionIndex + 1}`}</p><p className="text-xs text-muted-foreground">Busque no catálogo e nas prescrições salvas deste workspace. O campo permanece ativo para a próxima inserção.</p></div>
+                                <Button type="button" variant="ghost" size="sm" onClick={() => {
+                                  const exerciseIndex = session.exercises.length;
+                                  const nextExercise = { client_key: createTrainingClientKey("exercise"), name: "", sets: "", repetitions: "", reference_load: "", rest: "", instructions: "", demo_url: "", sort_order: exerciseIndex };
+                                  updateSession(sessionIndex, { exercises: [...session.exercises, nextExercise] });
+                                  setExpandedExercises((current) => new Set(current).add(getTrainingExerciseStateKey(session, nextExercise)));
+                                }} className="self-start rounded-lg"><Plus className="mr-2 h-4 w-4" aria-hidden="true" />Inserir manualmente</Button>
+                              </div>
+                              <ExerciseAutocomplete
+                                id={`training-library-${selected.id}-${sessionIndex}`}
+                                value={catalogSearch}
+                                items={exerciseCatalog}
+                                prescriptions={workspaceId ? exercisePresets : []}
+                                onChange={setCatalogSearch}
+                                onSelect={(item) => {
+                                  const exerciseIndex = session.exercises.length;
+                                  const nextExercise = { client_key: createTrainingClientKey("exercise"), name: item.name, sets: "", repetitions: "", reference_load: "", rest: "", instructions: item.instructions || "", demo_url: item.demo_url || "", sort_order: exerciseIndex };
+                                  updateSession(sessionIndex, { exercises: [...session.exercises, nextExercise] });
+                                  setCatalogSearch("");
+                                }}
+                                onSelectPrescription={(preset) => {
+                                  const exerciseIndex = session.exercises.length;
+                                  const nextExercise = { client_key: createTrainingClientKey("exercise"), name: preset.name, sets: preset.sets, repetitions: preset.repetitions, reference_load: preset.reference_load, rest: preset.rest, instructions: preset.instructions, demo_url: preset.demo_url, sort_order: exerciseIndex };
+                                  updateSession(sessionIndex, { exercises: [...session.exercises, nextExercise] });
+                                  setCatalogSearch("");
+                                }}
+                              />
                             </div>
                           ) : null}
                         </div>
