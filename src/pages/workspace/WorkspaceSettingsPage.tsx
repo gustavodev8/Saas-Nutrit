@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowRight, Building2, Check, CreditCard, Loader2, Mail, Settings, Shield, Users } from "lucide-react";
+import { ArrowRight, Building2, Check, CreditCard, Loader2, Mail, Palette, Settings, Shield, User, Users } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import {
+  ALL_PORTAL_TABS,
   fetchWorkspaceInfo,
   fetchWorkspaceMembers,
   ROLE_LABELS,
   STATUS_LABELS,
   updateWorkspaceName,
+  updateWorkspaceProfile,
+  updateWorkspacePortal,
   type WorkspaceInfo,
   type WorkspaceMemberInfo,
 } from "@/lib/workspaceSettings";
@@ -22,9 +25,11 @@ import {
 } from "@/lib/workspaceSubscription";
 import { cn } from "@/lib/utils";
 
-type TabKey = "clinica" | "equipe" | "plano";
+type TabKey = "perfil" | "portal" | "clinica" | "equipe" | "plano";
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+  { key: "perfil",  label: "Perfil",   icon: <User        size={15} aria-hidden="true" /> },
+  { key: "portal",  label: "Portal",   icon: <Palette     size={15} aria-hidden="true" /> },
   { key: "clinica", label: "Clínica",  icon: <Building2   size={15} aria-hidden="true" /> },
   { key: "equipe",  label: "Equipe",   icon: <Users       size={15} aria-hidden="true" /> },
   { key: "plano",   label: "Plano",    icon: <CreditCard  size={15} aria-hidden="true" /> },
@@ -64,6 +69,269 @@ function statusBadge(status: string) {
     return <span className="text-xs text-amber-600">{label}</span>;
   }
   return <span className="text-xs text-destructive">{label}</span>;
+}
+
+// ── Perfil tab ─────────────────────────────────────────────────────────────────
+
+function PerfilTab({ workspaceId, isOwner }: { workspaceId: string; isOwner: boolean }) {
+  const [info, setInfo] = useState<WorkspaceInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ display_name: "", crn: "", specialty: "", bio: "" });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchWorkspaceInfo(workspaceId)
+      .then((data) => {
+        if (!active) return;
+        setInfo(data);
+        setForm({
+          display_name: data.display_name ?? "",
+          crn:          data.crn ?? "",
+          specialty:    data.specialty ?? "",
+          bio:          data.bio ?? "",
+        });
+      })
+      .catch((e: unknown) => { if (active) setError(e instanceof Error ? e.message : "Erro ao carregar."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [workspaceId]);
+
+  const set = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); setSaved(false); };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!isOwner) return;
+    setSaving(true); setError(""); setSaved(false);
+    try {
+      await updateWorkspaceProfile(workspaceId, form);
+      setInfo((prev) => prev ? { ...prev, ...form } : prev);
+      setSaved(true);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaved(false), 2500);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Não foi possível salvar.");
+    } finally {
+      setSaving(false); }
+  };
+
+  if (loading) return <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 size={16} className="animate-spin" />Carregando...</div>;
+
+  return (
+    <form onSubmit={handleSubmit} className="max-w-lg space-y-5">
+      <div className="space-y-1.5">
+        <Label htmlFor="display-name">Nome de exibição</Label>
+        <p className="text-xs text-muted-foreground">Como seu nome aparece para os pacientes no portal.</p>
+        <Input id="display-name" value={form.display_name} onChange={(e) => set("display_name", e.target.value)}
+          placeholder="Ex: Dr. João Silva" maxLength={80} disabled={!isOwner} className="max-w-sm" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="crn">CRN</Label>
+          <Input id="crn" value={form.crn} onChange={(e) => set("crn", e.target.value)}
+            placeholder="Ex: CRN-5 12345" maxLength={20} disabled={!isOwner} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="specialty">Especialidade</Label>
+          <Input id="specialty" value={form.specialty} onChange={(e) => set("specialty", e.target.value)}
+            placeholder="Ex: Nutrição esportiva" maxLength={80} disabled={!isOwner} />
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="bio">Bio curta</Label>
+        <p className="text-xs text-muted-foreground">Aparece na tela inicial do portal do paciente. Máx. 500 caracteres.</p>
+        <textarea id="bio" rows={3} value={form.bio} onChange={(e) => set("bio", e.target.value)}
+          placeholder="Nutricionista clínico e esportivo com foco em..."
+          maxLength={500} disabled={!isOwner}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none disabled:opacity-50" />
+        <p className="text-xs text-muted-foreground text-right">{form.bio.length}/500</p>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {isOwner && (
+        <div className="flex items-center gap-3">
+          <Button type="submit" size="sm" className="bg-[#166b50] hover:bg-[#145e45] text-white" disabled={saving}>
+            {saving ? <><Loader2 size={14} className="animate-spin" />Salvando…</> : "Salvar perfil"}
+          </Button>
+          {saved && <span className="flex items-center gap-1 text-sm text-green-600"><Check size={14} />Salvo</span>}
+        </div>
+      )}
+      {!isOwner && <p className="text-xs text-muted-foreground">Apenas o owner pode editar o perfil.</p>}
+      {info && (
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-1">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Prévia no portal</p>
+          <p className="text-sm font-semibold">{form.display_name || info.name}</p>
+          {form.crn && <p className="text-xs text-muted-foreground">{form.crn}</p>}
+          {form.specialty && <p className="text-xs text-[#166b50]">{form.specialty}</p>}
+          {form.bio && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{form.bio}</p>}
+        </div>
+      )}
+    </form>
+  );
+}
+
+// ── Portal tab ─────────────────────────────────────────────────────────────────
+
+const ACCENT_PRESETS = [
+  { label: "Verde (padrão)", color: "#166b50" },
+  { label: "Azul",           color: "#1d4ed8" },
+  { label: "Roxo",           color: "#7c3aed" },
+  { label: "Rosa",           color: "#be185d" },
+  { label: "Laranja",        color: "#c2410c" },
+  { label: "Cinza",          color: "#374151" },
+];
+
+function PortalTab({ workspaceId, isOwner }: { workspaceId: string; isOwner: boolean }) {
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({
+    portal_accent: "#166b50",
+    portal_welcome_msg: "",
+    portal_tabs: ["plano", "treinos", "consultas", "documentos"],
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchWorkspaceInfo(workspaceId)
+      .then((data) => {
+        if (!active) return;
+        setForm({
+          portal_accent:      data.portal_accent ?? "#166b50",
+          portal_welcome_msg: data.portal_welcome_msg ?? "",
+          portal_tabs:        data.portal_tabs.length ? data.portal_tabs : ["plano","treinos","consultas","documentos"],
+        });
+      })
+      .catch((e: unknown) => { if (active) setError(e instanceof Error ? e.message : "Erro ao carregar."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [workspaceId]);
+
+  const toggleTab = (key: string) => {
+    setForm((f) => ({
+      ...f,
+      portal_tabs: f.portal_tabs.includes(key)
+        ? f.portal_tabs.filter((t) => t !== key)
+        : [...f.portal_tabs, key],
+    }));
+    setSaved(false);
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!isOwner) return;
+    setSaving(true); setError(""); setSaved(false);
+    try {
+      await updateWorkspacePortal(workspaceId, form);
+      setSaved(true);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaved(false), 2500);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Não foi possível salvar.");
+    } finally { setSaving(false); }
+  };
+
+  if (loading) return <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 size={16} className="animate-spin" />Carregando...</div>;
+
+  return (
+    <form onSubmit={handleSubmit} className="max-w-lg space-y-6">
+      {/* Cor de destaque */}
+      <div className="space-y-2">
+        <Label>Cor de destaque do portal</Label>
+        <p className="text-xs text-muted-foreground">Cor principal usada nos botões e destaques do portal do paciente.</p>
+        <div className="flex flex-wrap gap-2">
+          {ACCENT_PRESETS.map((p) => (
+            <button
+              key={p.color}
+              type="button"
+              title={p.label}
+              disabled={!isOwner}
+              onClick={() => { setForm((f) => ({ ...f, portal_accent: p.color })); setSaved(false); }}
+              className={cn(
+                "h-8 w-8 rounded-full border-2 transition-all",
+                form.portal_accent === p.color ? "border-foreground scale-110" : "border-transparent hover:scale-105",
+              )}
+              style={{ backgroundColor: p.color }}
+            />
+          ))}
+          <div className="flex items-center gap-2 ml-1">
+            <input
+              type="color"
+              value={form.portal_accent}
+              disabled={!isOwner}
+              onChange={(e) => { setForm((f) => ({ ...f, portal_accent: e.target.value })); setSaved(false); }}
+              className="h-8 w-8 cursor-pointer rounded border border-input bg-transparent disabled:opacity-50"
+              title="Cor personalizada"
+            />
+            <span className="text-xs text-muted-foreground font-mono">{form.portal_accent}</span>
+          </div>
+        </div>
+        {/* Preview chip */}
+        <div className="flex items-center gap-2 mt-1">
+          <span className="rounded-full px-3 py-1 text-xs font-medium text-white" style={{ backgroundColor: form.portal_accent }}>
+            Prévia do botão
+          </span>
+        </div>
+      </div>
+
+      {/* Mensagem de boas-vindas */}
+      <div className="space-y-1.5">
+        <Label htmlFor="welcome-msg">Mensagem de boas-vindas</Label>
+        <p className="text-xs text-muted-foreground">Exibida na tela inicial do portal. Deixe em branco para usar o padrão.</p>
+        <textarea
+          id="welcome-msg"
+          rows={2}
+          value={form.portal_welcome_msg}
+          onChange={(e) => { setForm((f) => ({ ...f, portal_welcome_msg: e.target.value })); setSaved(false); }}
+          disabled={!isOwner}
+          placeholder="Olá! Aqui você encontra seus planos e acompanhamentos. 🌿"
+          maxLength={300}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none disabled:opacity-50"
+        />
+        <p className="text-xs text-muted-foreground text-right">{form.portal_welcome_msg.length}/300</p>
+      </div>
+
+      {/* Abas visíveis */}
+      <div className="space-y-2">
+        <Label>Abas visíveis no portal</Label>
+        <p className="text-xs text-muted-foreground">Escolha quais seções o paciente pode ver. Pelo menos uma deve ficar ativa.</p>
+        <div className="space-y-2">
+          {ALL_PORTAL_TABS.map((tab) => {
+            const active = form.portal_tabs.includes(tab.key);
+            const isLast = form.portal_tabs.length === 1 && active;
+            return (
+              <label key={tab.key} className={cn("flex items-center gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors", active ? "border-[#166b50]/40 bg-[#166b50]/5" : "hover:bg-muted/50", (!isOwner || isLast) && "opacity-60 cursor-not-allowed")}>
+                <input
+                  type="checkbox"
+                  checked={active}
+                  disabled={!isOwner || isLast}
+                  onChange={() => toggleTab(tab.key)}
+                  className="accent-[#166b50]"
+                />
+                <span className="text-sm font-medium">{tab.label}</span>
+                {isLast && <span className="ml-auto text-xs text-muted-foreground">mínimo 1</span>}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {isOwner && (
+        <div className="flex items-center gap-3">
+          <Button type="submit" size="sm" className="bg-[#166b50] hover:bg-[#145e45] text-white" disabled={saving}>
+            {saving ? <><Loader2 size={14} className="animate-spin" />Salvando…</> : "Salvar portal"}
+          </Button>
+          {saved && <span className="flex items-center gap-1 text-sm text-green-600"><Check size={14} />Salvo</span>}
+        </div>
+      )}
+      {!isOwner && <p className="text-xs text-muted-foreground">Apenas o owner pode editar as configurações do portal.</p>}
+    </form>
+  );
 }
 
 // ── Clínica tab ────────────────────────────────────────────────────────────────
@@ -437,7 +705,7 @@ export default function WorkspaceSettingsPage() {
   const isOwner = membership?.role === "owner";
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabKey>(() =>
-    searchParams.get("subscribed") === "1" ? "plano" : "clinica"
+    searchParams.get("subscribed") === "1" ? "plano" : "perfil"
   );
 
   if (!workspaceId) {
@@ -477,6 +745,8 @@ export default function WorkspaceSettingsPage() {
         </div>
 
         <div className="pt-2">
+          {activeTab === "perfil"  && <PerfilTab  workspaceId={workspaceId} isOwner={isOwner} />}
+          {activeTab === "portal"  && <PortalTab  workspaceId={workspaceId} isOwner={isOwner} />}
           {activeTab === "clinica" && <ClinicaTab workspaceId={workspaceId} isOwner={isOwner} />}
           {activeTab === "equipe"  && <EquipeTab  workspaceId={workspaceId} currentUserEmail={userEmail} />}
           {activeTab === "plano"   && <PlanoTab   subscription={subscription} isOwner={isOwner} />}
