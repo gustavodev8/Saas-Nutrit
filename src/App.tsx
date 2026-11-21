@@ -93,6 +93,7 @@ import PlatformInvitationsPage from "./pages/platform/PlatformInvitationsPage";
 import PlatformResetPasswordPage from "./pages/platform/PlatformResetPasswordPage";
 import WorkspaceProtectedRoute from "@/components/workspace/WorkspaceProtectedRoute";
 import WorkspaceShell from "@/components/workspace/WorkspaceShell";
+import { WorkspaceTrialGate } from "@/components/workspace/WorkspaceTrialGate";
 import PublicSaaSLandingPage from "./pages/PublicSaaSLandingPage";
 import SaaSAdminPage from "./pages/SaaSAdminPage";
 
@@ -118,6 +119,13 @@ const WorkspaceRoot = () => (
   </WorkspaceAuthProvider>
 );
 
+// Gated layout: settings is always accessible (to subscribe); all other pages require active subscription
+const WorkspaceGatedOutlet = () => (
+  <WorkspaceTrialGate>
+    <Outlet />
+  </WorkspaceTrialGate>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ContentProvider>
@@ -136,14 +144,18 @@ const App = () => (
                 <Route path="accept" element={<WorkspaceAcceptInvitationPage />} />
                 <Route path="login" element={<WorkspaceLogin />} />
                 <Route element={<WorkspaceProtectedRoute><WorkspaceShell /></WorkspaceProtectedRoute>}>
-                  <Route index element={<WorkspaceDashboardPage />} />
-                  <Route path="patients" element={<WorkspacePatientsPage />} />
-                  <Route path="patients/:id" element={<WorkspacePatientDetailPage />} />
-                  <Route path="patients/:id/plan/:planId" element={<WorkspaceMealPlanPage />} />
-                  <Route path="modelos" element={<WorkspaceModelosPage />} />
-                  <Route path="modelos/:id" element={<WorkspaceModeloDetailPage />} />
-                  <Route path="alimentos" element={<WorkspaceAlimentosPage />} />
+                  {/* Settings always accessible (user needs it to upgrade) */}
                   <Route path="configuracoes" element={<WorkspaceSettingsPage />} />
+                  {/* All other pages gated by active subscription */}
+                  <Route element={<WorkspaceGatedOutlet />}>
+                    <Route index element={<WorkspaceDashboardPage />} />
+                    <Route path="patients" element={<WorkspacePatientsPage />} />
+                    <Route path="patients/:id" element={<WorkspacePatientDetailPage />} />
+                    <Route path="patients/:id/plan/:planId" element={<WorkspaceMealPlanPage />} />
+                    <Route path="modelos" element={<WorkspaceModelosPage />} />
+                    <Route path="modelos/:id" element={<WorkspaceModeloDetailPage />} />
+                    <Route path="alimentos" element={<WorkspaceAlimentosPage />} />
+                  </Route>
                 </Route>
               </Route>
               <Route path="/saas-admin" element={<SaaSAdminPage />} />
