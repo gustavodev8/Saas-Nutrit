@@ -14,6 +14,8 @@ export function SaaSPilotRouteGate({ enabled, children }: SaaSPilotRouteGateProp
   }, [enabled]);
 
   const allowedInPilot = pathname === "/"
+    || pathname === "/admin"
+    || pathname.startsWith("/admin/")
     || pathname === "/workspace"
     || pathname.startsWith("/workspace/")
     || pathname === "/platform/invitations"
