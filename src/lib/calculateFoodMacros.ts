@@ -22,7 +22,9 @@ export function usesEstimatedFoodUnitConversion(food: MealFood, foodDb?: FoodIte
 
 export function calculateFoodMacros(food: MealFood, foodDb?: FoodItem): MealFood {
   const qty = food.quantity;
-  if (qty === undefined || !Number.isFinite(qty)) return food;
+  if (qty === undefined || !Number.isFinite(qty)) {
+    return { ...food, calories: undefined, protein: undefined, carbs: undefined, fat: undefined };
+  }
   if (qty < 0) {
     return { ...food, calories: undefined, protein: undefined, carbs: undefined, fat: undefined };
   }

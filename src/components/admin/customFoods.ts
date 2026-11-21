@@ -1,21 +1,23 @@
 import { type FoodItem } from "@/lib/foodDatabase";
 
-const getCustomFoods = (): FoodItem[] => {
+const storageKey = (storageScope?: string) => storageScope ? `custom_foods:${storageScope}` : "custom_foods";
+
+const getCustomFoods = (storageScope?: string): FoodItem[] => {
   try {
-    return JSON.parse(localStorage.getItem("custom_foods") || "[]");
+    return JSON.parse(localStorage.getItem(storageKey(storageScope)) || "[]");
   } catch {
     return [];
   }
 };
 
-const saveCustomFoodLocal = (food: FoodItem): void => {
-  const foods = getCustomFoods();
+const saveCustomFoodLocal = (food: FoodItem, storageScope?: string): void => {
+  const foods = getCustomFoods(storageScope);
   foods.push(food);
-  localStorage.setItem("custom_foods", JSON.stringify(foods));
+  localStorage.setItem(storageKey(storageScope), JSON.stringify(foods));
 };
 
-export async function fetchCustomFoods(): Promise<FoodItem[]> {
-  return getCustomFoods();
+export async function fetchCustomFoods(storageScope?: string): Promise<FoodItem[]> {
+  return getCustomFoods(storageScope);
 }
 
 export async function saveCustomFood(food: {
@@ -26,7 +28,7 @@ export async function saveCustomFood(food: {
   carbs_per_100g: number;
   fat_per_100g: number;
   fiber_per_100g?: number;
-}): Promise<FoodItem> {
+}, storageScope?: string): Promise<FoodItem> {
   const newFood: FoodItem = {
     id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     name: food.name,
@@ -38,6 +40,6 @@ export async function saveCustomFood(food: {
     fiber: food.fiber_per_100g,
   };
 
-  saveCustomFoodLocal(newFood);
+  saveCustomFoodLocal(newFood, storageScope);
   return newFood;
 }

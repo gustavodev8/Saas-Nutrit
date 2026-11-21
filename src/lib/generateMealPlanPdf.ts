@@ -109,6 +109,7 @@ function mealQty(food: NonNullable<Meal["foods"]>[number]) {
 }
 
 export interface MealPlanPdfOptions {
+  workspaceName?: string;
   selectedAlternatives?: Record<number, number[]>;
   substitutionLayout?: "stacked" | "columns";
 }
@@ -518,6 +519,10 @@ export function generateMealPlanPdf(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
   doc.text("PLANO ALIMENTAR PERSONALIZADO", margin, 10);
+  const workspaceName = options?.workspaceName?.replace(/\s+/g, " ").trim();
+  if (workspaceName) {
+    doc.text(fitText(doc, workspaceName, (pageWidth - 2 * margin) / 2), pageWidth - margin, 10, { align: "right" });
+  }
 
   doc.setTextColor(...C.ink);
   doc.setFontSize(18);

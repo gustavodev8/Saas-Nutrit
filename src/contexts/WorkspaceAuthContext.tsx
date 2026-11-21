@@ -1,5 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useLocation } from "react-router-dom";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { resolveWorkspaceMembership, type WorkspaceMembership, type ValidWorkspaceMembership } from "@/lib/workspaceAuth";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
 
@@ -7,11 +6,19 @@ interface WorkspaceAuthContextValue {
   authReady: boolean;
   membershipReady: boolean;
   isAuthenticated: boolean;
+  authUserId: string | null;
   userEmail: string | null;
   membership: ValidWorkspaceMembership | null;
   refreshMembership: () => Promise<boolean>;
   login: (email: string, password: string) => Promise<{ ok: boolean; message?: string }>;
   logout: () => Promise<void>;
+}
+
+interface LoginInProgress {
+  operationId: number;
+  authUserId: string | null;
+  queuedSignInUserId: string | null;
+  hasQueuedSignIn: boolean;
 }
 
 const WorkspaceAuthContext = createContext<WorkspaceAuthContextValue | null>(null);
@@ -25,68 +32,128 @@ async function resolveCurrentMembership(): Promise<ValidWorkspaceMembership | nu
 }
 
 export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
-  const location = useLocation();
-  const isInvitationRoute = location.pathname === "/workspace/accept";
-  const preserveUnassignedSession = isInvitationRoute || location.pathname === "/workspace/login";
   const [authReady, setAuthReady] = useState(false);
   const [membershipReady, setMembershipReady] = useState(false);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [membership, setMembership] = useState<ValidWorkspaceMembership | null>(null);
+  const authOperationRef = useRef(0);
+  const loginInProgressRef = useRef<LoginInProgress | null>(null);
+  const blockedAuthUserIdRef = useRef<string | null>(null);
 
   const syncSession = useCallback(async () => {
-    const { data } = await workspaceSupabase.auth.getSession();
-    const email = data.session?.user.email?.trim().toLowerCase() ?? null;
-    setUserEmail(email);
-    setAuthReady(true);
-
-    if (!email) {
-      setMembership(null);
-      setMembershipReady(true);
-      return;
-    }
-
+    const operationId = ++authOperationRef.current;
+    let sessionResolved = false;
     setMembershipReady(false);
+    setAuthUserId(null);
+    setUserEmail(null);
+    setMembership(null);
     try {
+      const { data } = await workspaceSupabase.auth.getSession();
+      if (operationId !== authOperationRef.current) return;
+      sessionResolved = true;
+      const authUser = data.session?.user;
+      const userId = authUser?.id ?? null;
+      const email = authUser?.email?.trim().toLowerCase() ?? null;
+      setAuthUserId(userId);
+      setUserEmail(email);
+      setAuthReady(true);
+
+      if (userId && blockedAuthUserIdRef.current && userId !== blockedAuthUserIdRef.current) {
+        blockedAuthUserIdRef.current = null;
+      }
+      if (userId && userId === blockedAuthUserIdRef.current) {
+        setMembership(null);
+        return;
+      }
+
+      if (!userId || !email) {
+        setAuthUserId(null);
+        setUserEmail(null);
+        setMembership(null);
+        return;
+      }
+
       const nextMembership = await resolveCurrentMembership();
+      if (operationId !== authOperationRef.current) return;
       setMembership(nextMembership);
-      if (!nextMembership && !preserveUnassignedSession) await workspaceSupabase.auth.signOut();
     } catch (error) {
+      if (operationId !== authOperationRef.current) return;
       console.error("[WorkspaceAuth] membership lookup failed:", error);
+      setAuthReady(true);
       setMembership(null);
-      if (!isInvitationRoute) await workspaceSupabase.auth.signOut().catch(() => null);
+      if (!sessionResolved) {
+        setAuthUserId(null);
+        setUserEmail(null);
+      }
     } finally {
-      setMembershipReady(true);
+      if (operationId === authOperationRef.current) setMembershipReady(true);
     }
-  }, [isInvitationRoute, preserveUnassignedSession]);
+  }, []);
 
   const refreshMembership = useCallback(async () => {
-    const { data } = await workspaceSupabase.auth.getSession();
-    const email = data.session?.user.email?.trim().toLowerCase() ?? null;
-    setUserEmail(email);
-    setAuthReady(true);
+    const operationId = ++authOperationRef.current;
+    let sessionResolved = false;
     setMembershipReady(false);
-    if (!email) {
-      setMembership(null);
-      setMembershipReady(true);
-      return false;
-    }
-
     try {
+      const { data } = await workspaceSupabase.auth.getSession();
+      if (operationId !== authOperationRef.current) return false;
+      sessionResolved = true;
+      const authUser = data.session?.user;
+      const userId = authUser?.id ?? null;
+      const email = authUser?.email?.trim().toLowerCase() ?? null;
+      setAuthUserId(userId);
+      setUserEmail(email);
+      setAuthReady(true);
+      if (userId && blockedAuthUserIdRef.current && userId !== blockedAuthUserIdRef.current) {
+        blockedAuthUserIdRef.current = null;
+      }
+      if (userId && userId === blockedAuthUserIdRef.current) {
+        setMembership(null);
+        return false;
+      }
+      if (!userId || !email) {
+        setAuthUserId(null);
+        setUserEmail(null);
+        setMembership(null);
+        return false;
+      }
+
       const nextMembership = await resolveCurrentMembership();
+      if (operationId !== authOperationRef.current) return false;
       setMembership(nextMembership);
-      setMembershipReady(true);
       return Boolean(nextMembership);
     } catch (error) {
+      if (operationId !== authOperationRef.current) return false;
       console.error("[WorkspaceAuth] membership refresh failed:", error);
+      setAuthReady(true);
+      if (!sessionResolved) {
+        setAuthUserId(null);
+        setUserEmail(null);
+      }
       setMembership(null);
-      setMembershipReady(true);
       return false;
+    } finally {
+      if (operationId === authOperationRef.current) setMembershipReady(true);
     }
   }, []);
 
   useEffect(() => {
     void syncSession();
-    const { data: listener } = workspaceSupabase.auth.onAuthStateChange(() => {
+    const { data: listener } = workspaceSupabase.auth.onAuthStateChange((event, session) => {
+      const pendingLogin = loginInProgressRef.current;
+      if (event === "SIGNED_IN" && pendingLogin) {
+        const eventUser = session?.user;
+        if (!pendingLogin.authUserId) {
+          loginInProgressRef.current = {
+            ...pendingLogin,
+            queuedSignInUserId: eventUser?.id ?? null,
+            hasQueuedSignIn: true,
+          };
+          return;
+        }
+        if (eventUser?.id === pendingLogin.authUserId) return;
+      }
       void syncSession();
     });
     return () => listener.subscription.unsubscribe();
@@ -96,50 +163,105 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || !password) return { ok: false, message: "Informe e-mail e senha." };
 
-    const { error } = await workspaceSupabase.auth.signInWithPassword({ email: normalizedEmail, password });
-    if (error) return { ok: false, message: "E-mail ou senha incorretos." };
-
+    const operationId = ++authOperationRef.current;
+    loginInProgressRef.current = {
+      operationId,
+      authUserId: null,
+      queuedSignInUserId: null,
+      hasQueuedSignIn: false,
+    };
+    setMembershipReady(false);
     try {
-      const nextMembership = await resolveCurrentMembership();
-      if (!nextMembership) {
-        if (preserveUnassignedSession) {
-          setUserEmail(normalizedEmail);
+      const { data, error } = await workspaceSupabase.auth.signInWithPassword({ email: normalizedEmail, password });
+      if (operationId !== authOperationRef.current) return { ok: false, message: "A sessão foi alterada durante o login." };
+      if (error) {
+        void syncSession();
+        return { ok: false, message: "E-mail ou senha incorretos." };
+      }
+
+      const authUser = data.session?.user;
+      const userId = authUser?.id ?? null;
+      const authenticatedEmail = authUser?.email?.trim().toLowerCase() ?? normalizedEmail;
+      if (!userId) {
+        setAuthUserId(null);
+        setUserEmail(null);
+        setMembership(null);
+        setAuthReady(true);
+        return { ok: false, message: "Não foi possível identificar a sessão autenticada." };
+      }
+      const pendingLogin = loginInProgressRef.current;
+      if (pendingLogin?.operationId === operationId) {
+        if (pendingLogin.hasQueuedSignIn && pendingLogin.queuedSignInUserId !== userId) {
+          blockedAuthUserIdRef.current = userId;
+          setAuthUserId(userId);
+          setUserEmail(authenticatedEmail);
           setMembership(null);
           setAuthReady(true);
-          setMembershipReady(true);
-        } else {
-          await workspaceSupabase.auth.signOut();
+          void syncSession();
+          return { ok: false, message: "A sessão foi alterada durante o login." };
         }
+        loginInProgressRef.current = {
+          operationId,
+          authUserId: userId,
+          queuedSignInUserId: null,
+          hasQueuedSignIn: false,
+        };
+      }
+      blockedAuthUserIdRef.current = null;
+      setAuthUserId(userId);
+      setUserEmail(authenticatedEmail);
+      setMembership(null);
+      setAuthReady(true);
+
+      const nextMembership = await resolveCurrentMembership();
+      if (operationId !== authOperationRef.current) return { ok: false, message: "A sessão foi alterada durante o login." };
+      if (!nextMembership) {
+        setAuthUserId(userId);
+        setUserEmail(authenticatedEmail);
+        setMembership(null);
+        setMembershipReady(true);
         return { ok: false, message: "Este usuario nao possui uma membership workspace valida." };
       }
-      setUserEmail(normalizedEmail);
+      setAuthUserId(userId);
+      setUserEmail(authenticatedEmail);
       setMembership(nextMembership);
       setAuthReady(true);
       setMembershipReady(true);
       return { ok: true };
     } catch (lookupError) {
+      if (operationId !== authOperationRef.current) return { ok: false, message: "A sessão foi alterada durante o login." };
       console.error("[WorkspaceAuth] login membership lookup failed:", lookupError);
-      await workspaceSupabase.auth.signOut().catch(() => null);
+      setMembership(null);
+      setAuthReady(true);
+      setMembershipReady(true);
       return { ok: false, message: "Nao foi possivel validar o acesso workspace." };
+    } finally {
+      if (loginInProgressRef.current?.operationId === operationId) loginInProgressRef.current = null;
+      if (operationId === authOperationRef.current) setMembershipReady(true);
     }
-  }, [preserveUnassignedSession]);
+  }, [syncSession]);
 
   const logout = useCallback(async () => {
-    await workspaceSupabase.auth.signOut().catch(() => null);
+    ++authOperationRef.current;
+    setAuthUserId(null);
     setUserEmail(null);
     setMembership(null);
+    setAuthReady(true);
+    setMembershipReady(true);
+    await workspaceSupabase.auth.signOut().catch(() => null);
   }, []);
 
   const value = useMemo(() => ({
     authReady,
     membershipReady,
-    isAuthenticated: Boolean(userEmail && membership),
+    isAuthenticated: Boolean(authUserId && userEmail && membership),
+    authUserId,
     userEmail,
     membership,
     refreshMembership,
     login,
     logout,
-  }), [authReady, login, logout, membership, membershipReady, refreshMembership, userEmail]);
+  }), [authReady, authUserId, login, logout, membership, membershipReady, refreshMembership, userEmail]);
 
   return <WorkspaceAuthContext.Provider value={value}>{children}</WorkspaceAuthContext.Provider>;
 }

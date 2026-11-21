@@ -145,22 +145,39 @@ export function getMealCalorieTargets(
 // ─── FoodRow ──────────────────────────────────────────────────────────────────
 
 export function FoodRow({
-  food, idx, onChange, onRemove,
+  food, idx, onChange, onRemove, storageScope,
 }: {
   food: MealFood; idx: number;
   onChange: (f: MealFood) => void;
   onRemove: () => void;
+  storageScope?: string;
 }) {
   const [showDetails,    setShowDetails]   = useState(false);
   const [showSubstitute, setShowSubstitute] = useState(false);
   const [showNotes,      setShowNotes]     = useState(!!food.notes);
+  const invalidateFoodNutrition = (name: string) => {
+    const nextFood: MealFood = { ...food, food_name: name };
+    nextFood.calories = undefined;
+    nextFood.protein = undefined;
+    nextFood.carbs = undefined;
+    nextFood.fat = undefined;
+    nextFood.kcal_per_100g = undefined;
+    nextFood.protein_per_100g = undefined;
+    nextFood.carbs_per_100g = undefined;
+    nextFood.fat_per_100g = undefined;
+    nextFood.household_measures = undefined;
+    nextFood.household_measure = undefined;
+    nextFood.measure_amount = undefined;
+    nextFood.food_group = undefined;
+    onChange(nextFood);
+  };
 
   const handleSelect = (s: {
     name: string;
     kcal_per_100g: number; protein_per_100g: number;
     carbs_per_100g: number; fat_per_100g: number;
     household_measures?: HouseholdMeasure[];
-  }) =>
+  }) => {
     onChange(calcFoodMacros({
       ...food,
       food_name:        s.name,
@@ -169,7 +186,11 @@ export function FoodRow({
       carbs_per_100g:   s.carbs_per_100g,
       fat_per_100g:     s.fat_per_100g,
       household_measures: s.household_measures,
+      household_measure: undefined,
+      measure_amount: undefined,
+      food_group: undefined,
     }));
+  };
 
   const handleQty = (val: string) => {
     onChange(calcFoodMacros({
@@ -182,6 +203,28 @@ export function FoodRow({
     onChange(calcFoodMacros({
       ...food,
       unit,
+    }));
+  };
+
+  const handleSmartSubstitute = (replacement: {
+    name: string;
+    kcal_per_100g: number;
+    protein_per_100g: number;
+    carbs_per_100g: number;
+    fat_per_100g: number;
+    household_measures?: HouseholdMeasure[];
+  }) => {
+    onChange(calcFoodMacros({
+      ...food,
+      food_name: replacement.name,
+      kcal_per_100g: replacement.kcal_per_100g,
+      protein_per_100g: replacement.protein_per_100g,
+      carbs_per_100g: replacement.carbs_per_100g,
+      fat_per_100g: replacement.fat_per_100g,
+      household_measures: replacement.household_measures,
+      household_measure: undefined,
+      measure_amount: undefined,
+      food_group: undefined,
     }));
   };
 
@@ -204,9 +247,10 @@ export function FoodRow({
         {/* Alimento */}
         <td className="py-1.5 pr-3 align-middle" style={{ minWidth: 220 }}>
           <FoodSearchInput
+            storageScope={storageScope}
             value={food.food_name}
             onSelect={handleSelect}
-            onCustomName={(name) => onChange({ ...food, food_name: name })}
+            onCustomName={invalidateFoodNutrition}
           />
           {food.quantity !== undefined && food.quantity > 0 && usesEstimatedFoodUnitConversion(food) && (
             <p className="mt-1 text-[10px] leading-tight text-amber-700">
@@ -334,20 +378,11 @@ export function FoodRow({
       )}
 
       <SmartSubstituteModal
+        storageScope={storageScope}
         open={showSubstitute}
         food={food}
         onClose={() => setShowSubstitute(false)}
-        onSubstitute={(s) =>
-          onChange(calcFoodMacros({
-            ...food,
-            food_name:        s.name,
-            kcal_per_100g:    s.kcal_per_100g,
-            protein_per_100g: s.protein_per_100g,
-            carbs_per_100g:   s.carbs_per_100g,
-            fat_per_100g:     s.fat_per_100g,
-            household_measures: s.household_measures,
-          }))
-        }
+        onSubstitute={handleSmartSubstitute}
       />
     </>
   );
@@ -367,7 +402,7 @@ async function getRules(): Promise<SubstitutionRule[]> {
 }
 
 export function MealSection({
-  meal, idx, onUpdate, onRemove, targetCalories, resetKey, onImportPreset,
+  meal, idx, onUpdate, onRemove, targetCalories, resetKey, onImportPreset, storageScope,
 }: {
   meal: EditorMeal; idx: number;
   onUpdate: (m: EditorMeal) => void;
@@ -375,6 +410,7 @@ export function MealSection({
   targetCalories?: number;
   resetKey?: string | number;
   onImportPreset?: (targetKey: string) => void;
+  storageScope?: string;
 }) {
   const alternatives  = meal.alternative_meals ?? [];
   const totalOptions  = alternatives.length + 1; // principal + substitutas
@@ -663,6 +699,7 @@ export function MealSection({
                 <FoodRow key={i} food={f} idx={i}
                   onChange={(u) => updateFood(i, u)}
                   onRemove={() => removeFood(i)}
+                  storageScope={storageScope}
                 />
               ))
             )}

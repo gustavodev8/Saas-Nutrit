@@ -97,13 +97,14 @@ interface SubstituteResult {
 }
 
 interface Props {
+  storageScope?: string;
   open:         boolean;
   food:         MealFood;
   onClose:      () => void;
   onSubstitute: (replacement: SubstituteResult) => void;
 }
 
-export function SmartSubstituteModal({ open, food, onClose, onSubstitute }: Props) {
+export function SmartSubstituteModal({ open, food, onClose, onSubstitute, storageScope }: Props) {
   const [query, setQuery]               = useState("");
   const [activeCategories, setActive]   = useState<string[]>([]);
   const [selected, setSelected]         = useState<FoodItem | null>(null);
@@ -112,11 +113,15 @@ export function SmartSubstituteModal({ open, food, onClose, onSubstitute }: Prop
   // On open: determine smart categories and reset state
   useEffect(() => {
     if (!open) return;
+    let active = true;
     setQuery("");
     setSelected(null);
     setActive(deriveCategoriesForFood(food));
-    fetchCustomFoods().then(setCustomFoods);
-  }, [open, food]);
+    fetchCustomFoods(storageScope).then((foods) => {
+      if (active) setCustomFoods(foods);
+    });
+    return () => { active = false; };
+  }, [open, food, storageScope]);
 
   const allFoods = useMemo(
     () => [...customFoods, ...BUILT_IN_FOODS],

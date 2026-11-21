@@ -63,6 +63,7 @@ export default function WorkspaceLogin() {
           )}
           <Button className="w-full" type="submit" disabled={loading}>{loading && <Loader2 className="animate-spin" />}Entrar no workspace</Button>
         </form>
+        <Link className="mt-4 block text-center text-sm font-medium text-primary underline-offset-2 hover:underline" to="/workspace/forgot-password">Esqueci minha senha</Link>
       </section>
     </main>
   );

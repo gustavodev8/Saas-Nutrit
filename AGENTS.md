@@ -58,6 +58,16 @@ Estas regras se aplicam a qualquer Codex que trabalhar neste repositório.
 7. Ao encerrar trabalho material, atualize `CONTINUIDADE-CODEX.md` com estado local/remoto, validações, limitações, bloqueios e próximo passo seguro.
 8. Ao iniciar uma nova sessão, leia `AGENTS.md`, `CONTINUIDADE-CODEX.md`, `README.md`, os exemplos de ambiente pertinentes e o status/diff do Git antes de agir.
 
+## Regra de evolução para SaaS
+
+O produto evolui do sistema clínico do Fillipe, no mesmo banco, com isolamento por consultório. A meta é um núcleo clínico mantido uma vez, não dois sistemas que precisam receber a mesma correção. O site pessoal fica fora do produto.
+
+- Antes de portar um fluxo, conferir a revisão atual do legado, o que o piloto já reutiliza e o histórico do banco compartilhado. Não usar uma cópia antiga do editor como especificação permanente.
+- Reutilizar formulário, cálculo e gerador de PDF; separar acesso aos dados, autorização, marca e navegação. Criar uma implementação diferente apenas quando a adaptação não atender ao requisito, explicando o motivo no pacote.
+- Preservar o painel legado durante a transição. Nem a conta master, nem conhecer o ID do paciente, nem esconder um botão concede acesso clínico. Não ampliar a allowlist administrativa para habilitar clientes.
+- Entregar uma jornada clínica por vez, atrás de flag até passar por testes em dois workspaces, regressão do legado, QA independente e verificação no piloto. Não reaplicar versões do ledger nem atribuir registros antigos automaticamente ao Fillipe.
+- Prioridade de entrega: login/recuperação, paciente, prontuário, anamnese, medidas, plano com alternativas/substituições e PDF. Comercialização ampla, agenda, pagamentos e migração definitiva do Fillipe são marcos posteriores.
+
 ## Comandos úteis
 ```bash
 npm run dev       # servidor local (localhost:8080)

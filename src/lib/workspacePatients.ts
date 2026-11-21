@@ -129,6 +129,18 @@ export async function fetchWorkspacePatients(workspaceId: string): Promise<Works
   return (data ?? []) as WorkspacePatient[];
 }
 
+export async function fetchWorkspacePatient(workspaceId: string, patientId: number): Promise<WorkspacePatient> {
+  const { data, error } = await workspaceSupabase
+    .from("patients")
+    .select(PATIENT_COLUMNS)
+    .eq("workspace_id", workspaceId)
+    .eq("id", patientId)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as WorkspacePatient;
+}
+
 export async function createWorkspacePatient(
   workspaceId: string,
   input: WorkspacePatientInput,

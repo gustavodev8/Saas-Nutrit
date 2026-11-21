@@ -1,9 +1,18 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import WorkspacePatientsPage from "./WorkspacePatientsPage";
 import type { WorkspacePatient } from "@/lib/workspacePatients";
 import type { WorkspaceMeasurement } from "@/lib/workspaceMeasurements";
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
+  return {
+    ...actual,
+    Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
+  };
+});
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
@@ -117,10 +126,11 @@ describe("WorkspacePatientsPage", () => {
     mocks.workspaceMaybeSingle.mockResolvedValue({ data: { name: "Workspace Piloto" }, error: null });
   });
 
-  it("shows the active workspace name from the current membership scope", async () => {
+  it("loads the active workspace name for scoped clinical reports", async () => {
     render(<WorkspacePatientsPage />);
 
-    expect(await screen.findByTestId("active-workspace-name")).toHaveTextContent("Workspace: Workspace Piloto");
+    await screen.findByText("Ana");
+    await waitFor(() => expect(mocks.workspaceFrom).toHaveBeenCalledWith("workspaces"));
     expect(mocks.workspaceFrom).toHaveBeenCalledWith("workspaces");
     expect(mocks.workspaceEq).toHaveBeenCalledWith("id", "workspace-a");
   });
@@ -211,19 +221,18 @@ describe("WorkspacePatientsPage", () => {
   it("loads patient history and records a workspace-scoped anthropometric assessment", async () => {
     render(<WorkspacePatientsPage />);
     await screen.findByText("Ana");
-    fireEvent.click(screen.getByRole("button", { name: "Abrir prontuário antropométrico de Ana" }));
-
+    fireEvent.click(screen.getByLabelText("Abrir prontuário antropométrico de Ana", { selector: "button" }));
     expect(await screen.findByText("Histórico · 1 avaliação")).toBeInTheDocument();
     expect(mocks.fetchMeasurements).toHaveBeenCalledWith("workspace-a", 1);
     expect(screen.getAllByText("24.2").length).toBeGreaterThan(0);
     expect(inputForLabel("Massa Muscular (kg)")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Fracionamento Antropométrico/ }));
+    fireEvent.click(screen.getByText("Fracionamento Antropométrico — 4 Componentes"));
     expect(inputForLabel("Diâmetro biestiloide (mm)")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /relatório/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /excluir/i })).not.toBeInTheDocument();
 
     fireEvent.change(inputForLabel("Peso (kg)"), { target: { value: "72" } });
-    fireEvent.click(screen.getByRole("button", { name: "Salvar Avaliação" }));
+    fireEvent.click(screen.getByText("Salvar Avaliação", { selector: "button" }));
 
     await waitFor(() => expect(mocks.createMeasurement).toHaveBeenCalledWith(
       "workspace-a",
@@ -233,8 +242,8 @@ describe("WorkspacePatientsPage", () => {
       null,
     ));
     expect(await screen.findByText(/Histórico.*2 avaliações/)).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: /Abrir relatório da avaliação/ })[0]);
-    const weightComparison = screen.getByRole("row", { name: /Peso/ });
+    fireEvent.click(screen.getAllByLabelText(/Abrir relatório da avaliação/, { selector: "button" })[0]);
+    const weightComparison = screen.getByText("Peso", { selector: "th[scope=row]" }).closest("tr");
     expect(weightComparison).toHaveTextContent("+2.0");
     expect(screen.getByTestId("workspace-measurement-print-header")).toHaveTextContent("Ana");
     expect(screen.getByTestId("workspace-measurement-print-header")).toHaveTextContent("Workspace Piloto");

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, ChevronLeft, ChevronRight, LogOut, Mail, MapPin, Pencil, Plus, Save, Users, X } from "lucide-react";
+import { Activity, ChevronLeft, ChevronRight, FolderOpen, Mail, MapPin, Pencil, Plus, Save, Users, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +47,7 @@ function genderLabel(value: WorkspacePatient["gender"]): string {
 }
 
 export default function WorkspacePatientsPage() {
-  const { membership, userEmail, logout } = useWorkspaceAuth();
+  const { membership } = useWorkspaceAuth();
   const [patientSnapshot, setPatientSnapshot] = useState<{ workspaceId: string | null; items: WorkspacePatient[] }>({ workspaceId: null, items: [] });
   const [form, setForm] = useState<WorkspacePatientInput>(emptyForm);
   const [formWorkspaceId, setFormWorkspaceId] = useState<string | null>(null);
@@ -188,20 +189,6 @@ export default function WorkspacePatientsPage() {
   return (
     <main className="min-h-screen bg-muted/30 px-4 py-6 sm:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b pb-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Cadastro workspace</p>
-            <h1 className="text-2xl font-semibold">Pacientes</h1>
-            <p className="text-sm text-muted-foreground">{userEmail} · {membership?.role === "owner" ? "Owner" : "Nutricionista"}</p>
-            {currentWorkspaceName && (
-              <p data-testid="active-workspace-name" className="mt-1 text-sm font-medium text-foreground">
-                Workspace: {currentWorkspaceName}
-              </p>
-            )}
-          </div>
-          <Button variant="outline" onClick={() => void logout()}><LogOut aria-hidden="true" />Sair</Button>
-        </header>
-
         <section aria-label="Indicadores dos pacientes deste workspace" className="grid gap-3 sm:grid-cols-3">
           <article className="flex items-center gap-3 rounded-md border bg-background p-4">
             <Users className="text-primary" aria-hidden="true" />
@@ -262,7 +249,7 @@ export default function WorkspacePatientsPage() {
                             <td className="px-4 py-3">{genderLabel(patient.gender)}</td>
                             <td className="px-4 py-3">{patient.city || "Não informada"}</td>
                             <td className="px-4 py-3">{formatDate(patient.created_at)}</td>
-                            <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1"><Button aria-label={`Abrir prontuário antropométrico de ${patient.name}`} title="Prontuário antropométrico" size="icon" variant="ghost" onClick={() => setChartSelection({ workspaceId: patient.workspace_id, patientId: patient.id })}><Activity aria-hidden="true" /></Button><Button aria-label={`Editar ${patient.name}`} title="Editar cadastro" size="icon" variant="ghost" onClick={() => editPatient(patient)}><Pencil aria-hidden="true" /></Button></div></td>
+                            <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1"><Button asChild aria-label={`Abrir prontuário de ${patient.name}`} title="Abrir prontuário" size="icon" variant="ghost"><Link to={`/workspace/patients/${patient.id}`}><FolderOpen aria-hidden="true" /></Link></Button><Button aria-label={`Abrir prontuário antropométrico de ${patient.name}`} title="Prontuário antropométrico" size="icon" variant="ghost" onClick={() => setChartSelection({ workspaceId: patient.workspace_id, patientId: patient.id })}><Activity aria-hidden="true" /></Button><Button aria-label={`Editar ${patient.name}`} title="Editar cadastro" size="icon" variant="ghost" onClick={() => editPatient(patient)}><Pencil aria-hidden="true" /></Button></div></td>
                           </tr>
                         ))}
                       </tbody>

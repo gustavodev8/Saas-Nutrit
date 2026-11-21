@@ -32,6 +32,7 @@ const EMPTY_FORM = {
 };
 
 interface FoodSearchInputProps {
+  storageScope?: string;
   value: string;
   onSelect: (food: {
     name: string;
@@ -58,7 +59,7 @@ function normalizeKey(value: string) {
   return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 }
 
-export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInputProps) {
+export function FoodSearchInput({ value, onSelect, onCustomName, storageScope }: FoodSearchInputProps) {
   const [query, setQuery] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
   const [results, setResults] = useState<FoodItem[]>([]);
@@ -95,7 +96,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
     }
 
     const dbFoods = await searchFoodsInSupabase(nextQuery);
-    const customFoods = await fetchCustomFoods();
+    const customFoods = await fetchCustomFoods(storageScope);
     const customMatches = customFoods.filter((food) => normalizeKey(food.name).includes(normalizeKey(nextQuery)));
 
     const merged = [...customMatches, ...dbFoods].filter((food, index, array) => {
@@ -127,7 +128,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
         }
       }
     }, 600);
-  }, [updatePos]);
+  }, [storageScope, updatePos]);
 
   useEffect(() => {
     return () => {
@@ -245,7 +246,7 @@ export function FoodSearchInput({ value, onSelect, onCustomName }: FoodSearchInp
         carbs_per_100g: Number(form.carbs_per_100g),
         fat_per_100g: Number(form.fat_per_100g),
         fiber_per_100g: form.fiber_per_100g ? Number(form.fiber_per_100g) : undefined,
-      });
+      }, storageScope);
 
       setQuery(saved.name);
       closeModal();

@@ -44,6 +44,10 @@ function kcalFromNutriments(n: OFFProduct["nutriments"]): number | null {
   return null;
 }
 
+function isUsableMacro(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 export async function searchOpenFoodFacts(
   query: string,
   signal?: AbortSignal
@@ -72,7 +76,10 @@ export async function searchOpenFoodFacts(
     .map((p, i): FoodItem | null => {
       const n = p.nutriments;
       const kcal = kcalFromNutriments(n);
-      if (kcal == null) return null;
+      const protein = n?.proteins_100g;
+      const carbs = n?.carbohydrates_100g;
+      const fat = n?.fat_100g;
+      if (!isUsableMacro(kcal) || !isUsableMacro(protein) || !isUsableMacro(carbs) || !isUsableMacro(fat)) return null;
 
       const name = (p.product_name_pt || p.product_name || "").trim();
       if (name.length < 2) return null;
@@ -82,9 +89,9 @@ export async function searchOpenFoodFacts(
         name,
         category: mapOFFCategory(p.categories_tags),
         kcal: Math.round(kcal * 10) / 10,
-        protein: Math.round((n?.proteins_100g ?? 0) * 10) / 10,
-        carbs: Math.round((n?.carbohydrates_100g ?? 0) * 10) / 10,
-        fat: Math.round((n?.fat_100g ?? 0) * 10) / 10,
+        protein: Math.round(protein * 10) / 10,
+        carbs: Math.round(carbs * 10) / 10,
+        fat: Math.round(fat * 10) / 10,
         fiber: n?.fiber_100g ? Math.round(n.fiber_100g * 10) / 10 : undefined,
       };
     })

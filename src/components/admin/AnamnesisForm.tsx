@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Clock3, Loader2, Save, Target, Salad, Dumbbell, Moon, Stethoscope, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -17,8 +17,14 @@ import {
 import {
   fetchAnamnesis,
   upsertAnamnesis,
+  type Anamnesis,
   type AnamnesisStructured,
 } from "@/lib/supabase";
+
+export interface AnamnesisFormAdapter {
+  fetch: (patientId: number) => Promise<Anamnesis | null>;
+  save: (anamnesis: Anamnesis) => Promise<Anamnesis | { id: number } | string>;
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -188,30 +194,55 @@ function NotesArea({
 export function AnamnesisForm({
   patientId,
   onSaved,
+  adapter,
+  scopeKey,
 }: {
   patientId: string;
-  onSaved?: (a: import("@/lib/supabase").Anamnesis) => void;
+  onSaved?: (a: Anamnesis) => void;
+  adapter?: AnamnesisFormAdapter;
+  scopeKey?: string;
 }) {
   const pid = Number(patientId);
+  const fetcher = adapter?.fetch ?? fetchAnamnesis;
+  const saver = adapter?.save ?? upsertAnamnesis;
   const [anamnesisId, setAnamnesisId] = useState<number | null>(null);
   const [sd, setSd] = useState<AnamnesisStructured>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [savedSignature, setSavedSignature] = useState("{}");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const requestRef = useRef(0);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
-    fetchAnamnesis(pid).then((data) => {
-      const structuredData = data?.structured_data ?? {};
-      if (data) {
-        setAnamnesisId(data.id ?? null);
+    const requestId = ++requestRef.current;
+    setLoading(true);
+    setSaving(false);
+    setLoadError(null);
+    setAnamnesisId(null);
+    setSd({});
+    setSavedSignature("{}");
+    setLastSavedAt(null);
+    fetcher(pid)
+      .then((data) => {
+        if (requestId !== requestRef.current) return;
+        const structuredData = data?.structured_data ?? {};
+        setAnamnesisId(data?.id ?? null);
         setSd(structuredData);
-      }
-      setSavedSignature(JSON.stringify(structuredData));
-      setLastSavedAt(data?.updated_at ?? data?.created_at ?? null);
-      setLoading(false);
-    });
-  }, [pid]);
+        setSavedSignature(JSON.stringify(structuredData));
+        setLastSavedAt(data?.updated_at ?? data?.created_at ?? null);
+      })
+      .catch((error: unknown) => {
+        if (requestId === requestRef.current) setLoadError(error instanceof Error ? error.message : "Não foi possível carregar a anamnese.");
+      })
+      .finally(() => {
+        if (requestId === requestRef.current) setLoading(false);
+      });
+    return () => { requestRef.current += 1; };
+  }, [fetcher, pid, scopeKey, loadAttempt]);
+
+  const retryLoad = () => setLoadAttempt((attempt) => attempt + 1);
 
   const set = <K extends keyof AnamnesisStructured>(
     key: K,
@@ -219,6 +250,8 @@ export function AnamnesisForm({
   ) => setSd((prev) => ({ ...prev, [key]: value }));
 
   const handleSave = async () => {
+    if (loading || loadError) return;
+    const requestId = ++requestRef.current;
     setSaving(true);
     const payload: import("@/lib/supabase").Anamnesis = {
       patient_id:      pid,
@@ -226,7 +259,8 @@ export function AnamnesisForm({
       ...(anamnesisId ? { id: anamnesisId } : {}),
     };
     try {
-      const result = await upsertAnamnesis(payload);
+      const result = await saver(payload);
+      if (requestId !== requestRef.current) return;
       if (typeof result === "string") {
         toast.error("Falha ao salvar: " + result);
       } else {
@@ -236,8 +270,10 @@ export function AnamnesisForm({
         toast.success("Anamnese salva!");
         onSaved?.({ ...payload, id: result.id });
       }
+    } catch (error: unknown) {
+      if (requestId === requestRef.current) toast.error(`Falha ao salvar: ${error instanceof Error ? error.message : "erro desconhecido"}`);
     } finally {
-      setSaving(false);
+      if (requestId === requestRef.current) setSaving(false);
     }
   };
 
@@ -272,6 +308,12 @@ export function AnamnesisForm({
 
   return (
     <div className="space-y-4">
+      {loadError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          <span>{loadError}</span>
+          <Button type="button" variant="outline" size="sm" onClick={retryLoad}>Recarregar anamnese</Button>
+        </div>
+      )}
       <div className="sticky top-0 z-20 -mx-2 rounded-2xl border border-border/70 bg-background/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -304,7 +346,7 @@ export function AnamnesisForm({
             </span>
             <Button
               onClick={handleSave}
-              disabled={saving || !hasChanges}
+              disabled={saving || loading || !hasChanges || Boolean(loadError)}
               className="h-9 rounded-xl px-4 font-bold gap-2"
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -615,7 +657,7 @@ export function AnamnesisForm({
       <div className="flex justify-end pt-2 pb-4">
         <Button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || loading || Boolean(loadError)}
           className="h-10 px-8 rounded-md font-bold gap-2"
         >
           {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}

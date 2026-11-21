@@ -78,11 +78,15 @@ import PatientPortalPlan from "./pages/portal/PatientPortalPlan";
 import PatientPortalConsultas from "./pages/portal/PatientPortalConsultas";
 import PatientPortalDocuments from "./pages/portal/PatientPortalDocuments";
 import WorkspaceLogin from "./pages/workspace/WorkspaceLogin";
+import WorkspaceForgotPasswordPage from "./pages/workspace/WorkspaceForgotPasswordPage";
 import WorkspacePatientsPage from "./pages/workspace/WorkspacePatientsPage";
+import WorkspacePatientDetailPage from "./pages/workspace/WorkspacePatientDetailPage";
+import WorkspaceMealPlanPage from "./pages/workspace/WorkspaceMealPlanPage";
 import WorkspaceAcceptInvitationPage from "./pages/workspace/WorkspaceAcceptInvitationPage";
 import PlatformInvitationsPage from "./pages/platform/PlatformInvitationsPage";
 import PlatformResetPasswordPage from "./pages/platform/PlatformResetPasswordPage";
 import WorkspaceProtectedRoute from "@/components/workspace/WorkspaceProtectedRoute";
+import WorkspaceShell from "@/components/workspace/WorkspaceShell";
 import PublicSaaSLandingPage from "./pages/PublicSaaSLandingPage";
 
 const queryClient = new QueryClient();
@@ -119,12 +123,15 @@ const App = () => (
               <SaaSPilotRouteGate enabled={isSaaSPilotMode}>
                 <ScrollToTop />
                 <Routes>
+              <Route path="/workspace/forgot-password" element={<WorkspaceForgotPasswordPage />} />
               <Route path="/workspace" element={<WorkspaceRoot />}>
                 <Route path="accept" element={<WorkspaceAcceptInvitationPage />} />
                 <Route path="login" element={<WorkspaceLogin />} />
-                <Route element={<WorkspaceProtectedRoute><Outlet /></WorkspaceProtectedRoute>}>
+                <Route element={<WorkspaceProtectedRoute><WorkspaceShell /></WorkspaceProtectedRoute>}>
                   <Route index element={<Navigate to="patients" replace />} />
                   <Route path="patients" element={<WorkspacePatientsPage />} />
+                  <Route path="patients/:id" element={<WorkspacePatientDetailPage />} />
+                  <Route path="patients/:id/plan/:planId" element={<WorkspaceMealPlanPage />} />
                 </Route>
               </Route>
               <Route path="/platform/invitations" element={<PlatformInvitationsPage accessRequestsEnabled={isSaaSAccessRequestsEnabled} />} />

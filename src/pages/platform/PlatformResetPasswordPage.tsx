@@ -195,7 +195,7 @@ export default function PlatformResetPasswordPage() {
         <div className="mb-8 flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary"><Leaf size={20} aria-hidden="true" /></span>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Administração da plataforma</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Acesso à conta</p>
             <h1 id="platform-reset-title" className="text-2xl font-semibold">Redefinir senha</h1>
           </div>
         </div>
@@ -204,18 +204,16 @@ export default function PlatformResetPasswordPage() {
           <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Validando link de recuperação...</p>
         ) : success ? (
           <div className="space-y-5">
-            <p role="status" className="text-sm text-foreground">Senha atualizada. Você já pode entrar na plataforma.</p>
+            <p role="status" className="text-sm text-foreground">Senha atualizada. Entre na sua área com a nova senha.</p>
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-            <Button className="w-full" asChild><Link to="/platform/invitations"><ArrowLeft aria-hidden="true" />Voltar ao login</Link></Button>
           </div>
         ) : !recoveryReady ? (
           <div className="space-y-5">
             <p role="alert" className="text-sm text-destructive">Este link de recuperação é inválido, expirou ou já foi utilizado. Solicite um novo link.</p>
-            <Button className="w-full" variant="outline" asChild><Link to="/platform/invitations"><ArrowLeft aria-hidden="true" />Voltar ao login</Link></Button>
           </div>
         ) : (
           <form className="space-y-5" onSubmit={handleSubmit}>
-            <p className="text-sm text-muted-foreground">Escolha uma nova senha para sua conta da plataforma.</p>
+            <p className="text-sm text-muted-foreground">Escolha uma nova senha para sua conta.</p>
             <div className="space-y-2">
               <Label htmlFor="platform-new-password">Nova senha</Label>
               <div className="relative"><KeyRound className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" /><Input id="platform-new-password" className="pl-9" type="password" autoComplete="new-password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} required /></div>
@@ -228,6 +226,10 @@ export default function PlatformResetPasswordPage() {
             <Button className="w-full" type="submit" disabled={loading}>{loading && <Loader2 className="animate-spin" aria-hidden="true" />}Atualizar senha</Button>
           </form>
         )}
+        <nav aria-label="Opções de login" className="mt-5 space-y-2 border-t pt-4">
+          <Button className="w-full" variant="outline" asChild><Link to="/workspace/login"><ArrowLeft aria-hidden="true" />Login profissional</Link></Button>
+          <Button className="w-full" variant="link" asChild><Link to="/platform/invitations">Login administrativo de convites</Link></Button>
+        </nav>
       </section>
     </main>
   );
