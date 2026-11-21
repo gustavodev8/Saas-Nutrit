@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS workspace_training_plans (
   id               SERIAL PRIMARY KEY,
   workspace_id     UUID        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  patient_id       INTEGER     NOT NULL REFERENCES workspace_patients(id) ON DELETE CASCADE,
+  patient_id       INTEGER     NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   name             TEXT        NOT NULL,
   goal             TEXT        CHECK (goal IN ('hipertrofia','emagrecimento','condicionamento','saude','forca','reabilitacao','outro')),
   frequency_per_week SMALLINT  CHECK (frequency_per_week BETWEEN 1 AND 7),
