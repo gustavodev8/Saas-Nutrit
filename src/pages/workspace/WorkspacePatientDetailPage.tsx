@@ -102,6 +102,7 @@ export default function WorkspacePatientDetailPage() {
 
   const rawTab = searchParams.get("tab");
   const activeTab: TabKey = TABS.some((t) => t.key === rawTab) ? (rawTab as TabKey) : DEFAULT_TAB;
+  const templateId = searchParams.get("templateId");
 
   const setTab = (key: TabKey) => {
     setSearchParams((prev) => { prev.set("tab", key); return prev; }, { replace: true });
@@ -423,12 +424,18 @@ export default function WorkspacePatientDetailPage() {
                       <h2 className="font-semibold">Planos alimentares</h2>
                       <p className="text-sm text-muted-foreground">Dietas e estratégias deste paciente.</p>
                     </div>
-                    <Button asChild size="sm">
-                      <Link to={`/workspace/patients/${patient.id}/plan/novo`}>
-                        <BookOpen size={14} aria-hidden="true" />Novo plano
+                    <Button asChild size="sm" className="bg-[#166b50] hover:bg-[#145e45] text-white">
+                      <Link to={`/workspace/patients/${patient.id}/plan/novo${templateId ? `?templateId=${templateId}` : ""}`}>
+                        <BookOpen size={14} aria-hidden="true" />{templateId ? "Criar plano do modelo" : "Novo plano"}
                       </Link>
                     </Button>
                   </div>
+                  {templateId && (
+                    <div className="rounded-md border border-[#166b50]/30 bg-[#166b50]/5 px-4 py-3 flex items-center gap-3">
+                      <BookOpen size={16} className="text-[#166b50] shrink-0" />
+                      <p className="text-sm text-[#166b50]">Modelo selecionado — clique em <strong>Criar plano do modelo</strong> para pré-preencher o editor com as refeições do template.</p>
+                    </div>
+                  )}
                   {!mealPlansEnabled ? (
                     <p role="status" className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                       Módulo de planos alimentares não está ativo neste ambiente.

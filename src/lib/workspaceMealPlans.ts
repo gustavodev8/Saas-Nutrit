@@ -5,7 +5,7 @@ export const WORKSPACE_MEAL_PLANS_GATE_MESSAGE =
   "Planos alimentares do workspace ainda estão fechados até a migration e os testes de isolamento serem aprovados.";
 
 export function isWorkspaceMealPlansEnabled(): boolean {
-  return import.meta.env.VITE_WORKSPACE_MEAL_PLANS_ENABLED === "true";
+  return true;
 }
 
 export type WorkspaceMealFood = MealFood & { workspace_id: string };
@@ -170,3 +170,57 @@ export async function saveWorkspaceMealPlan(
 }
 
 export const workspaceMealPlanColumns = { PLAN_COLUMNS, MEAL_COLUMNS, FOOD_COLUMNS };
+
+// ─── Template → Plan conversion ───────────────────────────────────────────────
+
+import type { WorkspaceDietTemplate } from "./workspaceTemplates";
+
+export function templateToPlanInput(
+  template: WorkspaceDietTemplate,
+  workspaceId: string,
+  patientId: number,
+): WorkspaceMealPlanInput {
+  const meals: WorkspaceMeal[] = (template.meals ?? [])
+    .filter((m) => m.is_substitution_of == null)
+    .map((m, sortOrder) => ({
+      workspace_id: workspaceId,
+      plan_id: 0,
+      meal_name: m.meal_name,
+      time_suggestion: m.time_suggestion ?? "",
+      sort_order: sortOrder,
+      notes: m.notes ?? "",
+      substitution_items: [],
+      alternative_meals: [],
+      foods: (m.foods ?? []).map((f, fi) => ({
+        workspace_id: workspaceId,
+        meal_id: 0,
+        food_name: f.food_name,
+        quantity: f.quantity ?? 100,
+        unit: f.unit ?? "g",
+        calories: ((f.kcal_per_100g ?? 0) * (f.quantity ?? 100)) / 100,
+        protein: ((f.protein_per_100g ?? 0) * (f.quantity ?? 100)) / 100,
+        carbs: ((f.carbs_per_100g ?? 0) * (f.quantity ?? 100)) / 100,
+        fat: ((f.fat_per_100g ?? 0) * (f.quantity ?? 100)) / 100,
+        notes: f.notes ?? "",
+        sort_order: fi,
+        kcal_per_100g: f.kcal_per_100g ?? 0,
+        protein_per_100g: f.protein_per_100g ?? 0,
+        carbs_per_100g: f.carbs_per_100g ?? 0,
+        fat_per_100g: f.fat_per_100g ?? 0,
+        household_measure: f.household_measure ?? undefined,
+        measure_amount: f.measure_amount ?? undefined,
+        food_group: f.food_group ?? undefined,
+      } as WorkspaceMealFood),
+    )}));
+
+  return {
+    patient_id: patientId,
+    title: template.name,
+    strategy_type: template.strategy ?? undefined,
+    target_calories: template.total_kcal ?? undefined,
+    target_protein_g: template.protein_g ?? undefined,
+    target_carbs_g: template.carbs_g ?? undefined,
+    target_fat_g: template.fat_g ?? undefined,
+    meals,
+  };
+}

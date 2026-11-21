@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ChevronLeft, ChevronRight, FolderOpen, Mail, Pencil, Plus, Save, Search, Users, X } from "lucide-react";
-import { Link } from "react-router-dom";
+import { BookOpen, ChevronLeft, ChevronRight, FolderOpen, Mail, Pencil, Plus, Save, Search, Users, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,6 +46,9 @@ function genderLabel(value: WorkspacePatient["gender"]): string {
 
 export default function WorkspacePatientsPage() {
   const { membership } = useWorkspaceAuth();
+  const [searchParams] = useSearchParams();
+  const selectForTemplate = searchParams.get("selectFor") === "template";
+  const incomingTemplateId = searchParams.get("templateId");
   const [patientSnapshot, setPatientSnapshot] = useState<{ workspaceId: string | null; items: WorkspacePatient[] }>({ workspaceId: null, items: [] });
   const [form, setForm] = useState<WorkspacePatientInput>(emptyForm);
   const [formWorkspaceId, setFormWorkspaceId] = useState<string | null>(null);
@@ -150,6 +153,20 @@ export default function WorkspacePatientsPage() {
         {/* Main grid */}
         <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
 
+          {/* Template selection banner */}
+          {selectForTemplate && incomingTemplateId && (
+            <div className="rounded-xl border border-[#166b50]/30 bg-[#166b50]/5 px-4 py-3 flex items-center gap-3 mb-2">
+              <BookOpen size={18} className="text-[#166b50] shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-[#166b50]">Selecione um paciente para usar o modelo</p>
+                <p className="text-xs text-muted-foreground">Clique em "Usar modelo" na linha do paciente para criar o plano pré-preenchido.</p>
+              </div>
+              <Button asChild variant="ghost" size="sm" className="shrink-0">
+                <Link to={`/workspace/modelos/${incomingTemplateId}`}><X size={14} /> Cancelar</Link>
+              </Button>
+            </div>
+          )}
+
           {/* Patient list */}
           <div className="space-y-3">
             {/* Filters */}
@@ -212,9 +229,17 @@ export default function WorkspacePatientsPage() {
                           </div>
                           {/* Actions */}
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button asChild size="icon" variant="ghost" className="h-8 w-8" title="Abrir prontuário" aria-label={`Abrir prontuário de ${patient.name}`}>
-                              <Link to={`/workspace/patients/${patient.id}`}><FolderOpen size={15} /></Link>
-                            </Button>
+                            {selectForTemplate && incomingTemplateId ? (
+                              <Button asChild size="sm" className="bg-[#166b50] hover:bg-[#145e45] text-white h-8 text-xs" title="Usar modelo para este paciente">
+                                <Link to={`/workspace/patients/${patient.id}?tab=planos&templateId=${incomingTemplateId}`}>
+                                  <BookOpen size={13} />Usar modelo
+                                </Link>
+                              </Button>
+                            ) : (
+                              <Button asChild size="icon" variant="ghost" className="h-8 w-8" title="Abrir prontuário" aria-label={`Abrir prontuário de ${patient.name}`}>
+                                <Link to={`/workspace/patients/${patient.id}`}><FolderOpen size={15} /></Link>
+                              </Button>
+                            )}
                             <Button size="icon" variant="ghost" className="h-8 w-8" title="Editar cadastro" aria-label={`Editar ${patient.name}`} onClick={() => editPatient(patient)}>
                               <Pencil size={15} />
                             </Button>

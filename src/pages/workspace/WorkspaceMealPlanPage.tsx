@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Printer, Utensils } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { WorkspaceMealPlanEditor } from "@/components/workspace/WorkspaceMealPlanEditor";
 import { MealPlanPdfOptionsDialog } from "@/components/admin/MealPlanPdfOptionsDialog";
@@ -13,9 +13,11 @@ import {
   fetchWorkspaceMealPlan,
   isWorkspaceMealPlansEnabled,
   saveWorkspaceMealPlan,
+  templateToPlanInput,
   WORKSPACE_MEAL_PLANS_GATE_MESSAGE,
   type WorkspaceMealPlanInput,
 } from "@/lib/workspaceMealPlans";
+import { fetchWorkspaceTemplateById } from "@/lib/workspaceTemplates";
 
 const DEFAULT_MEALS = [
   ["Café da manhã", "07:00 - 08:00"],
@@ -43,8 +45,15 @@ function blankPlan(workspaceId: string, patientId: number): WorkspaceMealPlanInp
 export default function WorkspaceMealPlanPage() {
   const { membership } = useWorkspaceAuth();
   const { id, planId } = useParams<{ id: string; planId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const workspaceId = membership?.workspaceId ?? null;
+  const templateId = useMemo(() => {
+    const raw = searchParams.get("templateId");
+    if (!raw || !/^\d+$/.test(raw)) return null;
+    const n = Number(raw);
+    return Number.isSafeInteger(n) && n > 0 ? n : null;
+  }, [searchParams]);
   const patientId = useMemo(() => parseId(id), [id]);
   const numericPlanId = useMemo(() => parseId(planId), [planId]);
   const isNew = planId === "novo";
@@ -55,7 +64,7 @@ export default function WorkspaceMealPlanPage() {
   const requestRef = useRef(0);
   const saveRequestRef = useRef(0);
   const scopeRef = useRef<string | null>(null);
-  const scope = workspaceId && patientId ? `${workspaceId}:${patientId}:${planId ?? ""}` : null;
+  const scope = workspaceId && patientId ? `${workspaceId}:${patientId}:${planId ?? ""}:${templateId ?? ""}` : null;
   scopeRef.current = scope;
   const [snapshot, setSnapshot] = useState<{ scope: string | null; patient: WorkspacePatient | null; plan: WorkspaceMealPlanInput | null }>({ scope: null, patient: null, plan: null });
   const scopedPatient = snapshot.scope === scope ? snapshot.patient : null;
@@ -87,7 +96,15 @@ export default function WorkspaceMealPlanPage() {
     }
     try {
       const loadedPatient = await fetchWorkspacePatient(workspaceId, patientId);
-      const loadedPlan = isNew ? blankPlan(workspaceId, patientId) : await fetchWorkspaceMealPlan(workspaceId, patientId, numericPlanId as number);
+      let loadedPlan: WorkspaceMealPlanInput;
+      if (isNew && templateId) {
+        const tmpl = await fetchWorkspaceTemplateById(templateId);
+        loadedPlan = tmpl ? templateToPlanInput(tmpl, workspaceId, patientId) : blankPlan(workspaceId, patientId);
+      } else if (isNew) {
+        loadedPlan = blankPlan(workspaceId, patientId);
+      } else {
+        loadedPlan = await fetchWorkspaceMealPlan(workspaceId, patientId, numericPlanId as number);
+      }
       if (requestId !== requestRef.current) return;
       if (loadedPatient.workspace_id !== workspaceId || loadedPatient.id !== patientId ||
           loadedPlan.patient_id !== patientId || (!isNew && (
@@ -99,7 +116,7 @@ export default function WorkspaceMealPlanPage() {
     } finally {
       if (requestId === requestRef.current) setLoading(false);
     }
-  }, [enabled, isNew, numericPlanId, patientId, scope, workspaceId]);
+  }, [enabled, isNew, numericPlanId, patientId, scope, templateId, workspaceId]);
 
   useEffect(() => { void load(); }, [load]);
 
