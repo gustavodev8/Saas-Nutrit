@@ -66,6 +66,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
   const authOperationRef = useRef(0);
   const loginInProgressRef = useRef<LoginInProgress | null>(null);
   const blockedAuthUserIdRef = useRef<string | null>(null);
+  const currentUserIdRef = useRef<string | null>(null);
 
   const loadSubscription = useCallback(async (workspaceId: string) => {
     try {
@@ -94,6 +95,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
       setAuthUserId(userId);
       setUserEmail(email);
       setAuthReady(true);
+      currentUserIdRef.current = userId;
 
       if (userId && blockedAuthUserIdRef.current && userId !== blockedAuthUserIdRef.current) {
         blockedAuthUserIdRef.current = null;
@@ -191,6 +193,15 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
       // Re-syncing on these events zeros out membershipReady and causes a visible flash
       // ("reload") whenever Chrome resumes a suspended/minimized tab.
       if (event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") return;
+
+      // SIGNED_IN / USER_UPDATED for the same user (tab regain focus, background refresh)
+      // should not trigger a full re-sync — it would reset membershipReady and show the
+      // loading screen unnecessarily.
+      if (
+        (event === "SIGNED_IN" || event === "USER_UPDATED") &&
+        session?.user?.id &&
+        session.user.id === currentUserIdRef.current
+      ) return;
 
       const pendingLogin = loginInProgressRef.current;
       if (event === "SIGNED_IN" && pendingLogin) {
