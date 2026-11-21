@@ -1,6 +1,6 @@
 import {
   Users, Plus, Search, Trash2, ChevronRight, UserCircle2, Loader2, MapPin,
-  TrendingUp, CalendarDays, AlertCircle, SlidersHorizontal, X,
+  Mail, Phone, CalendarDays, AlertCircle, SlidersHorizontal, X,
   ChevronLeft, AlertTriangle, ClipboardList, Utensils, Clock3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,9 @@ import {
   resolvePatientOperationalFlags,
   type PatientSegmentKey,
 } from "@/lib/patientSegments";
-import { PatientSegmentsBadges } from "@/components/admin/patient/PatientSegmentsBadges";
 import { cn } from "@/lib/utils";
+import { matchesNormalizedSearch } from "@/lib/normalizedSearch";
+import { PATIENT_SEGMENT_LABELS } from "@/lib/patientSegments";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,9 +64,6 @@ const initials = (name: string) =>
 const calcAge = (d: string) =>
   Math.floor((Date.now() - new Date(d).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
 
-const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
-
 // ─── Form state ───────────────────────────────────────────────────────────────
 
 interface NewPatientForm {
@@ -85,60 +83,6 @@ const emptyOperationalIndicators: PatientOperationalIndicators = {
   nextBookingDates: {},
   nextReturnDates: {},
 };
-
-// ─── Stat Card ────────────────────────────────────────────────────────────────
-
-interface StatCardProps {
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-  sub?: string;
-  accent?: boolean;
-  warn?: boolean;
-  active?: boolean;
-  onClick?: () => void;
-}
-
-function StatCard({ icon, label, value, sub, accent, warn, active, onClick }: StatCardProps) {
-  const cardClassName = cn(
-    "flex flex-col gap-3 rounded-2xl border bg-card px-5 py-5 text-left shadow-sm transition-all hover:shadow-md",
-    onClick && "cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20",
-    accent && "border-primary/40 bg-primary/[0.04]",
-    warn   && "border-amber-400/40 bg-amber-50/60 dark:bg-amber-950/20",
-    active && "border-primary bg-primary/[0.07] ring-1 ring-primary/20"
-  );
-  const content = (
-    <>
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">{label}</span>
-        <span className={cn(
-          "w-8 h-8 rounded-xl flex items-center justify-center shrink-0",
-          accent ? "bg-primary/20 text-primary" : warn ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400" : "bg-primary/8 text-primary/60"
-        )}>
-          {icon}
-        </span>
-      </div>
-      <div>
-        <p className={cn("text-2xl font-black tabular-nums leading-none", accent ? "text-primary" : "text-foreground")}>{value}</p>
-        {sub && <p className="text-[11px] text-muted-foreground mt-1.5 font-medium">{sub}</p>}
-      </div>
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button type="button" onClick={onClick} className={cardClassName}>
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <div className={cardClassName}>
-      {content}
-    </div>
-  );
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -259,9 +203,11 @@ export default function AdminPacientes() {
 
   // ── Gender counts (respects text search only) ────────────────────────────────
   const genderCounts = useMemo(() => {
-    const q = search.toLowerCase();
-    const base = q
-      ? patients.filter((p) => p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q))
+    const base = search.trim()
+      ? patients.filter((p) => matchesNormalizedSearch({
+          name: p.name,
+          search_text: [p.email, p.phone, p.city, p.cpf].filter(Boolean).join(" "),
+        }, search))
       : patients;
     return {
       all:   base.length,
@@ -273,14 +219,16 @@ export default function AdminPacientes() {
 
   // ── Full filtered list ───────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    const q        = search.toLowerCase();
     const ageMinN  = ageMin  ? parseInt(ageMin)  : null;
     const ageMaxN  = ageMax  ? parseInt(ageMax)  : null;
     const hasSegment = (patientId: number | undefined, segment: PatientSegmentKey) =>
       typeof patientId === "number" && patientSegmentsById.get(patientId)?.includes(segment);
 
     let list = patients.filter((p) => {
-      if (q && !p.name?.toLowerCase().includes(q) && !p.email?.toLowerCase().includes(q)) return false;
+      if (search.trim() && !matchesNormalizedSearch({
+        name: p.name,
+        search_text: [p.email, p.phone, p.city, p.cpf].filter(Boolean).join(" "),
+      }, search)) return false;
       if (gender !== "all" && p.gender !== gender) return false;
       if (actionFilter === "new_this_month" && p.created_at?.slice(0, 7) !== stats.thisMonth) return false;
       if (actionFilter === "incomplete" && !hasSegment(p.id, "cadastro_incompleto")) return false;
@@ -379,133 +327,119 @@ export default function AdminPacientes() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5">
+    <div className="space-y-7">
 
       {/* ── Page header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <div className="w-1 self-stretch rounded-full bg-primary mt-0.5" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Pacientes</h1>
-            <p className="text-sm text-muted-foreground mt-1">Registro de prontuários da clínica</p>
-          </div>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-[30px] font-bold tracking-tight leading-none text-[#13231b]">Pacientes</h1>
+          <p className="mt-2 text-sm text-[#728078]">Registro de prontuários da clínica</p>
         </div>
-        <Button onClick={() => setShowModal(true)} className="flex h-10 shrink-0 items-center gap-2 rounded-xl px-4 font-semibold shadow-sm">
-          <Plus className="w-5 h-5" />
-          Novo Paciente
+        <Button onClick={() => setShowModal(true)} className="flex h-11 shrink-0 items-center gap-2 rounded-full bg-[#1d6245] px-5 font-semibold text-white shadow-sm hover:bg-[#14583d]">
+          <Plus className="h-4 w-4" />
+          Novo paciente
         </Button>
       </div>
 
-      {/* ── Smart stats grid ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <StatCard
-          icon={<Users className="w-4 h-4" />}
-          label="Total de pacientes"
-          value={patients.length}
-          sub="ver toda a base"
-          accent
-          active={actionFilter === "all"}
+      {/* ── Snapshot e fila de atenção ──────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(270px,0.82fr)_minmax(0,2.35fr)]">
+        <button
+          type="button"
           onClick={clearAll}
-        />
-        <StatCard
-          icon={<TrendingUp className="w-4 h-4" />}
-          label="Novos este mês"
-          value={stats.newThisMonth}
-          sub={stats.monthDelta || "cadastros recentes"}
-          active={actionFilter === "new_this_month"}
-          onClick={() => setActionFilter(actionFilter === "new_this_month" ? "all" : "new_this_month")}
-        />
-        <StatCard
-          icon={<CalendarDays className="w-4 h-4" />}
-          label="Sem próxima consulta"
-          value={operationalIndicators.withoutNextBookingIds.length}
-          sub="agendar retorno"
-          warn={operationalIndicators.withoutNextBookingIds.length > 0}
-          active={actionFilter === "no_next_booking"}
-          onClick={() => setActionFilter(actionFilter === "no_next_booking" ? "all" : "no_next_booking")}
-        />
-        <StatCard
-          icon={<Utensils className="w-4 h-4" />}
-          label="Sem plano ativo"
-          value={operationalIndicators.withoutActiveMealPlanIds.length}
-          sub="criar ou revisar conduta"
-          warn={operationalIndicators.withoutActiveMealPlanIds.length > 0}
-          active={actionFilter === "no_active_plan"}
-          onClick={() => setActionFilter(actionFilter === "no_active_plan" ? "all" : "no_active_plan")}
-        />
-        <StatCard
-          icon={<ClipboardList className="w-4 h-4" />}
-          label="Exames pendentes"
-          value={operationalIndicators.pendingExamRequestPatientIds.length}
-          sub="lançar resultados"
-          warn={operationalIndicators.pendingExamRequestPatientIds.length > 0}
-          active={actionFilter === "pending_exams"}
-          onClick={() => setActionFilter(actionFilter === "pending_exams" ? "all" : "pending_exams")}
-        />
-        <StatCard
-          icon={<AlertTriangle className="w-4 h-4" />}
-          label="Retorno vencido"
-          value={segmentCounts.retorno_vencido}
-          sub={segmentCounts.retorno_vencido > 0 ? "reativar acompanhamento" : "sem atrasos hoje"}
-          warn={segmentCounts.retorno_vencido > 0}
-          active={actionFilter === "retorno_vencido"}
-          onClick={() => setActionFilter(actionFilter === "retorno_vencido" ? "all" : "retorno_vencido")}
-        />
-        <StatCard
-          icon={<Clock3 className="w-4 h-4" />}
-          label="Inativos 30d+"
-          value={segmentCounts.inativo_30d}
-          sub={segmentCounts.inativo_30d > 0 ? "pedem reengajamento" : "base ativa"}
-          warn={segmentCounts.inativo_30d > 0}
-          active={actionFilter === "inativo_30d"}
-          onClick={() => setActionFilter(actionFilter === "inativo_30d" ? "all" : "inativo_30d")}
-        />
-        <StatCard
-          icon={<AlertCircle className="w-4 h-4" />}
-          label="Perfis incompletos"
-          value={segmentCounts.cadastro_incompleto}
-          sub={segmentCounts.cadastro_incompleto > 0 ? "completar dados essenciais" : "todos completos"}
-          warn={segmentCounts.cadastro_incompleto > 0}
-          active={actionFilter === "incomplete"}
-          onClick={() => setActionFilter(actionFilter === "incomplete" ? "all" : "incomplete")}
-        />
+          className={cn("group relative flex min-h-[220px] flex-col overflow-hidden rounded-[20px] bg-[#0d563b] p-6 text-left text-white shadow-sm transition hover:bg-[#0a4d35] focus:outline-none focus:ring-2 focus:ring-[#0d563b]/30 focus:ring-offset-2", actionFilter === "all" && "ring-2 ring-[#0d563b]/20")}
+        >
+          <Users className="absolute -bottom-10 -right-5 h-36 w-36 rotate-[-10deg] text-white/[0.07]" strokeWidth={1.5} />
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/70">Total de pacientes</span>
+          <span className="mt-3 text-5xl font-bold leading-none tracking-tight tabular-nums">{patients.length}</span>
+          <div className="mt-5 flex flex-wrap items-center gap-2 text-xs text-white/75">
+            <span className="rounded-full bg-white/15 px-3 py-1 font-semibold">+{stats.newThisMonth} este mês</span>
+            <span>{stats.monthDelta ? `⌁ ${stats.monthDelta.replace(/^\+/, "")}` : "Base de pacientes"}</span>
+          </div>
+        </button>
+
+        <section className="rounded-[20px] border border-[#dfe7e2] bg-white p-4 shadow-[0_2px_5px_rgba(20,50,35,0.04)] sm:p-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-[#17251d]">Precisam de atenção</h2>
+            <span className="hidden text-xs text-[#829087] sm:inline">Clique para filtrar</span>
+          </div>
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+            {[
+              { label: "Sem próxima consulta", value: operationalIndicators.withoutNextBookingIds.length, icon: <CalendarDays className="h-4 w-4" />, filter: "no_next_booking" as const },
+              { label: "Perfis incompletos", value: segmentCounts.cadastro_incompleto, icon: <AlertCircle className="h-4 w-4" />, filter: "incomplete" as const },
+              { label: "Inativos 30d+", value: segmentCounts.inativo_30d, icon: <Clock3 className="h-4 w-4" />, filter: "inativo_30d" as const },
+              { label: "Sem plano ativo", value: operationalIndicators.withoutActiveMealPlanIds.length, icon: <Utensils className="h-4 w-4" />, filter: "no_active_plan" as const },
+              { label: "Retorno vencido", value: segmentCounts.retorno_vencido, icon: <AlertTriangle className="h-4 w-4" />, filter: "retorno_vencido" as const },
+              { label: "Exames pendentes", value: operationalIndicators.pendingExamRequestPatientIds.length, icon: <ClipboardList className="h-4 w-4" />, filter: "pending_exams" as const },
+            ].map((metric) => {
+              const isActive = actionFilter === metric.filter;
+              return (
+                <button
+                  key={metric.filter}
+                  type="button"
+                  onClick={() => setActionFilter(isActive ? "all" : metric.filter)}
+                  className={cn("flex min-w-0 items-center gap-3 rounded-[15px] border px-3 py-2.5 text-left transition hover:border-[#cbd8d0] hover:bg-[#fbfcfb] focus:outline-none focus:ring-2 focus:ring-[#1d6245]/20", isActive ? "border-[#1d6245]/50 bg-[#f0f6f2]" : "border-[#e0e7e2] bg-white")}
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fff3d8] text-[#94500a]">{metric.icon}</span>
+                  <span className="min-w-0">
+                    <span className="block text-xl font-semibold leading-5 tabular-nums text-[#17251d]">{metric.value}</span>
+                    <span className="mt-1 block truncate text-[11px] leading-tight text-[#758179]">{metric.label}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
       </div>
 
-      {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
-      <div className="flex w-full flex-col gap-3 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-          <Input
-            placeholder="Buscar por nome ou e-mail..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-11 h-11 rounded-xl text-sm border-border/60 focus:ring-primary/20 w-full"
-          />
+      {/* ── Patient list ─────────────────────────────────────────────────────── */}
+      <section className="overflow-hidden rounded-[20px] border border-[#dfe7e2] bg-white shadow-[0_2px_5px_rgba(20,50,35,0.04)]">
+      <div className="flex flex-col gap-3 border-b border-[#e4ebe6] px-4 py-3.5 xl:flex-row xl:items-center xl:justify-between sm:px-5">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto rounded-full bg-[#f0f4f1] p-1">
+          {(["all", "F", "M", "outro"] as GenderFilter[]).map((g) => {
+            const label = g === "all" ? "Todos" : GENDER_LABEL[g];
+            const active = gender === g;
+            return (
+              <button
+                key={g}
+                onClick={() => setGender(g)}
+                className={cn("flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition whitespace-nowrap", active ? "bg-white text-[#183126] shadow-sm" : "text-[#65746b] hover:text-[#183126]")}
+              >
+                {label}
+                <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] tabular-nums", active ? "bg-[#1d6245] text-white" : "bg-[#e3eae5] text-[#758179]")}>{genderCounts[g]}</span>
+              </button>
+            );
+          })}
         </div>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as SortKey)}
-          className="h-11 rounded-xl border border-input bg-card px-4 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all sm:w-48"
-        >
-          {SORT_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-        </select>
-        <button
-          onClick={() => setShowAdvanced((v) => !v)}
-          className={cn(
-            "h-11 px-4 rounded-xl border text-sm font-semibold flex items-center gap-2 transition-all shrink-0",
-            showAdvanced || hasAdvancedFilter
-              ? "border-primary bg-primary/10 text-primary"
-              : "border-input bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40"
-          )}
-        >
-          <SlidersHorizontal className="w-4 h-4" />
-          Filtros
-          {hasAdvancedFilter && (
-            <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-black flex items-center justify-center">
-              {[cityFilter, ageMin || ageMax, dateFrom || dateTo].filter(Boolean).length}
-            </span>
-          )}
-        </button>
+
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none xl:w-64">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8981]" />
+            <Input
+              placeholder="Buscar nome ou e-mail..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 rounded-xl border-[#dfe7e2] bg-[#f8faf8] pl-9 text-sm placeholder:text-[#8d9991] focus-visible:ring-[#1d6245]/20"
+            />
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className="h-10 min-w-0 flex-1 rounded-xl border border-[#dfe7e2] bg-white px-3 text-sm text-[#26352d] focus:outline-none focus:ring-1 focus:ring-[#1d6245]/30 sm:w-36 sm:flex-none"
+            >
+              {SORT_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+            <button
+              onClick={() => setShowAdvanced((v) => !v)}
+              className={cn("h-10 shrink-0 rounded-xl border px-3 text-sm font-medium flex items-center gap-2 transition", showAdvanced || hasAdvancedFilter ? "border-[#1d6245]/40 bg-[#f0f6f2] text-[#1d6245]" : "border-[#dfe7e2] bg-white text-[#46564d] hover:bg-[#f8faf8]")}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filtros
+              {hasAdvancedFilter && <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#1d6245] text-[10px] font-bold text-white">{[cityFilter, ageMin || ageMax, dateFrom || dateTo].filter(Boolean).length}</span>}
+            </button>
+          </div>
+          {hasFilter && <button onClick={clearAll} className="inline-flex items-center gap-1 text-xs font-medium text-[#718078] hover:text-red-600"><X className="h-3 w-3" />Limpar</button>}
+        </div>
       </div>
 
       {/* ── Advanced filters panel ──────────────────────────────────────────── */}
@@ -589,52 +523,14 @@ export default function AdminPacientes() {
         </div>
       )}
 
-      {/* ── Gender filter tabs ───────────────────────────────────────────────── */}
-      <div className="flex border-b border-border mt-8 mb-0 px-1">
-        {(["all", "M", "F", "outro"] as GenderFilter[]).map((g) => {
-          const label  = g === "all" ? "Todos" : GENDER_LABEL[g];
-          const count  = genderCounts[g];
-          const active = gender === g;
-          return (
-            <button
-              key={g}
-              onClick={() => setGender(g)}
-              className={cn(
-                "flex items-center gap-2.5 px-6 py-3.5 text-sm font-bold border-b-2 -mb-px transition-all whitespace-nowrap",
-                active
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
-              )}
-            >
-              {label}
-              <span className={cn(
-                "text-[10px] font-black px-2 py-0.5 rounded-full tabular-nums shadow-inner",
-                active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-              )}>
-                {count}
-              </span>
-            </button>
-          );
-        })}
-        {hasFilter && (
-          <button
-            onClick={clearAll}
-            className="ml-auto flex items-center gap-1.5 px-4 py-3.5 text-xs font-bold text-muted-foreground hover:text-destructive transition-colors"
-          >
-            <X className="w-3 h-3" />
-            Limpar tudo
-          </button>
-        )}
-      </div>
-
       {/* ── Table ───────────────────────────────────────────────────────────── */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-32 gap-4 text-muted-foreground">
+        <div className="flex flex-col items-center justify-center gap-4 py-28 text-[#78857d]">
           <Loader2 className="w-8 h-8 animate-spin text-primary/60" />
           <p className="text-sm font-medium">Carregando pacientes...</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-28 gap-4 text-center border border-border border-t-0 bg-card rounded-b-2xl shadow-sm ring-1 ring-primary/5">
+        <div className="flex flex-col items-center justify-center gap-4 px-4 py-24 text-center">
           <UserCircle2 className="w-14 h-14 text-muted-foreground/20" />
           <div className="space-y-1">
             <p className="text-base font-bold text-foreground">
@@ -658,14 +554,13 @@ export default function AdminPacientes() {
           )}
         </div>
       ) : (
-        <div className="border border-border border-t-0 rounded-b-2xl overflow-hidden bg-card shadow-sm ring-1 ring-primary/5">
-
+        <div>
           {/* Column headers */}
-          <div className="hidden sm:grid grid-cols-[1.8fr_1.2fr_130px_120px_56px] border-b border-border bg-primary/[0.03] px-6">
-            {(["Paciente", "Contato", "Gênero / Idade", "Cadastrado em", ""] as const).map((col, i) => (
+          <div className="hidden lg:grid grid-cols-[minmax(205px,1.4fr)_minmax(190px,1.35fr)_minmax(180px,1.1fr)_minmax(100px,.7fr)_minmax(120px,.8fr)_42px] border-b border-[#e4ebe6] bg-[#f5f8f6] px-5">
+            {(["Paciente", "Contato", "Pendências", "Perfil", "Cadastro", ""] as const).map((col, i) => (
               <div key={i} className={cn(
-                "py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground/70 flex items-center",
-                i === 2 || i === 3 ? "justify-center" : ""
+                "flex items-center py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#69776f]",
+                i === 3 || i === 4 ? "justify-center" : ""
               )}>
                 {col}
               </div>
@@ -678,54 +573,60 @@ export default function AdminPacientes() {
               key={patient.id}
               onClick={() => navigate(`/admin/pacientes/${patient.id}`)}
               className={cn(
-                "group grid grid-cols-[1fr_56px] sm:grid-cols-[1.8fr_1.2fr_130px_120px_56px] items-center px-6 py-4 cursor-pointer hover:bg-muted/30 transition-colors",
-                idx < paginated.length - 1 && "border-b border-border/50"
+                "group grid grid-cols-[minmax(0,1fr)_32px] items-center gap-x-3 px-4 py-3.5 transition-colors hover:bg-[#fbfcfb] lg:grid-cols-[minmax(205px,1.4fr)_minmax(190px,1.35fr)_minmax(180px,1.1fr)_minmax(100px,.7fr)_minmax(120px,.8fr)_42px] lg:px-5 lg:py-3",
+                idx < paginated.length - 1 && "border-b border-[#e7ede9]"
               )}
             >
               {/* Paciente */}
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-xs font-black shrink-0 ring-1 ring-primary/10">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e9f3ec] text-xs font-bold text-[#155b3d]">
                   {patient.name ? initials(patient.name) : "?"}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors leading-tight">
+                  <p className="truncate text-sm font-semibold leading-tight text-[#17251d] transition-colors group-hover:text-[#1d6245]">
                     {patient.name ?? "—"}
                   </p>
-                  <p className="text-[11px] text-muted-foreground/70 truncate flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-2.5 h-2.5 shrink-0" />
-                    {patient.city || "Cidade não informada"}
+                  <p className="mt-1 flex items-center gap-1 truncate text-[11px] text-[#77847c]">
+                    <MapPin className="h-3 w-3 shrink-0" />{patient.city || <span className="italic">Cidade não informada</span>}
                   </p>
+                  <div className="mt-2 space-y-1 lg:hidden">
+                    <div className="flex flex-wrap gap-1">
+                      {(patient.id ? (patientSegmentsById.get(patient.id) ?? []) : []).slice(0, 3).map((segment) => (
+                        <span key={segment} className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", segment === "sem_proximo_agendamento" ? "bg-[#fff3d8] text-[#94500a]" : segment === "sem_plano_ativo" ? "bg-[#ffe9e7] text-[#ac3430]" : segment === "cadastro_incompleto" ? "bg-[#e8f3fb] text-[#22639a]" : segment === "exames_pendentes" ? "bg-[#eef2ef] text-[#69776f]" : "bg-[#fff3d8] text-[#94500a]")}>{PATIENT_SEGMENT_LABELS[segment]}</span>
+                      ))}
+                    </div>
+                    <p className="truncate text-[11px] text-[#58685f]">{patient.email || patient.phone || "Sem contato"}</p>
+                  </div>
                 </div>
               </div>
 
               {/* Contato */}
-              <div className="hidden sm:flex flex-col justify-center min-w-0 gap-0.5">
-                <PatientSegmentsBadges
-                  segments={patient.id ? (patientSegmentsById.get(patient.id) ?? []) : []}
-                  limit={3}
-                  className="mb-1"
-                />
-                <p className="text-[13px] text-foreground/80 font-medium truncate">{patient.email || "—"}</p>
-                <p className="text-[11px] text-muted-foreground/70 truncate">{patient.phone || "—"}</p>
+              <div className="hidden min-w-0 flex-col justify-center gap-1 lg:flex">
+                {patient.email ? <p className="flex min-w-0 items-center gap-1.5 truncate text-[13px] text-[#293a31]"><Mail className="h-3.5 w-3.5 shrink-0 text-[#66766c]" /><span className="truncate">{patient.email}</span></p> : null}
+                {patient.phone ? <p className="flex min-w-0 items-center gap-1.5 truncate text-[11px] text-[#758179]"><Phone className="h-3 w-3 shrink-0" /><span className="truncate">{patient.phone}</span></p> : null}
+                {!patient.email && !patient.phone && <span className="text-xs italic text-[#8b9890]">Sem contato</span>}
+              </div>
+
+              {/* Pendências */}
+              <div className="hidden min-w-0 flex-wrap content-center gap-1 lg:flex">
+                {(patient.id ? (patientSegmentsById.get(patient.id) ?? []) : []).slice(0, 3).map((segment) => (
+                  <span key={segment} className={cn("rounded-full px-2 py-1 text-[10px] font-medium leading-none", segment === "sem_proximo_agendamento" ? "bg-[#fff3d8] text-[#94500a]" : segment === "sem_plano_ativo" ? "bg-[#ffe9e7] text-[#ac3430]" : segment === "cadastro_incompleto" ? "bg-[#e8f3fb] text-[#22639a]" : segment === "exames_pendentes" ? "bg-[#eef2ef] text-[#69776f]" : "bg-[#fff3d8] text-[#94500a]")}>{PATIENT_SEGMENT_LABELS[segment]}</span>
+                ))}
               </div>
 
               {/* Gênero / Idade */}
-              <div className="hidden sm:flex flex-col items-center justify-center gap-1">
-                <p className="text-[13px] text-foreground/80 font-medium">
+              <div className="hidden min-w-0 flex-col items-center justify-center gap-1 lg:flex">
+                <p className="text-[13px] text-[#293a31]">
                   {patient.gender ? GENDER_LABEL[patient.gender] : "—"}
+                  {patient.birth_date ? <span className="text-[#77847c]"> · {calcAge(patient.birth_date)} anos</span> : null}
                 </p>
-                {patient.birth_date && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-muted text-[11px] font-semibold text-muted-foreground">
-                    {calcAge(patient.birth_date)} anos
-                  </span>
-                )}
               </div>
 
               {/* Cadastrado */}
-              <div className="hidden sm:flex items-center justify-center">
-                <p className="text-[12px] text-muted-foreground font-medium tabular-nums">
+              <div className="hidden items-center justify-center lg:flex">
+                <p className="text-[12px] text-[#718078] tabular-nums">
                   {patient.created_at
-                    ? new Date(patient.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
+                    ? new Date(patient.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(" de ", " ")
                     : "—"}
                 </p>
               </div>
@@ -735,21 +636,21 @@ export default function AdminPacientes() {
                 <button
                   onClick={(e) => patient.id !== undefined && handleDelete(e, patient.id)}
                   disabled={deletingId === patient.id}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[#9aa69f] opacity-0 transition-all hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 disabled:opacity-40"
                   aria-label="Excluir"
                 >
                   {deletingId === patient.id
                     ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     : <Trash2 className="w-3.5 h-3.5" />}
                 </button>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/25 group-hover:text-primary/60 transition-colors" />
+                <ChevronRight className="h-4 w-4 text-[#718078] transition-colors group-hover:text-[#1d6245]" />
               </div>
             </div>
           ))}
 
           {/* Footer: count + pagination */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-border/50 bg-muted/20 gap-4">
-            <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-widest shrink-0">
+          <div className="flex items-center justify-between gap-4 border-t border-[#e7ede9] bg-[#fafcfb] px-5 py-3.5">
+            <p className="shrink-0 text-[11px] font-medium text-[#738078]">
               {filtered.length === patients.length
                 ? `${patients.length} paciente${patients.length !== 1 ? "s" : ""} no total`
                 : `${filtered.length} de ${patients.length} encontrado${filtered.length !== 1 ? "s" : ""}`}
@@ -805,6 +706,7 @@ export default function AdminPacientes() {
           </div>
         </div>
       )}
+      </section>
 
       {/* ── New Patient Modal ────────────────────────────────────────────────── */}
       {showModal && (

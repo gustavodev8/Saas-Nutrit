@@ -5,5 +5,6 @@ export type PatientAdminTabKey =
   | "relatorio"
   | "antropometria"
   | "planos"
+  | "treinos"
   | "protocolos"
   | "prescricao";

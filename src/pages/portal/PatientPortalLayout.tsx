@@ -1,4 +1,4 @@
-import { CalendarDays, FileText, Home, LogOut, Soup } from "lucide-react";
+import { CalendarDays, Dumbbell, FileText, Home, LogOut, Soup } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ const navItems: Array<{
 }> = [
   { to: "/portal", icon: Home, label: "Inicio", end: true, route: "home" },
   { to: "/portal/plano", icon: Soup, label: "Plano", route: "plan" },
+  { to: "/portal/treinos", icon: Dumbbell, label: "Treinos", route: "training" },
   { to: "/portal/consultas", icon: CalendarDays, label: "Consultas", route: "consultations" },
   { to: "/portal/documentos", icon: FileText, label: "Documentos", route: "documents" },
 ];
@@ -31,12 +32,14 @@ export default function PatientPortalLayout() {
         ? "grid-cols-2"
         : visibleNavItems.length === 3
           ? "grid-cols-3"
-          : "grid-cols-4";
+          : visibleNavItems.length === 4
+            ? "grid-cols-4"
+            : "grid-cols-5";
 
   return (
-    <div className={`min-h-screen bg-muted/20 ${visibleNavItems.length > 0 ? "pb-24" : ""}`}>
-      <header className="sticky top-0 z-30 border-b border-border/60 bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+    <div className={`min-h-screen bg-muted/20 ${visibleNavItems.length > 0 ? "pb-[calc(6rem_+_env(safe-area-inset-bottom))]" : ""}`}>
+      <header className="sticky top-0 z-30 border-b border-border/60 bg-background/95 shadow-sm backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3.5">
           <div className="flex min-w-0 items-center gap-3">
             <Avatar className="h-11 w-11 border border-border/60">
               <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
@@ -64,12 +67,12 @@ export default function PatientPortalLayout() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-5">
+      <main className="mx-auto min-h-[calc(100dvh-5rem)] max-w-5xl px-4 py-5 sm:min-h-[calc(100dvh-5.5rem)] sm:py-7">
         <Outlet />
       </main>
 
       {visibleNavItems.length > 0 ? (
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur">
+      <nav aria-label="Navegação do portal" className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_-20px_hsl(var(--foreground)/0.35)] backdrop-blur">
           <div className={`mx-auto grid max-w-5xl ${navGridClass}`}>
             {visibleNavItems.map(({ to, icon: Icon, label, end }) => (
               <NavLink
@@ -77,13 +80,13 @@ export default function PatientPortalLayout() {
                 to={to}
                 end={end}
                 className={({ isActive }) =>
-                  `flex flex-col items-center justify-center gap-1 px-2 py-3 text-xs font-medium transition-colors ${
-                    isActive ? "text-primary" : "text-muted-foreground"
+                  `mx-1 my-1 flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-xs font-medium transition-colors ${
+                    isActive ? "bg-primary/[0.08] text-primary" : "text-muted-foreground hover:bg-muted/60"
                   }`
                 }
               >
-                <Icon size={18} />
-                <span>{label}</span>
+                <Icon size={18} className="shrink-0" />
+                <span className="max-w-full truncate text-[11px] leading-tight sm:text-xs">{label}</span>
               </NavLink>
             ))}
           </div>

@@ -3,6 +3,8 @@
 // Nota: algumas referências variam por gênero — use ref_min/ref_max do dicionário
 // como ponto de partida; o profissional pode ajustar manualmente no sistema.
 
+import { matchesNormalizedSearch } from "@/lib/normalizedSearch";
+
 export interface ExamRef {
   name: string;
   unit: string;
@@ -362,10 +364,10 @@ export function findExam(name: string): ExamRef | undefined {
 // ─── Busca parcial para autocomplete ─────────────────────────────────────────
 export function searchExams(query: string): ExamRef[] {
   if (!query.trim()) return EXAMS_DICTIONARY;
-  const q = query.toLowerCase();
-  return EXAMS_DICTIONARY.filter(e =>
-    e.name.toLowerCase().includes(q) || e.category.toLowerCase().includes(q)
-  );
+  return EXAMS_DICTIONARY.filter((exam) => matchesNormalizedSearch({
+    name: exam.name,
+    search_text: exam.category,
+  }, query));
 }
 
 // ─── Determina o status do resultado ─────────────────────────────────────────

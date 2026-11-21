@@ -11,6 +11,7 @@ import {
 } from "@/components/admin/adminStyles";
 import { fetchPatientAuditLogs, type PatientAuditAction, type PatientAuditLog } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { matchesNormalizedSearch } from "@/lib/normalizedSearch";
 
 const SECTION_LABELS: Record<string, string> = {
   perfil: "Perfil do paciente",
@@ -78,24 +79,14 @@ export default function AdminAuditoria() {
   }, []);
 
   const filteredLogs = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
     return logs.filter((log) => {
       if (sectionFilter !== "all" && log.section_key !== sectionFilter) return false;
       if (actionFilter !== "all" && log.action !== actionFilter) return false;
 
-      if (!query) return true;
-
-      const haystack = [
-        log.patient_name,
-        log.summary,
-        log.actor_email ?? "",
-        log.section_label,
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      return haystack.includes(query);
+      return matchesNormalizedSearch({
+        name: log.patient_name,
+        search_text: [log.summary, log.actor_email ?? "", log.section_label, log.section_key, ACTION_LABELS[log.action]].join(" "),
+      }, search);
     });
   }, [actionFilter, logs, search, sectionFilter]);
 

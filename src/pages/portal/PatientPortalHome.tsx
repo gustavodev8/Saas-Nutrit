@@ -3,6 +3,7 @@ import {
   ArrowRight,
   CalendarDays,
   ClipboardList,
+  Dumbbell,
   FileText,
   Paperclip,
   Soup,
@@ -19,6 +20,7 @@ import {
   fetchPortalConsultationRecords,
   fetchPortalExamRequests,
   fetchPortalMealPlans,
+  fetchPortalTrainingPlans,
   fetchPortalMeasurements,
   fetchPortalPatientReports,
 } from "@/lib/patientPortalApi";
@@ -30,6 +32,7 @@ import type {
   PatientExamRequest,
   PatientReport,
 } from "@/lib/supabase";
+import type { PortalTrainingPlan } from "@/lib/portalTrainingTypes";
 import { formatPortalDateTime, formatPortalStatus, isFuturePortalDate } from "@/pages/portal/portalUtils";
 
 function MetricCard({
@@ -64,6 +67,7 @@ export default function PatientPortalHome() {
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [plans, setPlans] = useState<MealPlan[]>([]);
+  const [trainingPlans, setTrainingPlans] = useState<PortalTrainingPlan[]>([]);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [reports, setReports] = useState<PatientReport[]>([]);
   const [examRequests, setExamRequests] = useState<PatientExamRequest[]>([]);
@@ -78,6 +82,7 @@ export default function PatientPortalHome() {
     Promise.all([
       fetchPortalBookings(patient.id, patient.email ?? null),
       fetchPortalMealPlans(patient.id),
+      fetchPortalTrainingPlans(patient.id).catch(() => []),
       fetchPortalMeasurements(patient.id),
       fetchPortalPatientReports(patient.id),
       fetchPortalExamRequests(patient.id),
@@ -87,6 +92,7 @@ export default function PatientPortalHome() {
         ([
           nextBookings,
           nextPlans,
+          nextTrainingPlans,
           nextMeasurements,
           nextReports,
           nextExamRequests,
@@ -94,6 +100,7 @@ export default function PatientPortalHome() {
         ]) => {
           setBookings(nextBookings);
           setPlans(nextPlans);
+          setTrainingPlans(nextTrainingPlans);
           setMeasurements(nextMeasurements);
           setReports(nextReports);
           setExamRequests(nextExamRequests);
@@ -114,6 +121,7 @@ export default function PatientPortalHome() {
   );
 
   const latestPlan = plans[0] ?? null;
+  const latestTrainingPlan = trainingPlans[0] ?? null;
   const latestMeasurement = measurements[0] ?? null;
   const pendingExams = examRequests.filter((request) => request.status === "pending").length;
   const materialRecords = records.filter(
@@ -124,6 +132,7 @@ export default function PatientPortalHome() {
   const showConsultationCard =
     settings.navigation.consultations && settings.home.nextConsultation;
   const showPlanCard = settings.navigation.plan && settings.home.currentPlan;
+  const showTrainingCard = settings.navigation.training && settings.home.currentTraining;
   const showAssessmentMetric = settings.home.latestAssessment;
   const showPendingExamsMetric = settings.home.pendingExams;
   const showReportsMetric = settings.home.reports;
@@ -132,7 +141,7 @@ export default function PatientPortalHome() {
     settings.navigation.documents && settings.home.latestGuidance;
   const guidanceCardVisible = showGuidanceCard && Boolean(latestMaterial);
 
-  const visiblePrimaryCards = [showConsultationCard, showPlanCard].filter(Boolean).length;
+  const visiblePrimaryCards = [showConsultationCard, showPlanCard, showTrainingCard].filter(Boolean).length;
   const visibleMetricCards = [
     showAssessmentMetric,
     showPendingExamsMetric,
@@ -227,6 +236,35 @@ export default function PatientPortalHome() {
                 <Button asChild variant="outline" className="w-full rounded-xl">
                   <Link to="/portal/plano">
                     Abrir meu plano <ArrowRight size={16} className="ml-2" />
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {showTrainingCard ? (
+            <Card className="rounded-3xl border-border/60">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2 text-primary">
+                  <Dumbbell size={18} />
+                  <CardTitle className="text-lg">Treino atual</CardTitle>
+                </div>
+                <CardDescription>Sua ficha de treino mais recente liberada.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {latestTrainingPlan ? (
+                  <>
+                    <p className="text-sm font-semibold text-foreground">{latestTrainingPlan.title}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {latestTrainingPlan.frequency?.trim() || `${latestTrainingPlan.sessions.length} sessoes`}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Nenhuma ficha de treino publicada ainda.</p>
+                )}
+                <Button asChild variant="outline" className="w-full rounded-xl">
+                  <Link to="/portal/treinos">
+                    Abrir meus treinos <ArrowRight size={16} className="ml-2" />
                   </Link>
                 </Button>
               </CardContent>

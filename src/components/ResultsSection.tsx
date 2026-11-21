@@ -30,7 +30,7 @@ const ResultsSection = () => {
   }, [api]);
 
   return (
-    <section id="resultados" className="py-20 bg-green-light">
+    <section id="resultados" className="overflow-x-hidden py-20 bg-green-light">
       <div
         ref={ref}
         className={`container mx-auto px-4 transition-[opacity,transform] duration-700 ease-smooth ${

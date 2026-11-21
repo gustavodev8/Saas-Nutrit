@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { Loader2, FileText, CheckCircle2, ChevronRight, LayoutList } from "lucide-react";
+import { Loader2, FileText, CheckCircle2, ChevronRight, LayoutList, Search } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { searchNormalizedRecords } from "@/lib/normalizedSearch";
 import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
 import { normalizeLegacyMealAlternatives } from "@/lib/mealAlternatives";
 import {
@@ -216,6 +218,7 @@ export function TemplateImportModal({
   const [templates, setTemplates] = useState<DietTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<DietTemplate | null>(null);
+  const [search, setSearch] = useState("");
   const [mode, setMode] = useState<"replace" | "append">("replace");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedMealIndex, setSelectedMealIndex] = useState(0);
@@ -223,6 +226,7 @@ export function TemplateImportModal({
   useEffect(() => {
     if (!open) return;
     setSelected(null);
+    setSearch("");
     setMode("replace");
     setPreviewOpen(false);
     setSelectedMealIndex(0);
@@ -252,6 +256,19 @@ export function TemplateImportModal({
   };
 
   const selectedMealCount = selected ? getTemplateParentMeals(selected).length : 0;
+  const filteredTemplates = searchNormalizedRecords(templates.map((template) => ({
+    ...template,
+    search_text: [
+      template.description,
+      template.strategy,
+      ...(template.meals ?? []).flatMap((meal) => [
+        meal.meal_name,
+        meal.notes,
+        ...(meal.foods ?? []).map((food) => food.food_name),
+      ]),
+    ].filter(Boolean).join(" "),
+    search_ranges: { kcal: Number(template.total_kcal ?? 0) },
+  })), search);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -282,8 +299,17 @@ export function TemplateImportModal({
             </div>
           ) : (
             <>
+              <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-background px-3">
+                <Search size={15} className="text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar template, refeição ou alimento"
+                  className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                />
+              </div>
               <div className="space-y-2">
-                {templates.map((t) => (
+                {filteredTemplates.map((t) => (
                   <TemplateCard
                     key={t.id}
                     template={t}
@@ -291,6 +317,9 @@ export function TemplateImportModal({
                     onSelect={() => { setSelected(t); setPreviewOpen(false); }}
                   />
                 ))}
+                {filteredTemplates.length === 0 && (
+                  <p className="py-8 text-center text-sm text-muted-foreground">Nenhum template corresponde à busca.</p>
+                )}
               </div>
 
               {selected && (

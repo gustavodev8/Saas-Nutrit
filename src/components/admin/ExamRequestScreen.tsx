@@ -14,6 +14,7 @@ import {
   supabase,
 } from "@/lib/supabase";
 import { examRequestPdfFilename, generateExamRequestPdf } from "@/lib/generateExamRequestPdf";
+import { matchesNormalizedSearch } from "@/lib/normalizedSearch";
 
 interface CartItem {
   exam:  ExamCatalogItem;
@@ -110,9 +111,7 @@ export function ExamRequestScreen({ patientId, onCreated, onCancel }: Props) {
 
   const searchResults = search.length > 0
     ? catalog.filter(
-        (e) => !cartIds.has(e.id) &&
-          (e.name.toLowerCase().includes(search.toLowerCase()) ||
-           e.group_category.toLowerCase().includes(search.toLowerCase()))
+        (e) => !cartIds.has(e.id) && matchesNormalizedSearch({ name: e.name, search_text: e.group_category }, search)
       ).slice(0, 30)
     : [];
 

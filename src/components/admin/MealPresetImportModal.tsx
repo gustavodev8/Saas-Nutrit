@@ -6,14 +6,14 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { fetchMealPresets, type MealPreset, type Meal } from "@/lib/supabase";
 import { mealPresetToMeal } from "@/lib/mealPresetUtils";
+import { matchesNumericSearchRange, searchNormalizedRecords } from "@/lib/normalizedSearch";
 
-function normalizeText(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
-}
+type MacroKey = "kcal" | "protein" | "carbs" | "fat";
+type MacroRange = { min: string; max: string };
+const EMPTY_MACRO_RANGES: Record<MacroKey, MacroRange> = {
+  kcal: { min: "", max: "" }, protein: { min: "", max: "" },
+  carbs: { min: "", max: "" }, fat: { min: "", max: "" },
+};
 
 function formatTotals(preset: MealPreset) {
   const kcal = preset.total_kcal ?? 0;
@@ -131,6 +131,8 @@ export function MealPresetImportModal({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [kcalFilter, setKcalFilter] = useState<"all" | "close" | "below" | "above" | "light">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [macroRanges, setMacroRanges] = useState(EMPTY_MACRO_RANGES);
 
   useEffect(() => {
     if (!open) return;
@@ -139,8 +141,10 @@ export function MealPresetImportModal({
     setPreviewOpen(false);
     setSearch("");
     setKcalFilter("all");
+    setStatusFilter("all");
+    setMacroRanges(EMPTY_MACRO_RANGES);
     setLoading(true);
-    fetchMealPresets()
+    fetchMealPresets(true)
       .then((data) => setPresets(data))
       .finally(() => setLoading(false));
   }, [open]);
@@ -156,7 +160,6 @@ export function MealPresetImportModal({
   const targetCalories = selectedTarget?.targetCalories;
 
   const filteredPresets = useMemo(() => {
-    const term = normalizeText(search);
     const hasTargetCalories = Boolean(targetCalories && targetCalories > 0);
     const target = targetCalories ?? 0;
 
@@ -189,22 +192,48 @@ export function MealPresetImportModal({
       return -pct;
     };
 
-    return presets.filter((preset) => {
-      const haystack = normalizeText([
-        preset.name,
+    return searchNormalizedRecords(presets.map((preset) => ({
+      ...preset,
+      search_text: [
         preset.meal_name,
-        preset.description ?? "",
-        preset.notes ?? "",
-        preset.strategy ?? "",
+        preset.description,
+        preset.notes,
+        preset.strategy,
         ...(preset.foods ?? []).map((food) => food.food_name),
-      ].join(" "));
-      return haystack.includes(term) && matchesKcalFilter(preset);
+      ].filter(Boolean).join(" "),
+      search_ranges: {
+        kcal: preset.total_kcal, protein: preset.protein_g, carbs: preset.carbs_g, fat: preset.fat_g,
+      },
+    })), search).filter((preset) => {
+      if (!matchesKcalFilter(preset)) return false;
+      if (statusFilter === "active" && preset.is_active === false) return false;
+      if (statusFilter === "inactive" && preset.is_active !== false) return false;
+      const values: Record<MacroKey, number | undefined> = {
+        kcal: preset.total_kcal, protein: preset.protein_g, carbs: preset.carbs_g, fat: preset.fat_g,
+      };
+      return !(Object.keys(macroRanges) as MacroKey[]).some((key) => {
+        const range = macroRanges[key];
+        return Boolean((range.min || range.max) && !matchesNumericSearchRange(values[key], {
+          min: range.min ? Number(range.min) : undefined,
+          max: range.max ? Number(range.max) : undefined,
+        }));
+      });
     }).sort((a, b) => {
       const kcalSort = scoreByCalories(b) - scoreByCalories(a);
       if (kcalSort !== 0) return kcalSort;
       return (a.name ?? "").localeCompare(b.name ?? "");
     });
-  }, [presets, search, kcalFilter, targetCalories]);
+  }, [presets, search, kcalFilter, targetCalories, statusFilter, macroRanges]);
+
+  const activeFilterCount = (search.trim() ? 1 : 0) + (kcalFilter !== "all" ? 1 : 0) +
+    (statusFilter !== "all" ? 1 : 0) +
+    Object.values(macroRanges).filter((range) => range.min || range.max).length;
+  const clearFilters = () => {
+    setSearch("");
+    setKcalFilter("all");
+    setStatusFilter("all");
+    setMacroRanges(EMPTY_MACRO_RANGES);
+  };
 
   const selectedMealName = selectedTarget?.label ?? "Refeição";
 
@@ -279,6 +308,39 @@ export function MealPresetImportModal({
                   >
                     {label}
                   </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  aria-label="Filtrar status da refeição"
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground"
+                >
+                  <option value="all">Todos os status</option>
+                  <option value="active">Ativas</option>
+                  <option value="inactive">Inativas</option>
+                </select>
+                {activeFilterCount > 0 && (
+                  <Button type="button" variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-xs">
+                    Limpar {activeFilterCount} filtro{activeFilterCount === 1 ? "" : "s"}
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {([
+                  ["kcal", "Calorias (kcal)"], ["protein", "Proteínas (g)"],
+                  ["carbs", "Carboidratos (g)"], ["fat", "Gorduras (g)"],
+                ] as const).map(([key, label]) => (
+                  <fieldset key={key} className="space-y-1">
+                    <legend className="text-[10px] font-medium text-muted-foreground">{label}</legend>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Input aria-label={`${label} mínimo`} type="number" min="0" placeholder="Mín." value={macroRanges[key].min}
+                        onChange={(event) => setMacroRanges((current) => ({ ...current, [key]: { ...current[key], min: event.target.value } }))} className="h-8 px-2 text-xs" />
+                      <Input aria-label={`${label} máximo`} type="number" min="0" placeholder="Máx." value={macroRanges[key].max}
+                        onChange={(event) => setMacroRanges((current) => ({ ...current, [key]: { ...current[key], max: event.target.value } }))} className="h-8 px-2 text-xs" />
+                    </div>
+                  </fieldset>
                 ))}
               </div>
             </div>

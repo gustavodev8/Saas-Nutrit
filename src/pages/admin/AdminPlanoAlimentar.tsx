@@ -21,8 +21,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
-  fetchFullMealPlan, saveMeals, upsertMealPlan, fetchMealPlans,
-  upsertMealPreset, saveMealPresetFoods, upsertDietTemplate, saveDietTemplateMeals,
+  fetchFullMealPlan, saveMealPlanAggregate, fetchMealPlans,
+  saveMealPresetAggregate, saveDietTemplateAggregate,
   type Meal, type MealFood, type MealPlan, type MealPresetFood, type AlternativeMeal
 } from "@/lib/supabase";
 import {
@@ -35,6 +35,7 @@ import { MealPlanPdfOptionsDialog } from "@/components/admin/MealPlanPdfOptionsD
 import { MonthlyShoppingListDialog } from "@/components/admin/MonthlyShoppingListDialog";
 import { TemplateImportModal } from "@/components/admin/TemplateImportModal";
 import { MealPresetImportModal, type MealPresetImportTarget } from "@/components/admin/MealPresetImportModal";
+import { SearchAliasesField } from "@/components/admin/SearchAliasesField";
 import { useConsultation } from "@/contexts/ConsultationContext";
 import { generateClinicalAlerts } from "@/lib/clinicalAlertsUtils";
 import { generateMealPlanPdf } from "@/lib/generateMealPlanPdf";
@@ -262,9 +263,11 @@ export default function AdminPlanoAlimentar() {
   const [mealPresetSourceMealIndex, setMealPresetSourceMealIndex] = useState<number | null>(null);
   const [mealPresetDraftName, setMealPresetDraftName] = useState("");
   const [mealPresetDraftDescription, setMealPresetDraftDescription] = useState("");
+  const [mealPresetDraftAliases, setMealPresetDraftAliases] = useState<string[]>([]);
   const [savingMealPreset, setSavingMealPreset] = useState(false);
   const [planTemplateDraftName, setPlanTemplateDraftName] = useState("");
   const [planTemplateDraftDescription, setPlanTemplateDraftDescription] = useState("");
+  const [planTemplateDraftAliases, setPlanTemplateDraftAliases] = useState<string[]>([]);
   const [savingPlanTemplate, setSavingPlanTemplate] = useState(false);
   const [showPdfOptions, setShowPdfOptions] = useState(false);
   const [macroGoals, setMacroGoals]     = useState<MacroGoals | null>(null);
@@ -374,6 +377,7 @@ export default function AdminPlanoAlimentar() {
     setPlanTemplateDraftDescription(
       plan.notes?.trim() || `Modelo salvo a partir do plano ${plan.title || "Plano Alimentar"}.`,
     );
+    setPlanTemplateDraftAliases([]);
     setShowSavePlanTemplateDialog(true);
   };
 
@@ -475,6 +479,7 @@ export default function AdminPlanoAlimentar() {
     setMealPresetSourceMealIndex(i);
     setMealPresetDraftName(source.meal_name?.trim() || `Refeição ${i + 1}`);
     setMealPresetDraftDescription(`Modelo salvo a partir do plano ${plan.title || "atual"}.`);
+    setMealPresetDraftAliases([]);
     setShowSaveMealPresetDialog(true);
   };
 
@@ -518,9 +523,10 @@ export default function AdminPlanoAlimentar() {
 
     setSavingMealPreset(true);
     try {
-      const savedPreset = await upsertMealPreset({
+      const savedPreset = await saveMealPresetAggregate({
         name,
         description: mealPresetDraftDescription.trim() || undefined,
+        search_aliases: mealPresetDraftAliases,
         meal_name: source.meal_name.trim() || name,
         time_suggestion: source.time_suggestion || undefined,
         notes: source.notes || undefined,
@@ -530,20 +536,10 @@ export default function AdminPlanoAlimentar() {
         carbs_g: totals.carbs > 0 ? parseFloat(totals.carbs.toFixed(1)) : undefined,
         fat_g: totals.fat > 0 ? parseFloat(totals.fat.toFixed(1)) : undefined,
         is_active: true,
-      });
+      }, foods);
 
       if (!savedPreset?.id) {
         toast.error("Erro ao salvar o modelo.");
-        return;
-      }
-
-      const ok = await saveMealPresetFoods(savedPreset.id, foods.map((food) => ({
-        ...food,
-        preset_id: savedPreset.id,
-      })));
-
-      if (!ok) {
-        toast.error("Modelo criado, mas houve erro ao salvar os alimentos.");
         return;
       }
 
@@ -739,7 +735,11 @@ export default function AdminPlanoAlimentar() {
         get_kcal: suggestedKcal ?? plan.get_kcal,
       };
 
-      const savedPlan = await upsertMealPlan(planWithLineage);
+      const dbMeals = meals.map((meal) => editorToMeal(meal, planWithLineage.id ?? 0));
+      const savedPlan = await saveMealPlanAggregate(planWithLineage, dbMeals, {
+        source: autosave ? "autosave" : "manual",
+        mergeWindowMinutes: autosave ? 5 : 2,
+      });
       if (!savedPlan?.id) {
         if (!silent) toast.error("Erro ao salvar o plano.");
         if (autosave) {
@@ -750,20 +750,6 @@ export default function AdminPlanoAlimentar() {
       }
 
       setPlan((current) => ({ ...current, id: savedPlan.id }));
-
-      const dbMeals = meals.map((meal) => editorToMeal(meal, savedPlan.id));
-      const saveErr = await saveMeals(savedPlan.id, dbMeals, {
-        source: autosave ? "autosave" : "manual",
-        mergeWindowMinutes: autosave ? 5 : 2,
-      });
-      if (saveErr) {
-        if (!silent) toast.error(`Erro ao salvar as refeições: ${saveErr}`);
-        if (autosave) {
-          setAutosaveState("error");
-          setAutosaveError("As alterações ficaram pendentes. Tente salvar novamente.");
-        }
-        return false;
-      }
 
       lastSavedSnapshotRef.current = buildPlanSnapshot(
         { ...planWithLineage, id: savedPlan.id },
@@ -813,25 +799,20 @@ export default function AdminPlanoAlimentar() {
 
     setSavingPlanTemplate(true);
     try {
-      const savedTemplate = await upsertDietTemplate({
+      const savedTemplate = await saveDietTemplateAggregate({
         name,
         description: planTemplateDraftDescription.trim() || undefined,
+        search_aliases: planTemplateDraftAliases,
         strategy: plan.strategy_type || undefined,
         total_kcal: grand.cal > 0 ? parseFloat(grand.cal.toFixed(1)) : undefined,
         protein_g: grand.prot > 0 ? parseFloat(grand.prot.toFixed(1)) : undefined,
         carbs_g: grand.carbs > 0 ? parseFloat(grand.carbs.toFixed(1)) : undefined,
         fat_g: grand.fat > 0 ? parseFloat(grand.fat.toFixed(1)) : undefined,
         is_active: true,
-      });
+      }, templateMeals);
 
       if (!savedTemplate?.id) {
         toast.error("Erro ao salvar o modelo de dieta.");
-        return;
-      }
-
-      const ok = await saveDietTemplateMeals(savedTemplate.id, templateMeals);
-      if (!ok) {
-        toast.error("Modelo criado, mas houve erro ao salvar as refeições.");
         return;
       }
 
@@ -1683,6 +1664,7 @@ export default function AdminPlanoAlimentar() {
                 placeholder="Ex.: plano com boa adesão para rotina corrida, foco em saciedade e praticidade."
               />
             </div>
+            <SearchAliasesField value={planTemplateDraftAliases} onChange={setPlanTemplateDraftAliases} />
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">
@@ -1729,6 +1711,7 @@ export default function AdminPlanoAlimentar() {
                 placeholder="Ex.: bloco salvo para usar em consultas com rotina corrida."
               />
             </div>
+            <SearchAliasesField value={mealPresetDraftAliases} onChange={setMealPresetDraftAliases} />
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">

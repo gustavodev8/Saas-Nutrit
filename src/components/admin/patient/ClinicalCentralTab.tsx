@@ -383,10 +383,10 @@ export function ClinicalCentralTab({
               ? record.notes.trim()
               : null,
         ].filter(Boolean).join(" · ") || "Registro clínico da sessão concluída.",
-      badge: "Evolução",
+      badge: record.booking_id == null ? "Legado · sem agendamento" : "Evolução",
       icon: ClipboardList,
       toneClass: "text-teal-700 bg-teal-50 border-teal-100",
-      route: "/admin/agendamentos",
+      route: record.booking_id == null ? undefined : "/admin/agendamentos",
     })),
     ...data.measurements.map((measurement) => ({
       id: `measurement-${measurement.id}`,
@@ -740,12 +740,17 @@ export function ClinicalCentralTab({
             <div className="relative space-y-2 before:absolute before:left-[17px] before:top-2 before:h-[calc(100%-16px)] before:w-px before:bg-border">
               {timeline.slice(0, 8).map((event) => {
                 const Icon = event.icon;
+                const hasNavigationTarget = Boolean(event.route || event.actionTab);
                 return (
                   <button
                     key={event.id}
                     type="button"
+                    disabled={!hasNavigationTarget}
                     onClick={() => openClinicalTarget(event)}
-                    className="relative flex w-full gap-3 rounded-2xl p-1.5 text-left transition-colors hover:bg-muted/40"
+                    className={cn(
+                      "relative flex w-full gap-3 rounded-2xl p-1.5 text-left",
+                      hasNavigationTarget ? "transition-colors hover:bg-muted/40" : "cursor-default",
+                    )}
                   >
                     <span
                       className={cn(

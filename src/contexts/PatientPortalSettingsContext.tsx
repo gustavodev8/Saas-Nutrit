@@ -14,6 +14,7 @@ import {
 import {
   fetchPatientPortalSettings,
   savePatientPortalSettings,
+  supabase,
 } from "@/lib/supabase";
 import {
   PatientPortalSettingsContext,
@@ -39,7 +40,35 @@ export function PatientPortalSettingsProvider({ children }: { children: ReactNod
   }, []);
 
   useEffect(() => {
-    void reloadSettings();
+    let mounted = true;
+    let loadedForUserId: string | null = null;
+
+    const loadForSession = (session: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]) => {
+      const userId = session?.user.id ?? null;
+      if (!userId) {
+        loadedForUserId = null;
+        if (mounted) setLoading(false);
+        return;
+      }
+
+      if (userId === loadedForUserId) {
+        return;
+      }
+
+      loadedForUserId = userId;
+      void reloadSettings();
+    };
+
+    void supabase.auth.getSession().then(({ data }) => loadForSession(data.session));
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      loadForSession(session);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, [reloadSettings]);
 
   useEffect(() => {
