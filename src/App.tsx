@@ -82,6 +82,8 @@ import WorkspaceForgotPasswordPage from "./pages/workspace/WorkspaceForgotPasswo
 import WorkspacePatientsPage from "./pages/workspace/WorkspacePatientsPage";
 import WorkspacePatientDetailPage from "./pages/workspace/WorkspacePatientDetailPage";
 import WorkspaceMealPlanPage from "./pages/workspace/WorkspaceMealPlanPage";
+import { WorkspaceModelosPage } from "./pages/workspace/WorkspaceModelosPage";
+import { WorkspaceModeloDetailPage } from "./pages/workspace/WorkspaceModeloDetailPage";
 import WorkspaceAcceptInvitationPage from "./pages/workspace/WorkspaceAcceptInvitationPage";
 import PlatformInvitationsPage from "./pages/platform/PlatformInvitationsPage";
 import PlatformResetPasswordPage from "./pages/platform/PlatformResetPasswordPage";
@@ -132,6 +134,8 @@ const App = () => (
                   <Route path="patients" element={<WorkspacePatientsPage />} />
                   <Route path="patients/:id" element={<WorkspacePatientDetailPage />} />
                   <Route path="patients/:id/plan/:planId" element={<WorkspaceMealPlanPage />} />
+                  <Route path="modelos" element={<WorkspaceModelosPage />} />
+                  <Route path="modelos/:id" element={<WorkspaceModeloDetailPage />} />
                 </Route>
               </Route>
               <Route path="/platform/invitations" element={<PlatformInvitationsPage accessRequestsEnabled={isSaaSAccessRequestsEnabled} />} />
