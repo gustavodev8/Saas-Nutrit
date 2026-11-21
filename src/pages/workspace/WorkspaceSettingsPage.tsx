@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { Building2, Check, Loader2, Mail, Settings, Shield, Users } from "lucide-react";
+import { ArrowRight, Building2, Check, CreditCard, Loader2, Mail, Settings, Shield, Users } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,13 +14,20 @@ import {
   type WorkspaceInfo,
   type WorkspaceMemberInfo,
 } from "@/lib/workspaceSettings";
+import {
+  initiateWorkspaceSubscription,
+  isSubscriptionAccessible,
+  trialDaysLeft,
+  type WorkspaceSubscription,
+} from "@/lib/workspaceSubscription";
 import { cn } from "@/lib/utils";
 
-type TabKey = "clinica" | "equipe";
+type TabKey = "clinica" | "equipe" | "plano";
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-  { key: "clinica", label: "Clínica", icon: <Building2 size={15} aria-hidden="true" /> },
-  { key: "equipe",  label: "Equipe",  icon: <Users      size={15} aria-hidden="true" /> },
+  { key: "clinica", label: "Clínica",  icon: <Building2   size={15} aria-hidden="true" /> },
+  { key: "equipe",  label: "Equipe",   icon: <Users       size={15} aria-hidden="true" /> },
+  { key: "plano",   label: "Plano",    icon: <CreditCard  size={15} aria-hidden="true" /> },
 ];
 
 function tabClass(active: boolean) {
@@ -249,13 +257,132 @@ function EquipeTab({ workspaceId, currentUserEmail }: { workspaceId: string; cur
   );
 }
 
+// ── Plano tab ──────────────────────────────────────────────────────────────────
+
+function PlanoTab({ subscription, isOwner }: { subscription: WorkspaceSubscription | null; isOwner: boolean }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubscribe = async () => {
+    setLoading(true); setError("");
+    try {
+      const initPoint = await initiateWorkspaceSubscription(window.location.href);
+      window.location.href = initPoint;
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Não foi possível iniciar a assinatura.");
+      setLoading(false);
+    }
+  };
+
+  if (!subscription) {
+    return (
+      <div className="max-w-lg space-y-4">
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-medium text-amber-800">Migration pendente</p>
+          <p className="mt-1 text-xs text-amber-700">Aplique a migration de subscriptions no Supabase para ver o plano aqui.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const isTrialing = subscription.status === "trialing";
+  const isActive = subscription.status === "active";
+  const daysLeft = isTrialing ? trialDaysLeft(subscription.trial_ends_at) : null;
+  const accessible = isSubscriptionAccessible(subscription.status);
+
+  const statusLabel: Record<string, string> = {
+    trialing: "Período gratuito",
+    active: "Ativo",
+    past_due: "Pagamento pendente",
+    canceled: "Cancelado",
+    suspended: "Suspenso",
+  };
+
+  const statusColor: Record<string, string> = {
+    trialing: "bg-blue-50 text-blue-700 border-blue-200",
+    active: "bg-green-50 text-[#166b50] border-green-200",
+    past_due: "bg-amber-50 text-amber-700 border-amber-200",
+    canceled: "bg-muted text-muted-foreground border-border",
+    suspended: "bg-muted text-muted-foreground border-border",
+  };
+
+  return (
+    <div className="max-w-lg space-y-6">
+      <div className="rounded-lg border bg-background p-5 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">Plano atual</p>
+            <p className="mt-1 text-xl font-semibold">Nutrit Starter</p>
+            <p className="text-sm text-muted-foreground">R$79,90 / mês</p>
+          </div>
+          <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium", statusColor[subscription.status] ?? statusColor["canceled"])}>
+            {statusLabel[subscription.status] ?? subscription.status}
+          </span>
+        </div>
+
+        {isTrialing && daysLeft !== null && (
+          <div className={cn(
+            "rounded-md px-3 py-2 text-sm",
+            daysLeft > 7 ? "bg-blue-50 text-blue-700" : daysLeft > 0 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"
+          )}>
+            {daysLeft > 0
+              ? <><strong>{daysLeft} {daysLeft === 1 ? "dia" : "dias"}</strong> restantes no período gratuito.</>
+              : "Período gratuito encerrado."}
+          </div>
+        )}
+
+        {isActive && subscription.next_payment_date && (
+          <p className="text-sm text-muted-foreground">
+            Próxima cobrança:{" "}
+            <strong>{new Date(subscription.next_payment_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</strong>
+          </p>
+        )}
+
+        <ul className="space-y-1 text-sm text-muted-foreground">
+          {["Pacientes ilimitados", "Planos alimentares e modelos", "Avaliações antropométricas", "Banco de alimentos completo"].map((f) => (
+            <li key={f} className="flex items-center gap-2"><Check size={13} className="text-[#166b50] shrink-0" />{f}</li>
+          ))}
+        </ul>
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {isOwner && !isActive && (
+        <Button
+          className="bg-[#166b50] hover:bg-[#145e45] text-white"
+          onClick={handleSubscribe}
+          disabled={loading}
+        >
+          {loading ? <><Loader2 size={15} className="animate-spin" />Aguarde…</> : <><ArrowRight size={15} />{accessible ? "Assinar agora" : "Reativar assinatura"}</>}
+        </Button>
+      )}
+
+      {isActive && (
+        <p className="text-xs text-muted-foreground">
+          Para cancelar ou alterar o método de pagamento, acesse o{" "}
+          <a href="https://www.mercadopago.com.br/subscriptions" target="_blank" rel="noreferrer" className="underline underline-offset-2">
+            painel do Mercado Pago
+          </a>.
+        </p>
+      )}
+
+      {!isOwner && (
+        <p className="text-xs text-muted-foreground">Apenas o owner do workspace pode gerenciar a assinatura.</p>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function WorkspaceSettingsPage() {
-  const { membership, userEmail } = useWorkspaceAuth();
+  const { membership, userEmail, subscription } = useWorkspaceAuth();
   const workspaceId = membership?.workspaceId ?? null;
   const isOwner = membership?.role === "owner";
-  const [activeTab, setActiveTab] = useState<TabKey>("clinica");
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabKey>(() =>
+    searchParams.get("subscribed") === "1" ? "plano" : "clinica"
+  );
 
   if (!workspaceId) {
     return (
@@ -296,6 +423,7 @@ export default function WorkspaceSettingsPage() {
         <div className="pt-2">
           {activeTab === "clinica" && <ClinicaTab workspaceId={workspaceId} isOwner={isOwner} />}
           {activeTab === "equipe"  && <EquipeTab  workspaceId={workspaceId} currentUserEmail={userEmail} />}
+          {activeTab === "plano"   && <PlanoTab   subscription={subscription} isOwner={isOwner} />}
         </div>
       </div>
     </main>

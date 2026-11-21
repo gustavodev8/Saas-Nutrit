@@ -38,3 +38,25 @@ export async function createWorkspaceSelfSignup(workspaceName: string): Promise<
   if (error) throw new Error(error.message);
   return data as string;
 }
+
+export async function initiateWorkspaceSubscription(backUrl?: string): Promise<string> {
+  const { data: { session } } = await workspaceSupabase.auth.getSession();
+  if (!session) throw new Error("Sessão expirada. Faça login novamente.");
+
+  const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string) ?? "";
+  const fnUrl = `${supabaseUrl}/functions/v1/create-workspace-subscription`;
+  const res = await fetch(fnUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      "Content-Type": "application/json",
+    },
+    body: backUrl ? JSON.stringify({ back_url: backUrl }) : undefined,
+  });
+
+  const json = await res.json() as { init_point?: string; error?: string };
+  if (!res.ok || !json.init_point) {
+    throw new Error(json.error ?? "Não foi possível iniciar a assinatura.");
+  }
+  return json.init_point;
+}

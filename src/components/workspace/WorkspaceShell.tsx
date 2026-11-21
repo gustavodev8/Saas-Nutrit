@@ -3,7 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { WorkspacePaywall } from "@/components/workspace/WorkspacePaywall";
-import { isSubscriptionAccessible } from "@/lib/workspaceSubscription";
+import { initiateWorkspaceSubscription, isSubscriptionAccessible } from "@/lib/workspaceSubscription";
 
 function navClass({ isActive }: { isActive: boolean }) {
   return `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${isActive
@@ -21,9 +21,15 @@ export default function WorkspaceShell() {
       <WorkspacePaywall
         status={subscription.status}
         trialEndsAt={subscription.trial_ends_at}
-        onManage={() => {
-          // TODO Phase B: open Mercado Pago checkout
-          window.open("mailto:suporte@nutrit.app?subject=Assinatura%20Nutrit", "_blank");
+        onManage={async () => {
+          try {
+            const initPoint = await initiateWorkspaceSubscription(
+              `${window.location.origin}/workspace/configuracoes?subscribed=1`
+            );
+            window.location.href = initPoint;
+          } catch {
+            window.location.href = "/workspace/configuracoes?tab=plano";
+          }
         }}
       />
     );

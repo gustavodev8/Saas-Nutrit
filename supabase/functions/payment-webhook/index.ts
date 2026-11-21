@@ -3,6 +3,7 @@ import {
   hasRequiredPaymentWebhookConfig,
   validatePaymentWebhookRequest,
 } from "../_shared/mpWebhookSecurity.ts";
+import { confirmLegacyBookingGroup } from "../_shared/bookingGroupConfirmation.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -190,12 +191,18 @@ async function claimPaymentWebhook(
   }
 }
 
+// claim_payment_webhook has no release/lease-token RPC. Failed work becomes
+// retryable only after its existing 900-second stale-claim window. Do not
+// emulate release with an unowned payment_logs PATCH: it could clear another
+// invocation's claim.
+
 async function finalizePaymentLog(
   supabaseUrl: string,
   serviceKey: string,
   paymentId: string,
   fields: Record<string, unknown>,
 ): Promise<boolean> {
+  // payment_logs has no workspace_id; this write supports the legacy payment flow only.
   const response = await fetch(
     `${supabaseUrl}/rest/v1/payment_logs?payment_id=eq.${encodeURIComponent(paymentId)}`,
     {
@@ -255,7 +262,69 @@ serve(async (req) => {
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")?.trim();
     const FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "noreply@nutrivida.com.br";
 
-    // MP sends type=payment for payment events
+    // ── Preapproval events (workspace subscriptions) ─────────────────────────
+    if (body.type === "preapproval") {
+      const preapprovalId = typeof body.data?.id === "string" ? body.data.id.trim() : String(body.data?.id ?? "").trim();
+      if (!preapprovalId) return new Response("ok", { status: 200 });
+
+      const paRes = await fetch(`https://api.mercadopago.com/preapproval/${encodeURIComponent(preapprovalId)}`, {
+        headers: { Authorization: `Bearer ${mpAccessToken}` },
+      });
+      if (!paRes.ok) {
+        return paRes.status >= 500 || paRes.status === 429
+          ? serviceUnavailableResponse()
+          : new Response("ok", { status: 200 });
+      }
+
+      let preapproval: { id?: unknown; status?: unknown; external_reference?: unknown; next_payment_date?: unknown };
+      try { preapproval = await paRes.json(); } catch { return serviceUnavailableResponse(); }
+
+      const extRef = typeof preapproval.external_reference === "string" ? preapproval.external_reference : "";
+      const parts = extRef.split("|");
+      if (parts[0] !== "workspace_subscription" || !parts[1]) {
+        return new Response("ok", { status: 200 }); // not ours
+      }
+
+      const workspaceId = parts[1].trim();
+      const paStatus = typeof preapproval.status === "string" ? preapproval.status : "";
+
+      // Map MP preapproval status → our subscription status
+      const statusMap: Record<string, string> = {
+        authorized: "active",
+        pending: "trialing",   // user hasn't completed checkout yet
+        paused: "past_due",
+        cancelled: "canceled",
+      };
+      const newStatus = statusMap[paStatus];
+      if (!newStatus) return new Response("ok", { status: 200 });
+
+      const nextPaymentDate = typeof preapproval.next_payment_date === "string"
+        ? preapproval.next_payment_date
+        : null;
+
+      await fetch(
+        `${supabaseUrl}/rest/v1/workspace_subscriptions?workspace_id=eq.${encodeURIComponent(workspaceId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: supabaseServiceKey,
+            Authorization: `Bearer ${supabaseServiceKey}`,
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            status: newStatus,
+            mp_preapproval_id: preapprovalId,
+            ...(nextPaymentDate ? { next_payment_date: nextPaymentDate } : {}),
+            updated_at: new Date().toISOString(),
+          }),
+        },
+      );
+
+      return new Response("ok", { status: 200 });
+    }
+
+    // MP sends type=payment for one-time payment events
     if (body.type !== "payment") {
       return new Response("ok", { status: 200 });
     }
@@ -303,6 +372,22 @@ serve(async (req) => {
     const resolvedPaymentId = String(payment.id ?? paymentId).trim();
     if (!resolvedPaymentId) return new Response("ok", { status: 200 });
 
+    const groupConfirmation = parsedReference.kind === "consultation"
+      ? await confirmLegacyBookingGroup({
+        supabaseUrl,
+        serviceKey: supabaseServiceKey,
+        bookingGroupId: parsedReference.bookingGroupId,
+        paymentMethod: payment.payment_method_id === "pix" ? "pix" : "card",
+      })
+      : null;
+    if (
+      parsedReference.kind === "consultation" &&
+      groupConfirmation?.status !== "confirmed" &&
+      groupConfirmation?.status !== "already_confirmed"
+    ) {
+      return serviceUnavailableResponse();
+    }
+
     const claimState = await claimPaymentWebhook(supabaseUrl, supabaseServiceKey, resolvedPaymentId);
     if (!claimState) return serviceUnavailableResponse();
     if (claimState === "approved") return new Response("ok", { status: 200 });
@@ -314,28 +399,6 @@ serve(async (req) => {
       const customerEmail = parsedReference.customerEmail;
       const customerName = escapeHtml(parsedReference.customerName);
       const planName = escapeHtml(parsedReference.planName);
-
-      // Update booking status to confirmed — check HTTP status, not response body
-      // (PATCH returns 204 No Content on success, so .json() would throw and give false negative)
-      const bookingUpdateRes = await fetch(`${supabaseUrl}/rest/v1/bookings?booking_group_id=eq.${encodeURIComponent(bookingGroupId)}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": supabaseServiceKey,
-          "Authorization": `Bearer ${supabaseServiceKey}`,
-          "Prefer": "return=minimal",
-        },
-        body: JSON.stringify({
-          status: "confirmed",
-          payment_status: "paid",
-          payment_method: payment.payment_method_id === "pix" ? "pix" : "card",
-        }),
-      });
-
-      if (!bookingUpdateRes.ok) {
-        console.error("payment-webhook: booking confirmation update failed");
-        return serviceUnavailableResponse();
-      }
 
       // Send confirmation email
       const confirmationHtml = `
