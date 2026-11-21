@@ -50,6 +50,25 @@ async function tryAutoCreateWorkspace(userId: string): Promise<ValidWorkspaceMem
       p_workspace_name: clinicName.trim(),
     });
     try { sessionStorage.removeItem(WORKSPACE_NAME_KEY); } catch {}
+
+    // Fire-and-forget admin notification
+    void (async () => {
+      try {
+        const supabaseUrl = (import.meta.env as Record<string, string>).VITE_SUPABASE_URL ?? "";
+        const { data: authData } = await workspaceSupabase.auth.getSession();
+        const token = authData.session?.access_token ?? "";
+        const { data: userData } = await workspaceSupabase.auth.getUser();
+        const ownerEmail = userData?.user?.email ?? "";
+        if (supabaseUrl && token) {
+          await fetch(`${supabaseUrl}/functions/v1/send-workspace-email`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "admin-new-signup", email: ownerEmail, workspace_name: clinicName!.trim() }),
+          });
+        }
+      } catch {}
+    })();
+
     return await resolveCurrentMembership();
   } catch {
     return null;

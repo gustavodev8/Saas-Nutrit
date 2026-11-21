@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, Send } from "lucide-react";
+import { ArrowLeft, CalendarPlus, RefreshCw, Send } from "lucide-react";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
 
 const ADMIN_EMAIL = "gustavu.dev@gmail.com";
@@ -49,6 +49,7 @@ export default function SaaSAdminPage() {
   const [loadingRows, setLoadingRows] = useState(false);
   const [sendingEmails, setSendingEmails] = useState(false);
   const [emailResult, setEmailResult] = useState<string | null>(null);
+  const [extendingId, setExtendingId] = useState<string | null>(null);
 
   useEffect(() => {
     workspaceSupabase.auth.getUser().then(({ data }) => {
@@ -71,6 +72,22 @@ export default function SaaSAdminPage() {
   useEffect(() => {
     if (authState === "authorized") void fetchWorkspaces();
   }, [authState]);
+
+  async function extendTrial(workspaceId: string, days = 7) {
+    setExtendingId(workspaceId);
+    setEmailResult(null);
+    const { error } = await workspaceSupabase.rpc("extend_workspace_trial", {
+      p_workspace_id: workspaceId,
+      p_days: days,
+    });
+    if (error) {
+      setEmailResult(`Erro ao estender trial: ${error.message}`);
+    } else {
+      setEmailResult(`Trial do workspace estendido por ${days} dias.`);
+      void fetchWorkspaces();
+    }
+    setExtendingId(null);
+  }
 
   async function sendTrialReminders() {
     setSendingEmails(true);
@@ -172,7 +189,7 @@ export default function SaaSAdminPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#e1e9e3] bg-[#f7faf8]">
-                  {["Workspace", "Owner", "Status", "Trial / Próx. cobrança", "Criado em", "MP ID"].map((h) => (
+                  {["Workspace", "Owner", "Status", "Trial / Próx. cobrança", "Criado em", "MP ID", "Ações"].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[#5c6e66]">{h}</th>
                   ))}
                 </tr>
@@ -180,14 +197,14 @@ export default function SaaSAdminPage() {
               <tbody className="divide-y divide-[#edf1ed]">
                 {loadingRows && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-[#8aA09a]">
+                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-[#8aA09a]">
                       Carregando…
                     </td>
                   </tr>
                 )}
                 {!loadingRows && rows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-[#8aA09a]">
+                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-[#8aA09a]">
                       Nenhum workspace encontrado.
                     </td>
                   </tr>
@@ -219,6 +236,18 @@ export default function SaaSAdminPage() {
                           ? row.mp_preapproval_id.slice(0, 12) + "…"
                           : "—"
                         }
+                      </td>
+                      <td className="px-4 py-3">
+                        {(row.status === "trialing" || row.status === "sem_assinatura" || row.status === "none") && (
+                          <button
+                            onClick={() => void extendTrial(row.workspace_id)}
+                            disabled={extendingId === row.workspace_id}
+                            className="inline-flex items-center gap-1 rounded-md border border-[#cddbd3] bg-white px-2.5 py-1 text-xs font-semibold text-[#153f34] transition-colors hover:bg-[#edf4ef] disabled:opacity-50"
+                          >
+                            <CalendarPlus size={12} aria-hidden="true" />
+                            {extendingId === row.workspace_id ? "…" : "+7d"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

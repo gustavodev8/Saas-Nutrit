@@ -1,9 +1,9 @@
 import { Apple, BookOpen, Home, LayoutDashboard, LogOut, Settings, UsersRound } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { WorkspacePaywall } from "@/components/workspace/WorkspacePaywall";
-import { initiateWorkspaceSubscription, isSubscriptionAccessible } from "@/lib/workspaceSubscription";
+import { initiateWorkspaceSubscription, isSubscriptionAccessible, trialDaysLeft } from "@/lib/workspaceSubscription";
 
 function navClass({ isActive }: { isActive: boolean }) {
   return `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${isActive
@@ -61,6 +61,31 @@ export default function WorkspaceShell() {
           </div>
         </div>
       </header>
+
+      {subscription?.status === "trialing" && (() => {
+        const days = trialDaysLeft(subscription.trial_ends_at);
+        const cls = days <= 3
+          ? "bg-red-50 border-red-200 text-red-700"
+          : days <= 7
+          ? "bg-amber-50 border-amber-200 text-amber-700"
+          : "bg-blue-50 border-blue-200 text-blue-700";
+        return (
+          <div className={`flex items-center justify-center gap-3 border-b px-4 py-2 text-sm ${cls}`}>
+            <span>
+              {days > 0
+                ? <>Período gratuito: <strong>{days} {days === 1 ? "dia restante" : "dias restantes"}</strong>.</>
+                : "Período gratuito encerrado."}
+            </span>
+            <Link
+              to="/workspace/configuracoes?tab=plano"
+              className="whitespace-nowrap font-semibold underline underline-offset-2"
+            >
+              Assinar agora →
+            </Link>
+          </div>
+        );
+      })()}
+
       <Outlet />
     </div>
   );

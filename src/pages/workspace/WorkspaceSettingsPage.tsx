@@ -261,7 +261,11 @@ function EquipeTab({ workspaceId, currentUserEmail }: { workspaceId: string; cur
 
 function PlanoTab({ subscription, isOwner }: { subscription: WorkspaceSubscription | null; isOwner: boolean }) {
   const [loading, setLoading] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [error, setError] = useState("");
+
+  const { refreshMembership } = useWorkspaceAuth();
 
   const handleSubscribe = async () => {
     setLoading(true); setError("");
@@ -271,6 +275,31 @@ function PlanoTab({ subscription, isOwner }: { subscription: WorkspaceSubscripti
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Não foi possível iniciar a assinatura.");
       setLoading(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    setCanceling(true); setError(""); setConfirmCancel(false);
+    try {
+      const { data: { session } } = await (await import("@/lib/workspaceSupabase")).workspaceSupabase.auth.getSession();
+      const supabaseUrl = (import.meta.env as Record<string, string>).VITE_SUPABASE_URL ?? "";
+      const res = await fetch(`${supabaseUrl}/functions/v1/cancel-workspace-subscription`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const json = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) {
+        setError(json.error ?? "Não foi possível cancelar a assinatura.");
+      } else {
+        await refreshMembership();
+      }
+    } catch {
+      setError("Erro ao cancelar a assinatura.");
+    } finally {
+      setCanceling(false);
     }
   };
 
@@ -357,13 +386,40 @@ function PlanoTab({ subscription, isOwner }: { subscription: WorkspaceSubscripti
         </Button>
       )}
 
-      {isActive && (
-        <p className="text-xs text-muted-foreground">
-          Para cancelar ou alterar o método de pagamento, acesse o{" "}
-          <a href="https://www.mercadopago.com.br/subscriptions" target="_blank" rel="noreferrer" className="underline underline-offset-2">
-            painel do Mercado Pago
-          </a>.
-        </p>
+      {isOwner && isActive && !confirmCancel && (
+        <button
+          type="button"
+          onClick={() => setConfirmCancel(true)}
+          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive"
+        >
+          Cancelar assinatura
+        </button>
+      )}
+
+      {isOwner && isActive && confirmCancel && (
+        <div className="rounded-md border border-destructive/30 bg-red-50 p-4 space-y-3">
+          <p className="text-sm font-medium text-destructive">Confirmar cancelamento</p>
+          <p className="text-xs text-muted-foreground">
+            Ao cancelar, seu acesso continua até o fim do período já pago. Após isso, o workspace será bloqueado.
+          </p>
+          <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => void handleCancel()}
+              disabled={canceling}
+            >
+              {canceling ? <><Loader2 size={13} className="animate-spin" />Cancelando…</> : "Sim, cancelar"}
+            </Button>
+            <button
+              type="button"
+              className="text-sm text-muted-foreground hover:text-foreground"
+              onClick={() => setConfirmCancel(false)}
+            >
+              Manter assinatura
+            </button>
+          </div>
+        </div>
       )}
 
       {!isOwner && (

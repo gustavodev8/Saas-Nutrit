@@ -147,7 +147,7 @@ serve(async (req) => {
     }
 
     const body = await req.json() as {
-      type: "welcome" | "subscription-active" | "trial-expiring-batch";
+      type: "welcome" | "subscription-active" | "trial-expiring-batch" | "admin-new-signup";
       email?: string;
       workspace_name?: string;
       days_left?: number;
@@ -234,6 +234,37 @@ serve(async (req) => {
 
       return new Response(JSON.stringify({ sent: results.length, results }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Admin new-signup notification ──
+    if (body.type === "admin-new-signup") {
+      if (!body.email || !body.workspace_name) {
+        return new Response(
+          JSON.stringify({ error: "email e workspace_name são obrigatórios." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const signupEmail = escapeHtml(body.email);
+      const signupName = escapeHtml(body.workspace_name);
+      const html = brandEmail({
+        title: "Novo cadastro no Nutrit",
+        preheader: `Novo workspace: ${body.workspace_name} (${body.email})`,
+        body: `
+          <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#141e1a;">Novo cadastro 🎉</h1>
+          <p style="margin:0 0 20px;font-size:14px;color:#6b7280;">Um novo nutricionista acabou de criar um workspace no Nutrit.</p>
+          <div style="background:#f7faf8;border-radius:8px;padding:20px 24px;margin-bottom:24px;border:1px solid #dde6df;">
+            <p style="margin:0 0 6px;font-size:13px;color:#9aada5;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Detalhes</p>
+            <p style="margin:0 0 4px;font-size:14px;color:#1a2f26;"><strong>Clínica:</strong> ${signupName}</p>
+            <p style="margin:0;font-size:14px;color:#1a2f26;"><strong>E-mail:</strong> ${signupEmail}</p>
+          </div>
+          <p style="margin:0;font-size:13px;color:#9aada5;">Acesse o painel admin para acompanhar este workspace.</p>
+        `,
+      });
+      const ok = await sendEmail("gustavu.dev@gmail.com", `Novo cadastro: ${body.workspace_name}`, html);
+      return new Response(JSON.stringify({ ok }), {
+        status: ok ? 200 : 502,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
