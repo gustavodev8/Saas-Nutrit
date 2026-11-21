@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
-  Activity, ArrowLeft, BookOpen, CalendarDays, ClipboardList,
+  Activity, ArrowLeft, BookOpen, CalendarDays, ClipboardList, Dumbbell,
   LayoutDashboard, Mail, MapPin, Pencil, Phone, Save, User, UserRound,
 } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PatientAnthropometryTab } from "@/components/admin/patient/PatientAnthropometryTab";
 import { WorkspaceAnamnesisForm } from "@/components/workspace/WorkspaceAnamnesisForm";
+import { WorkspaceTrainingTab } from "@/components/workspace/WorkspaceTrainingTab";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
 import {
@@ -26,7 +27,7 @@ import { cn } from "@/lib/utils";
 
 // --- Types -------------------------------------------------------------------
 
-type TabKey = "central" | "perfil" | "anamnese" | "medidas" | "planos";
+type TabKey = "central" | "perfil" | "anamnese" | "medidas" | "planos" | "treinos";
 
 interface TabDef {
   key: TabKey;
@@ -42,6 +43,7 @@ const TABS: TabDef[] = [
   { key: "anamnese",  label: "Anamnese",  icon: <ClipboardList    size={15} aria-hidden="true" /> },
   { key: "medidas",   label: "Medidas",   icon: <Activity         size={15} aria-hidden="true" /> },
   { key: "planos",    label: "Planos",    icon: <BookOpen         size={15} aria-hidden="true" /> },
+  { key: "treinos",   label: "Treinos",   icon: <Dumbbell         size={15} aria-hidden="true" /> },
 ];
 
 const DEFAULT_TAB: TabKey = "central";
@@ -473,6 +475,15 @@ export default function WorkspacePatientDetailPage() {
                     </ul>
                   )}
                 </div>
+              )}
+
+              {/* ── Treinos ── */}
+              {activeTab === "treinos" && (
+                <WorkspaceTrainingTab
+                  key={`${workspaceId}:${patient.id}:training`}
+                  workspaceId={workspaceId ?? ""}
+                  patient={patient}
+                />
               )}
 
             </div>
