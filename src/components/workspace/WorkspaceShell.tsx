@@ -1,4 +1,4 @@
-import { BookOpen, LayoutDashboard, LogOut, UsersRound } from "lucide-react";
+import { BookOpen, Home, LayoutDashboard, LogOut, UsersRound } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
@@ -22,6 +22,7 @@ export default function WorkspaceShell() {
               Nutrit · Área clínica
             </NavLink>
             <nav aria-label="Navegação do workspace" className="hidden items-center gap-1 sm:flex">
+              <NavLink to="/workspace" end className={navClass}><Home size={16} aria-hidden="true" />Início</NavLink>
               <NavLink to="/workspace/patients" className={navClass}><UsersRound size={16} aria-hidden="true" />Pacientes</NavLink>
               <NavLink to="/workspace/modelos" className={navClass}><BookOpen size={16} aria-hidden="true" />Modelos</NavLink>
             </nav>

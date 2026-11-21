@@ -84,6 +84,7 @@ import WorkspacePatientDetailPage from "./pages/workspace/WorkspacePatientDetail
 import WorkspaceMealPlanPage from "./pages/workspace/WorkspaceMealPlanPage";
 import { WorkspaceModelosPage } from "./pages/workspace/WorkspaceModelosPage";
 import { WorkspaceModeloDetailPage } from "./pages/workspace/WorkspaceModeloDetailPage";
+import { WorkspaceDashboardPage } from "./pages/workspace/WorkspaceDashboardPage";
 import WorkspaceAcceptInvitationPage from "./pages/workspace/WorkspaceAcceptInvitationPage";
 import PlatformInvitationsPage from "./pages/platform/PlatformInvitationsPage";
 import PlatformResetPasswordPage from "./pages/platform/PlatformResetPasswordPage";
@@ -130,7 +131,7 @@ const App = () => (
                 <Route path="accept" element={<WorkspaceAcceptInvitationPage />} />
                 <Route path="login" element={<WorkspaceLogin />} />
                 <Route element={<WorkspaceProtectedRoute><WorkspaceShell /></WorkspaceProtectedRoute>}>
-                  <Route index element={<Navigate to="patients" replace />} />
+                  <Route index element={<WorkspaceDashboardPage />} />
                   <Route path="patients" element={<WorkspacePatientsPage />} />
                   <Route path="patients/:id" element={<WorkspacePatientDetailPage />} />
                   <Route path="patients/:id/plan/:planId" element={<WorkspaceMealPlanPage />} />

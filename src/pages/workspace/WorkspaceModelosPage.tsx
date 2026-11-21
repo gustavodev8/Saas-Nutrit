@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BookOpen, Loader2, Search, SlidersHorizontal, Utensils, X } from "lucide-react";
+import { BookOpen, Search, SlidersHorizontal, Utensils, X } from "lucide-react";
+import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -144,9 +145,8 @@ export function WorkspaceModelosPage() {
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground gap-2">
-          <Loader2 size={20} className="animate-spin" />
-          Carregando modelos…
+        <div className="flex items-center justify-center py-20">
+          <LeafLoader label="Carregando modelos…" />
         </div>
       )}
 

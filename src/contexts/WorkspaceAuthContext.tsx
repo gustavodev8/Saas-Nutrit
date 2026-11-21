@@ -141,6 +141,12 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void syncSession();
     const { data: listener } = workspaceSupabase.auth.onAuthStateChange((event, session) => {
+      // TOKEN_REFRESHED and INITIAL_SESSION are silent background events — the session is
+      // still valid and the membership hasn't changed, so there is no need to re-sync.
+      // Re-syncing on these events zeros out membershipReady and causes a visible flash
+      // ("reload") whenever Chrome resumes a suspended/minimized tab.
+      if (event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") return;
+
       const pendingLogin = loginInProgressRef.current;
       if (event === "SIGNED_IN" && pendingLogin) {
         const eventUser = session?.user;

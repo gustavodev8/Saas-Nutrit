@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  ArrowLeft, ChevronDown, ChevronRight, Clock, Flame,
-  Loader2, Utensils,
+  ArrowLeft, ChevronDown, ChevronRight, Clock, Flame, Utensils,
 } from "lucide-react";
+import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fetchWorkspaceTemplateById, type WorkspaceDietTemplate, type WorkspaceDietTemplateMeal } from "@/lib/workspaceTemplates";
@@ -145,8 +145,8 @@ export function WorkspaceModeloDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-32 text-muted-foreground gap-2">
-        <Loader2 size={20} className="animate-spin" /> Carregando modelo…
+      <div className="flex items-center justify-center py-32">
+        <LeafLoader size="lg" label="Carregando modelo…" />
       </div>
     );
   }
