@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { resolveWorkspaceMembership, type WorkspaceMembership, type ValidWorkspaceMembership } from "@/lib/workspaceAuth";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
+import { fetchWorkspaceSubscription, type WorkspaceSubscription } from "@/lib/workspaceSubscription";
+
+const WORKSPACE_NAME_KEY = "ws_signup_clinic_name";
 
 interface WorkspaceAuthContextValue {
   authReady: boolean;
@@ -9,6 +12,7 @@ interface WorkspaceAuthContextValue {
   authUserId: string | null;
   userEmail: string | null;
   membership: ValidWorkspaceMembership | null;
+  subscription: WorkspaceSubscription | null;
   refreshMembership: () => Promise<boolean>;
   login: (email: string, password: string) => Promise<{ ok: boolean; message?: string }>;
   logout: () => Promise<void>;
@@ -31,15 +35,46 @@ async function resolveCurrentMembership(): Promise<ValidWorkspaceMembership | nu
   return resolveWorkspaceMembership((data ?? []) as WorkspaceMembership[]);
 }
 
+async function tryAutoCreateWorkspace(userId: string): Promise<ValidWorkspaceMembership | null> {
+  // Try stored clinic name from signup form (sessionStorage) or user metadata
+  let clinicName: string | null = null;
+  try { clinicName = sessionStorage.getItem(WORKSPACE_NAME_KEY); } catch {}
+  if (!clinicName) {
+    const { data } = await workspaceSupabase.auth.getUser();
+    clinicName = (data?.user?.user_metadata?.workspace_name as string | undefined) ?? null;
+  }
+  if (!clinicName?.trim()) return null;
+
+  try {
+    await workspaceSupabase.rpc("create_workspace_self_signup", {
+      p_workspace_name: clinicName.trim(),
+    });
+    try { sessionStorage.removeItem(WORKSPACE_NAME_KEY); } catch {}
+    return await resolveCurrentMembership();
+  } catch {
+    return null;
+  }
+}
+
 export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
   const [authReady, setAuthReady] = useState(false);
   const [membershipReady, setMembershipReady] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [membership, setMembership] = useState<ValidWorkspaceMembership | null>(null);
+  const [subscription, setSubscription] = useState<WorkspaceSubscription | null>(null);
   const authOperationRef = useRef(0);
   const loginInProgressRef = useRef<LoginInProgress | null>(null);
   const blockedAuthUserIdRef = useRef<string | null>(null);
+
+  const loadSubscription = useCallback(async (workspaceId: string) => {
+    try {
+      const sub = await fetchWorkspaceSubscription(workspaceId);
+      setSubscription(sub);
+    } catch {
+      setSubscription(null);
+    }
+  }, []);
 
   const syncSession = useCallback(async () => {
     const operationId = ++authOperationRef.current;
@@ -48,6 +83,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
     setAuthUserId(null);
     setUserEmail(null);
     setMembership(null);
+    setSubscription(null);
     try {
       const { data } = await workspaceSupabase.auth.getSession();
       if (operationId !== authOperationRef.current) return;
@@ -74,9 +110,17 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const nextMembership = await resolveCurrentMembership();
+      let nextMembership = await resolveCurrentMembership();
       if (operationId !== authOperationRef.current) return;
+
+      // Self-signup flow: authenticated user with no workspace yet — auto-create
+      if (!nextMembership) {
+        nextMembership = await tryAutoCreateWorkspace(userId);
+        if (operationId !== authOperationRef.current) return;
+      }
+
       setMembership(nextMembership);
+      if (nextMembership) void loadSubscription(nextMembership.workspaceId);
     } catch (error) {
       if (operationId !== authOperationRef.current) return;
       console.error("[WorkspaceAuth] membership lookup failed:", error);
@@ -89,7 +133,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
     } finally {
       if (operationId === authOperationRef.current) setMembershipReady(true);
     }
-  }, []);
+  }, [loadSubscription]);
 
   const refreshMembership = useCallback(async () => {
     const operationId = ++authOperationRef.current;
@@ -122,6 +166,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
       const nextMembership = await resolveCurrentMembership();
       if (operationId !== authOperationRef.current) return false;
       setMembership(nextMembership);
+      if (nextMembership) void loadSubscription(nextMembership.workspaceId);
       return Boolean(nextMembership);
     } catch (error) {
       if (operationId !== authOperationRef.current) return false;
@@ -136,7 +181,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
     } finally {
       if (operationId === authOperationRef.current) setMembershipReady(true);
     }
-  }, []);
+  }, [loadSubscription]);
 
   useEffect(() => {
     void syncSession();
@@ -231,6 +276,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
       setAuthUserId(userId);
       setUserEmail(authenticatedEmail);
       setMembership(nextMembership);
+      void loadSubscription(nextMembership.workspaceId);
       setAuthReady(true);
       setMembershipReady(true);
       return { ok: true };
@@ -245,13 +291,14 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
       if (loginInProgressRef.current?.operationId === operationId) loginInProgressRef.current = null;
       if (operationId === authOperationRef.current) setMembershipReady(true);
     }
-  }, [syncSession]);
+  }, [syncSession, loadSubscription]);
 
   const logout = useCallback(async () => {
     ++authOperationRef.current;
     setAuthUserId(null);
     setUserEmail(null);
     setMembership(null);
+    setSubscription(null);
     setAuthReady(true);
     setMembershipReady(true);
     await workspaceSupabase.auth.signOut().catch(() => null);
@@ -264,10 +311,11 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
     authUserId,
     userEmail,
     membership,
+    subscription,
     refreshMembership,
     login,
     logout,
-  }), [authReady, authUserId, login, logout, membership, membershipReady, refreshMembership, userEmail]);
+  }), [authReady, authUserId, login, logout, membership, membershipReady, refreshMembership, subscription, userEmail]);
 
   return <WorkspaceAuthContext.Provider value={value}>{children}</WorkspaceAuthContext.Provider>;
 }

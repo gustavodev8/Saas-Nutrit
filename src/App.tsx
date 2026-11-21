@@ -88,6 +88,7 @@ import { WorkspaceDashboardPage } from "./pages/workspace/WorkspaceDashboardPage
 import { WorkspaceAlimentosPage } from "./pages/workspace/WorkspaceAlimentosPage";
 import WorkspaceAcceptInvitationPage from "./pages/workspace/WorkspaceAcceptInvitationPage";
 import WorkspaceSettingsPage from "./pages/workspace/WorkspaceSettingsPage";
+import WorkspaceSignupPage from "./pages/workspace/WorkspaceSignupPage";
 import PlatformInvitationsPage from "./pages/platform/PlatformInvitationsPage";
 import PlatformResetPasswordPage from "./pages/platform/PlatformResetPasswordPage";
 import WorkspaceProtectedRoute from "@/components/workspace/WorkspaceProtectedRoute";
@@ -128,6 +129,7 @@ const App = () => (
               <SaaSPilotRouteGate enabled={isSaaSPilotMode}>
                 <ScrollToTop />
                 <Routes>
+              <Route path="/workspace/signup" element={<WorkspaceSignupPage />} />
               <Route path="/workspace/forgot-password" element={<WorkspaceForgotPasswordPage />} />
               <Route path="/workspace" element={<WorkspaceRoot />}>
                 <Route path="accept" element={<WorkspaceAcceptInvitationPage />} />

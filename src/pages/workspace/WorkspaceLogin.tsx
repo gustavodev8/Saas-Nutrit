@@ -64,6 +64,12 @@ export default function WorkspaceLogin() {
           <Button className="w-full" type="submit" disabled={loading}>{loading && <Loader2 className="animate-spin" />}Entrar no workspace</Button>
         </form>
         <Link className="mt-4 block text-center text-sm font-medium text-primary underline-offset-2 hover:underline" to="/workspace/forgot-password">Esqueci minha senha</Link>
+        <p className="mt-3 text-center text-sm text-muted-foreground">
+          Não tem conta?{" "}
+          <Link className="font-medium text-[#166b50] underline-offset-2 hover:underline" to="/workspace/signup">
+            Criar workspace grátis
+          </Link>
+        </p>
       </section>
     </main>
   );

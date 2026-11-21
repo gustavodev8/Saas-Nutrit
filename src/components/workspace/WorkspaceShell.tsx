@@ -2,6 +2,8 @@ import { Apple, BookOpen, Home, LayoutDashboard, LogOut, Settings, UsersRound } 
 import { NavLink, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
+import { WorkspacePaywall } from "@/components/workspace/WorkspacePaywall";
+import { isSubscriptionAccessible } from "@/lib/workspaceSubscription";
 
 function navClass({ isActive }: { isActive: boolean }) {
   return `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${isActive
@@ -10,7 +12,22 @@ function navClass({ isActive }: { isActive: boolean }) {
 }
 
 export default function WorkspaceShell() {
-  const { membership, userEmail, logout } = useWorkspaceAuth();
+  const { membership, userEmail, logout, subscription } = useWorkspaceAuth();
+
+  // Show paywall when subscription exists and access is blocked
+  // (subscription null = legacy pilot user or migration not yet applied — allow through)
+  if (subscription && !isSubscriptionAccessible(subscription.status)) {
+    return (
+      <WorkspacePaywall
+        status={subscription.status}
+        trialEndsAt={subscription.trial_ends_at}
+        onManage={() => {
+          // TODO Phase B: open Mercado Pago checkout
+          window.open("mailto:suporte@nutrit.app?subject=Assinatura%20Nutrit", "_blank");
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-muted/30">
