@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Activity, ArrowLeft, BookOpen, CalendarDays, ClipboardList, Dumbbell,
-  LayoutDashboard, Mail, MapPin, Pencil, Phone, Save, User, UserRound,
+  FileDown, LayoutDashboard, Mail, MapPin, Pencil, Phone, Save, User, UserRound,
 } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -408,14 +408,24 @@ export default function WorkspacePatientDetailPage() {
 
               {/* ── Medidas ── */}
               {activeTab === "medidas" && (
-                <PatientAnthropometryTab
-                  key={`${workspaceId}:${patient.id}`}
-                  patientId={String(patient.id)}
-                  patient={{ ...patient }}
-                  workspaceId={workspaceId ?? undefined}
-                  workspaceName={workspaceName ?? undefined}
-                  workspacePatient={patient}
-                />
+                <div className="space-y-4">
+                  <div className="flex justify-end">
+                    <Link
+                      to={`/workspace/patients/${patient.id}/relatorio-antropometrico`}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    >
+                      <FileDown size={13} aria-hidden="true" /> Relatório PDF
+                    </Link>
+                  </div>
+                  <PatientAnthropometryTab
+                    key={`${workspaceId}:${patient.id}`}
+                    patientId={String(patient.id)}
+                    patient={{ ...patient }}
+                    workspaceId={workspaceId ?? undefined}
+                    workspaceName={workspaceName ?? undefined}
+                    workspacePatient={patient}
+                  />
+                </div>
               )}
 
               {/* ── Planos ── */}
