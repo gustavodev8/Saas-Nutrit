@@ -87,6 +87,7 @@ import { WorkspaceModeloDetailPage } from "./pages/workspace/WorkspaceModeloDeta
 import { WorkspaceDashboardPage } from "./pages/workspace/WorkspaceDashboardPage";
 import { WorkspaceAlimentosPage } from "./pages/workspace/WorkspaceAlimentosPage";
 import WorkspaceAcceptInvitationPage from "./pages/workspace/WorkspaceAcceptInvitationPage";
+import WorkspaceSettingsPage from "./pages/workspace/WorkspaceSettingsPage";
 import PlatformInvitationsPage from "./pages/platform/PlatformInvitationsPage";
 import PlatformResetPasswordPage from "./pages/platform/PlatformResetPasswordPage";
 import WorkspaceProtectedRoute from "@/components/workspace/WorkspaceProtectedRoute";
@@ -139,6 +140,7 @@ const App = () => (
                   <Route path="modelos" element={<WorkspaceModelosPage />} />
                   <Route path="modelos/:id" element={<WorkspaceModeloDetailPage />} />
                   <Route path="alimentos" element={<WorkspaceAlimentosPage />} />
+                  <Route path="configuracoes" element={<WorkspaceSettingsPage />} />
                 </Route>
               </Route>
               <Route path="/platform/invitations" element={<PlatformInvitationsPage accessRequestsEnabled={isSaaSAccessRequestsEnabled} />} />

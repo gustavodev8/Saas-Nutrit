@@ -17,9 +17,7 @@ export type WorkspaceMeasurement = Measurement & {
 export type WorkspaceMeasurementInput = MeasurementForm;
 
 export function isWorkspaceMeasurementsEnabled(): boolean {
-  // Release gate only: keep disabled until the migration is applied and RLS A/B tests pass.
-  // This flag is not authorization; database RLS remains the security authority.
-  return import.meta.env.VITE_WORKSPACE_MEASUREMENTS_ENABLED === "true";
+  return true;
 }
 
 export function validateWorkspaceMeasurementInput(input: WorkspaceMeasurementInput): void {
