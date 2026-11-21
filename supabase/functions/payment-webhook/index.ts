@@ -321,6 +321,42 @@ serve(async (req) => {
         },
       );
 
+      // Send subscription-active email when MP authorizes the preapproval
+      if (newStatus === "active" && RESEND_API_KEY) {
+        const ownerRes = await fetch(
+          `${supabaseUrl}/rest/v1/rpc/list_all_workspaces_admin`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: supabaseServiceKey,
+              Authorization: `Bearer ${supabaseServiceKey}`,
+            },
+            body: "{}",
+          },
+        ).catch(() => null);
+
+        if (ownerRes?.ok) {
+          type WsRow = { workspace_id: string; workspace_name: string; owner_email: string };
+          const allWs = await ownerRes.json().catch(() => []) as WsRow[];
+          const ws = allWs.find((r) => r.workspace_id === workspaceId);
+          if (ws) {
+            fetch(`${supabaseUrl}/functions/v1/send-workspace-email`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${supabaseServiceKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                type: "subscription-active",
+                email: ws.owner_email,
+                workspace_name: ws.workspace_name,
+              }),
+            }).catch(() => { /* non-critical */ });
+          }
+        }
+      }
+
       return new Response("ok", { status: 200 });
     }
 

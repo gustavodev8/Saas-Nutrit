@@ -94,6 +94,7 @@ import PlatformResetPasswordPage from "./pages/platform/PlatformResetPasswordPag
 import WorkspaceProtectedRoute from "@/components/workspace/WorkspaceProtectedRoute";
 import WorkspaceShell from "@/components/workspace/WorkspaceShell";
 import PublicSaaSLandingPage from "./pages/PublicSaaSLandingPage";
+import SaaSAdminPage from "./pages/SaaSAdminPage";
 
 const queryClient = new QueryClient();
 const isSaaSPilotMode = isSaaSPilotModeEnabled(import.meta.env.VITE_SAAS_PILOT_MODE);
@@ -145,6 +146,7 @@ const App = () => (
                   <Route path="configuracoes" element={<WorkspaceSettingsPage />} />
                 </Route>
               </Route>
+              <Route path="/saas-admin" element={<SaaSAdminPage />} />
               <Route path="/platform/invitations" element={<PlatformInvitationsPage accessRequestsEnabled={isSaaSAccessRequestsEnabled} />} />
               <Route path="/platform/reset-password" element={<PlatformResetPasswordPage />} />
 

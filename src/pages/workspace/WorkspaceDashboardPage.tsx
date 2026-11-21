@@ -4,6 +4,7 @@ import { BookOpen, ChevronRight, FolderOpen, Users } from "lucide-react";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
 import { LeafLoader } from "@/components/workspace/LeafLoader";
+import { WorkspaceOnboarding } from "@/components/workspace/WorkspaceOnboarding";
 
 interface RecentPatient {
   id: number;
@@ -80,6 +81,9 @@ export function WorkspaceDashboardPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
+      {membership?.workspace_id && (
+        <WorkspaceOnboarding workspaceId={membership.workspace_id} />
+      )}
       {/* Welcome */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-1">

@@ -129,6 +129,24 @@ serve(async (req) => {
         // keep status as-is; webhook will set it to 'active' once user subscribes
       }, { onConflict: "workspace_id", ignoreDuplicates: false });
 
+    // Fire-and-forget welcome email (do not block the response)
+    if (userEmail) {
+      const { data: wsData } = await serviceClient
+        .from("workspaces")
+        .select("name")
+        .eq("id", workspaceId)
+        .single();
+      const workspaceName = (wsData as { name?: string } | null)?.name ?? "seu workspace";
+      fetch(`${supabaseUrl}/functions/v1/send-workspace-email`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${supabaseServiceKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ type: "welcome", email: userEmail, workspace_name: workspaceName }),
+      }).catch(() => { /* non-critical */ });
+    }
+
     return new Response(JSON.stringify({ init_point: preapproval.init_point }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
