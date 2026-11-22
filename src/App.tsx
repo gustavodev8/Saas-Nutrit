@@ -92,6 +92,7 @@ const WorkspaceAcceptInvitationPage = lazy(() => import("./pages/workspace/Works
 const WorkspaceSettingsPage = lazy(() => import("./pages/workspace/WorkspaceSettingsPage"));
 const WorkspaceRelatorioAntropometrico = lazy(() => import("./pages/workspace/WorkspaceRelatorioAntropometrico"));
 const WorkspaceAgendaPage = lazy(() => import("./pages/workspace/WorkspaceAgendaPage"));
+const WorkspacePublicBookingPage = lazy(() => import("./pages/WorkspacePublicBookingPage"));
 const WorkspaceSignupPage = lazy(() => import("./pages/workspace/WorkspaceSignupPage"));
 const WorkspaceProtectedRoute = lazy(() => import("@/components/workspace/WorkspaceProtectedRoute"));
 const WorkspaceShell = lazy(() => import("@/components/workspace/WorkspaceShell"));
@@ -201,6 +202,9 @@ const App = () => (
                 </Route>
 
                 {/* Payment */}
+                {/* Public booking page (no auth required) */}
+                <Route path="/agendar/:slug" element={<WorkspacePublicBookingPage />} />
+
                 <Route path="/pagamento/sucesso" element={<PaymentSuccess />} />
                 <Route path="/pagamento/pendente" element={<PaymentPending />} />
                 <Route path="/pagamento/erro" element={<PaymentFailure />} />

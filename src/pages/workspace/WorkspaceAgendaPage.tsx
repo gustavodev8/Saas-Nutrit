@@ -26,7 +26,7 @@ const fmtDate = (d: string) =>
 
 export default function WorkspaceAgendaPage() {
   const { membership } = useWorkspaceAuth();
-  const workspaceId = membership?.workspace_id ?? null;
+  const workspaceId = membership?.workspaceId ?? membership?.workspace_id ?? null;
 
   const [rows, setRows]             = useState<Row[]>([]);
   const [loading, setLoading]       = useState(true);

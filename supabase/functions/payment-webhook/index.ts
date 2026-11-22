@@ -44,6 +44,12 @@ type ParsedReference =
     pollToken: string | null;
   }
   | {
+    kind: "workspace_booking";
+    bookingId: string;
+    workspaceId: string;
+    patientEmail: string;
+  }
+  | {
     kind: "ebook";
     productIndex: number;
     customerEmail: string;
@@ -64,6 +70,16 @@ function parseExternalReference(rawReference: unknown): ParsedReference | null {
   if (!externalReference || externalReference.length > 1200) return null;
 
   const parts = externalReference.split("|");
+
+  if (parts[0] === "workspace_booking") {
+    // workspace_booking|{bookingId}|{workspaceId}|{patientEmail}
+    if (parts.length !== 4) return null;
+    const bookingId = parts[1]?.trim() ?? "";
+    const workspaceId = parts[2]?.trim() ?? "";
+    const patientEmail = parts[3]?.trim().toLowerCase() ?? "";
+    if (!bookingId || !workspaceId || !isPlausibleEmail(patientEmail)) return null;
+    return { kind: "workspace_booking", bookingId, workspaceId, patientEmail };
+  }
 
   if (parts[0] === "consultation") {
     if (parts.length !== 5 && parts.length !== 6) return null;
@@ -428,6 +444,163 @@ serve(async (req) => {
     if (!claimState) return serviceUnavailableResponse();
     if (claimState === "approved") return new Response("ok", { status: 200 });
     if (claimState === "processing") return serviceUnavailableResponse();
+
+    // ── Workspace booking payment ──────────────────────────────────────────────
+    if (parsedReference.kind === "workspace_booking") {
+      const { bookingId, workspaceId, patientEmail } = parsedReference;
+
+      // Fetch booking + workspace booking settings (pix_key)
+      const [bookingRes, settingsRes] = await Promise.all([
+        fetch(
+          `${supabaseUrl}/rest/v1/workspace_bookings?id=eq.${encodeURIComponent(bookingId)}&workspace_id=eq.${encodeURIComponent(workspaceId)}&limit=1`,
+          { headers: { apikey: supabaseServiceKey, Authorization: `Bearer ${supabaseServiceKey}` } },
+        ),
+        fetch(
+          `${supabaseUrl}/rest/v1/workspace_booking_settings?workspace_id=eq.${encodeURIComponent(workspaceId)}&limit=1`,
+          { headers: { apikey: supabaseServiceKey, Authorization: `Bearer ${supabaseServiceKey}` } },
+        ),
+      ]);
+
+      if (!bookingRes.ok || !settingsRes.ok) return serviceUnavailableResponse();
+      const bookings = await bookingRes.json().catch(() => []);
+      const settingsList = await settingsRes.json().catch(() => []);
+      const booking = bookings[0];
+      const bSettings = settingsList[0];
+
+      if (!booking || booking.status === "paid" || booking.status === "confirmed") {
+        return new Response("ok", { status: 200 }); // already processed
+      }
+
+      // Update booking to paid
+      const patchRes = await fetch(
+        `${supabaseUrl}/rest/v1/workspace_bookings?id=eq.${encodeURIComponent(bookingId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: supabaseServiceKey,
+            Authorization: `Bearer ${supabaseServiceKey}`,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            status: "paid",
+            mp_payment_id: String(payment.id ?? resolvedPaymentId),
+            mp_payment_status: "approved",
+            updated_at: new Date().toISOString(),
+          }),
+        },
+      );
+      if (!patchRes.ok) return serviceUnavailableResponse();
+
+      // PIX repasse (95%) to nutritionist
+      const pixKey = bSettings?.pix_key;
+      const pixKeyType = bSettings?.pix_key_type ?? "cpf";
+      const repasseCents = booking.repasse_amount_cents;
+
+      if (pixKey && repasseCents > 0) {
+        try {
+          const transferBody = {
+            amount: repasseCents / 100,
+            currency_id: "BRL",
+            external_id: `repasse_${bookingId}`,
+            receiver: {
+              type: "pix_alias",
+              pix_alias: { type: pixKeyType, value: pixKey },
+            },
+          };
+
+          const transferRes = await fetch("https://api.mercadopago.com/v1/account/bank_transfers", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${mpAccessToken}`,
+              "Content-Type": "application/json",
+              "X-Idempotency-Key": `repasse_${bookingId}`,
+            },
+            body: JSON.stringify(transferBody),
+          });
+
+          const transferData = await transferRes.json().catch(() => ({}));
+          const transferId = transferData?.id ? String(transferData.id) : null;
+          const repasseStatus = transferRes.ok ? "sent" : "failed";
+
+          await fetch(
+            `${supabaseUrl}/rest/v1/workspace_bookings?id=eq.${encodeURIComponent(bookingId)}`,
+            {
+              method: "PATCH",
+              headers: {
+                apikey: supabaseServiceKey,
+                Authorization: `Bearer ${supabaseServiceKey}`,
+                "Content-Type": "application/json",
+                Prefer: "return=minimal",
+              },
+              body: JSON.stringify({
+                repasse_status: repasseStatus,
+                ...(transferId ? { repasse_transfer_id: transferId } : {}),
+              }),
+            },
+          ).catch(() => { /* non-critical */ });
+
+          if (!transferRes.ok) {
+            console.error("repasse failed:", JSON.stringify(transferData));
+          }
+        } catch (err) {
+          console.error("repasse error:", err);
+        }
+      }
+
+      // Send confirmation email to patient
+      if (RESEND_API_KEY) {
+        const serviceName = escapeHtml(booking.service_id ?? "Consulta");
+        const bookingDate = booking.booking_date ?? "";
+        const bookingTime = (booking.booking_time ?? "").slice(0, 5);
+        const patientName = escapeHtml(booking.patient_name ?? "");
+        const [y, m, d] = bookingDate.split("-");
+        const dateBR = `${d}/${m}/${y}`;
+
+        const confirmHtml = `
+          <!DOCTYPE html><html lang="pt-BR">
+          <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+          <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="padding:48px 24px;">
+              <tr><td align="center">
+                <table width="520" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+                  <tr><td style="height:4px;background:#166b50;"></td></tr>
+                  <tr><td style="padding:32px 40px;">
+                    <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#111827;">Consulta confirmada! ✅</h2>
+                    <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">Pagamento aprovado. Obrigado, ${patientName}!</p>
+                    <div style="background:#f9fafb;border-radius:8px;padding:20px 24px;margin-bottom:24px;line-height:1.8;">
+                      <p style="margin:0;font-size:14px;color:#374151;"><strong>Data:</strong> ${dateBR}</p>
+                      <p style="margin:0;font-size:14px;color:#374151;"><strong>Horário:</strong> ${bookingTime}</p>
+                    </div>
+                    <p style="margin:0;font-size:13px;color:#9ca3af;">Em breve o profissional entrará em contato para confirmar os detalhes.</p>
+                  </td></tr>
+                  <tr><td style="padding:0 40px 24px;">
+                    <p style="margin:0;font-size:12px;color:#d1d5db;text-align:center;">Nutrit · Email automático</p>
+                  </td></tr>
+                </table>
+              </td></tr>
+            </table>
+          </body></html>
+        `;
+
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": `workspace-booking-confirm-${bookingId}`,
+          },
+          body: JSON.stringify({
+            from: FROM_EMAIL,
+            to: patientEmail,
+            subject: "Consulta confirmada — Nutrit",
+            html: confirmHtml,
+          }),
+        }).catch(() => { /* non-critical */ });
+      }
+
+      return new Response("ok", { status: 200 });
+    }
 
     // ── Consultation payment ──────────────────────────────────────────────────
     if (parsedReference.kind === "consultation") {

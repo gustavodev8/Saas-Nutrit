@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowRight, Building2, Check, CreditCard, Loader2, Mail, Palette, Settings, Shield, User, Users } from "lucide-react";
+import { ArrowRight, Building2, CalendarDays, Check, CreditCard, Loader2, Mail, Palette, Settings, Shield, User, Users } from "lucide-react";
+import { WorkspaceBookingSettingsTab } from "@/components/workspace/WorkspaceBookingSettingsTab";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,14 +26,15 @@ import {
 } from "@/lib/workspaceSubscription";
 import { cn } from "@/lib/utils";
 
-type TabKey = "perfil" | "portal" | "clinica" | "equipe" | "plano";
+type TabKey = "perfil" | "portal" | "clinica" | "equipe" | "plano" | "agendamentos";
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-  { key: "perfil",  label: "Perfil",   icon: <User        size={15} aria-hidden="true" /> },
-  { key: "portal",  label: "Portal",   icon: <Palette     size={15} aria-hidden="true" /> },
-  { key: "clinica", label: "Clínica",  icon: <Building2   size={15} aria-hidden="true" /> },
-  { key: "equipe",  label: "Equipe",   icon: <Users       size={15} aria-hidden="true" /> },
-  { key: "plano",   label: "Plano",    icon: <CreditCard  size={15} aria-hidden="true" /> },
+  { key: "perfil",       label: "Perfil",        icon: <User         size={15} aria-hidden="true" /> },
+  { key: "portal",       label: "Portal",        icon: <Palette      size={15} aria-hidden="true" /> },
+  { key: "clinica",      label: "Clínica",       icon: <Building2    size={15} aria-hidden="true" /> },
+  { key: "equipe",       label: "Equipe",        icon: <Users        size={15} aria-hidden="true" /> },
+  { key: "agendamentos", label: "Agendamentos",  icon: <CalendarDays size={15} aria-hidden="true" /> },
+  { key: "plano",        label: "Plano",         icon: <CreditCard   size={15} aria-hidden="true" /> },
 ];
 
 function tabClass(active: boolean) {
@@ -745,11 +747,12 @@ export default function WorkspaceSettingsPage() {
         </div>
 
         <div className="pt-2">
-          {activeTab === "perfil"  && <PerfilTab  workspaceId={workspaceId} isOwner={isOwner} />}
-          {activeTab === "portal"  && <PortalTab  workspaceId={workspaceId} isOwner={isOwner} />}
-          {activeTab === "clinica" && <ClinicaTab workspaceId={workspaceId} isOwner={isOwner} />}
-          {activeTab === "equipe"  && <EquipeTab  workspaceId={workspaceId} currentUserEmail={userEmail} />}
-          {activeTab === "plano"   && <PlanoTab   subscription={subscription} isOwner={isOwner} />}
+          {activeTab === "perfil"       && <PerfilTab  workspaceId={workspaceId} isOwner={isOwner} />}
+          {activeTab === "portal"       && <PortalTab  workspaceId={workspaceId} isOwner={isOwner} />}
+          {activeTab === "clinica"      && <ClinicaTab workspaceId={workspaceId} isOwner={isOwner} />}
+          {activeTab === "equipe"       && <EquipeTab  workspaceId={workspaceId} currentUserEmail={userEmail} />}
+          {activeTab === "agendamentos" && <WorkspaceBookingSettingsTab workspaceId={workspaceId} />}
+          {activeTab === "plano"        && <PlanoTab   subscription={subscription} isOwner={isOwner} />}
         </div>
       </div>
     </main>
