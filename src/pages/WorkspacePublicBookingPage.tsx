@@ -117,9 +117,10 @@ export default function WorkspacePublicBookingPage() {
     setError("");
     try {
       const supabaseUrl = (import.meta.env as Record<string, string>).VITE_SUPABASE_URL;
+      const anonKey = (import.meta.env as Record<string, string>).VITE_SUPABASE_ANON_KEY;
       const res = await fetch(`${supabaseUrl}/functions/v1/create-workspace-booking-payment`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}`, "apikey": anonKey },
         body: JSON.stringify({
           workspace_id: settings!.workspace_id,
           service_id: selectedService!.id,
@@ -217,7 +218,7 @@ export default function WorkspacePublicBookingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f7f3]">
+    <div className="min-h-screen bg-[#e8ede5]">
       {/* Header */}
       <div className="bg-white border-b">
         <div className="mx-auto max-w-xl px-4 py-5 flex items-center gap-3">
