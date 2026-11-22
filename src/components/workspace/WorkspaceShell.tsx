@@ -78,11 +78,11 @@ export default function WorkspaceShell() {
     : "?";
 
   return (
-    <div className="flex min-h-screen bg-[#f5f7f3]">
+    <div className="flex h-screen overflow-hidden bg-[#f5f7f3]">
       {/* ── Sidebar ── */}
       <aside
         className={cn(
-          "relative flex flex-col border-r bg-background transition-all duration-200 shrink-0",
+          "relative flex flex-col border-r bg-background transition-all duration-200 shrink-0 h-full overflow-y-auto",
           collapsed ? "w-[60px]" : "w-[220px]",
         )}
       >
@@ -177,7 +177,7 @@ export default function WorkspaceShell() {
       </aside>
 
       {/* ── Main content ── */}
-      <div className="flex flex-1 flex-col min-w-0">
+      <div className="flex flex-1 flex-col min-w-0 overflow-y-auto">
         {trialBanner}
         <Outlet />
       </div>

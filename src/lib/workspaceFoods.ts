@@ -1,5 +1,4 @@
-import { workspaceSupabase } from "./workspaceSupabase";
-import { repairMojibake } from "./supabase";
+import { supabase, repairMojibake } from "./supabase";
 
 export interface WorkspaceFood {
   id: string;
@@ -23,7 +22,7 @@ export async function fetchWorkspaceFoods(
   const from = page * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  let q = workspaceSupabase
+  let q = supabase
     .from("master_foods")
     .select("id, name, category, kcal_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, fiber_per_100g, source", { count: "exact" });
 
@@ -51,7 +50,7 @@ export async function fetchWorkspaceFoods(
 }
 
 export async function fetchWorkspaceFoodCategories(): Promise<string[]> {
-  const { data, error } = await workspaceSupabase
+  const { data, error } = await supabase
     .from("master_foods")
     .select("category")
     .order("category");
