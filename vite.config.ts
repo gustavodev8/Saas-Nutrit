@@ -4,6 +4,9 @@ import path from "path";
 import { createBuildInfoPlugin } from "./vite.buildInfo";
 
 export default defineConfig(({ command, mode }) => ({
+  define: {
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   server: {
     host: "127.0.0.1",
     port: 8080,
