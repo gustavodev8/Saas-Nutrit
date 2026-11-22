@@ -89,6 +89,17 @@ ALTER TABLE workspace_booking_services    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workspace_booking_availability ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workspace_bookings            ENABLE ROW LEVEL SECURITY;
 
+-- Drop policies first so this script is safe to re-run
+DROP POLICY IF EXISTS "booking_settings_anon_read"      ON workspace_booking_settings;
+DROP POLICY IF EXISTS "booking_services_anon_read"      ON workspace_booking_services;
+DROP POLICY IF EXISTS "booking_availability_anon_read"  ON workspace_booking_availability;
+DROP POLICY IF EXISTS "bookings_anon_slots_read"        ON workspace_bookings;
+DROP POLICY IF EXISTS "bookings_anon_insert"            ON workspace_bookings;
+DROP POLICY IF EXISTS "booking_settings_member_all"     ON workspace_booking_settings;
+DROP POLICY IF EXISTS "booking_services_member_all"     ON workspace_booking_services;
+DROP POLICY IF EXISTS "booking_availability_member_all" ON workspace_booking_availability;
+DROP POLICY IF EXISTS "bookings_member_all"             ON workspace_bookings;
+
 -- Anon lê settings ativos (página pública)
 CREATE POLICY "booking_settings_anon_read" ON workspace_booking_settings
   FOR SELECT TO anon USING (active = true);

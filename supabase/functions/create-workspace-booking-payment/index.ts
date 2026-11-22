@@ -5,11 +5,6 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-function timeToMin(t: string): number {
-  const [h, m] = t.slice(0, 5).split(":").map(Number);
-  return h * 60 + m;
-}
-
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -65,54 +60,43 @@ serve(async (req) => {
     const service = svcs[0];
     if (!service) return json({ error: "Serviço não encontrado." }, 404);
 
-    // 2. Check slot availability with duration-aware overlap detection
-    const slotRes = await fetch(
-      `${supabaseUrl}/rest/v1/workspace_bookings?workspace_id=eq.${workspace_id}&booking_date=eq.${booking_date}&status=in.(pending_payment,paid,confirmed,completed)&select=booking_time,service_duration_min`,
-      { headers },
-    );
-    if (slotRes.ok) {
-      const existing = await slotRes.json() as { booking_time: string; service_duration_min: number }[];
-      const newStart = timeToMin(booking_time);
-      const newEnd = newStart + (service.duration_min ?? 60);
-      const conflict = existing.some((b) => {
-        const bStart = timeToMin(b.booking_time);
-        const bEnd = bStart + (b.service_duration_min ?? 60);
-        return newStart < bEnd && newEnd > bStart;
-      });
-      if (conflict) {
-        return json({ error: "Este horário já foi reservado ou está em conflito. Escolha outro." }, 409);
-      }
-    }
-
     // 3. Calculate amounts (5% platform fee)
     const totalCents = service.price_cents;
     const platformFeeCents = Math.round(totalCents * 0.05);
     const repasseCents = totalCents - platformFeeCents;
     const totalAmount = totalCents / 100;
 
-    // 4. Create booking record (pending_payment)
-    const bookingRes = await fetch(`${supabaseUrl}/rest/v1/workspace_bookings`, {
+    // 2+4. Atomic conflict check + insert (pending_payment) in one transaction.
+    // Requires migration 20261122120000_workspace_booking_atomic_insert.sql applied first.
+    const durationMin = service.duration_min ?? 60;
+    const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/create_workspace_booking_atomic`, {
       method: "POST",
       headers: { ...headers, Prefer: "return=representation" },
       body: JSON.stringify({
-        workspace_id,
-        service_id,
-        patient_name: patient_name.trim(),
-        patient_email: patient_email.trim().toLowerCase(),
-        patient_phone: patient_phone ?? null,
-        booking_date,
-        booking_time,
-        status: "pending_payment",
-        total_amount_cents: totalCents,
-        platform_fee_cents: platformFeeCents,
-        repasse_amount_cents: repasseCents,
-        service_duration_min: service.duration_min ?? 60,
+        p_workspace_id: workspace_id,
+        p_service_id: service_id,
+        p_patient_name: patient_name.trim(),
+        p_patient_email: patient_email.trim().toLowerCase(),
+        p_patient_phone: patient_phone ?? null,
+        p_booking_date: booking_date,
+        p_booking_time: booking_time,
+        p_service_duration_min: durationMin,
+        p_total_amount_cents: totalCents,
+        p_platform_fee_cents: platformFeeCents,
+        p_repasse_amount_cents: repasseCents,
       }),
     });
-    if (!bookingRes.ok) return json({ error: "Erro ao criar agendamento." }, 500);
-    const bookings = await bookingRes.json();
-    const booking = bookings[0];
-    if (!booking) return json({ error: "Erro ao criar agendamento." }, 500);
+    if (!rpcRes.ok) {
+      const rpcErr = await rpcRes.text();
+      if (rpcErr.includes("BOOKING_CONFLICT")) {
+        return json({ error: "Este horário já foi reservado ou está em conflito. Escolha outro." }, 409);
+      }
+      console.error("create_workspace_booking_atomic error:", rpcErr);
+      return json({ error: "Erro ao criar agendamento." }, 500);
+    }
+    const bookingId = (await rpcRes.json()) as string | null;
+    if (!bookingId) return json({ error: "Erro ao criar agendamento." }, 500);
+    const booking = { id: bookingId };
 
     // 5. Create MP PIX payment
     const externalRef = `workspace_booking|${booking.id}|${workspace_id}|${patient_email.trim().toLowerCase()}`;

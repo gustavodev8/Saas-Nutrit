@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { CalendarDays, Check, ChevronLeft, Clock, Loader2 } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock, Copy, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -19,6 +20,9 @@ import {
   type BookingAvailability,
 } from "@/lib/workspaceBookings";
 import { cn } from "@/lib/utils";
+import { parseISODate, toISODate } from "@/lib/bookingDates";
+import { buildICS, googleCalendarUrl } from "@/lib/icsBooking";
+import { buildMonthGrid, canGoNextMonth, canGoPrevMonth, findNextAvailableDate } from "@/lib/bookingCalendar";
 
 type Step = "service" | "datetime" | "info" | "payment" | "success";
 
@@ -27,46 +31,6 @@ const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","A
 function formatDateBR(dateStr: string) {
   const [y, m, d] = dateStr.split("-");
   return `${d}/${m}/${y}`;
-}
-
-function addDays(date: Date, days: number) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-function toISO(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-// Generate next N days that have availability and are not blocked
-function buildCalendar(
-  availability: BookingAvailability[],
-  blockedDates: Set<string>,
-  maxDays = 60,
-): { date: Date; dayOfWeek: number }[] {
-  const activeDays = new Set(availability.filter(a => a.active).map(a => a.day_of_week));
-  const result: { date: Date; dayOfWeek: number }[] = [];
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  for (let i = 1; i <= maxDays; i++) {
-    const d = addDays(start, i);
-    const dow = d.getDay();
-    if (activeDays.has(dow) && !blockedDates.has(toISO(d))) {
-      result.push({ date: d, dayOfWeek: dow });
-    }
-  }
-  return result;
-}
-
-function groupByMonth(days: { date: Date; dayOfWeek: number }[]) {
-  const groups: Record<string, { date: Date; dayOfWeek: number }[]> = {};
-  for (const d of days) {
-    const key = `${d.date.getFullYear()}-${d.date.getMonth()}`;
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(d);
-  }
-  return groups;
 }
 
 export default function WorkspacePublicBookingPage() {
@@ -84,10 +48,14 @@ export default function WorkspacePublicBookingPage() {
   const [selectedTime, setSelectedTime] = useState<string>("");
   const [slots, setSlots] = useState<BookingSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [viewYear, setViewYear] = useState<number>(() => new Date().getFullYear());
+  const [viewMonth, setViewMonth] = useState<number>(() => new Date().getMonth());
+  const [autoPick, setAutoPick] = useState(false);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -143,6 +111,7 @@ export default function WorkspacePublicBookingPage() {
 
   async function handleSubmitInfo(e: React.FormEvent) {
     e.preventDefault();
+    if (!consent) return;
     if (!name.trim() || !email.trim()) return;
     setSubmitting(true);
     setError("");
@@ -201,6 +170,14 @@ export default function WorkspacePublicBookingPage() {
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
+  // Auto-seleção do primeiro horário livre após o atalho "Primeira data disponível"
+  useEffect(() => {
+    if (!autoPick || loadingSlots || !selectedDate) return;
+    const firstFree = slots.find(s => s.available);
+    if (firstFree) setSelectedTime(firstFree.time);
+    setAutoPick(false);
+  }, [autoPick, loadingSlots, slots, selectedDate]);
+
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center">
       <Loader2 size={24} className="animate-spin text-[#166b50]" />
@@ -215,8 +192,29 @@ export default function WorkspacePublicBookingPage() {
     </div>
   );
 
-  const calendarDays = buildCalendar(availability, blockedDates, settings?.max_advance_days ?? 60);
-  const monthGroups = groupByMonth(calendarDays);
+  const today = new Date();
+  const minDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const maxDate = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() + (settings?.max_advance_days ?? 60));
+  const activeDows = new Set(availability.filter(a => a.active).map(a => a.day_of_week));
+  const monthGrid = buildMonthGrid({ year: viewYear, month: viewMonth, activeDows, blocked: blockedDates, minDate, maxDate });
+  const prevEnabled = canGoPrevMonth(viewYear, viewMonth, minDate);
+  const nextEnabled = canGoNextMonth(viewYear, viewMonth, maxDate);
+  const nextDate = findNextAvailableDate(minDate, maxDate, activeDows, blockedDates);
+
+  function jumpToNextAvailable() {
+    if (!nextDate) return;
+    const d = parseISODate(nextDate);
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+    setAutoPick(true);
+    handleDateSelect(nextDate);
+  }
+
+  function goToMonth(delta: number) {
+    const d = new Date(viewYear, viewMonth + delta, 1);
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+  }
 
   return (
     <div className="min-h-screen bg-[#f5f7f3]">
@@ -239,7 +237,7 @@ export default function WorkspacePublicBookingPage() {
 
       <div className="mx-auto max-w-xl px-4 py-6 space-y-4">
         {/* Steps indicator */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2 gap-y-1 text-xs text-muted-foreground">
           {["Serviço", "Data e hora", "Seus dados", "Pagamento"].map((s, i) => {
             const stepKeys: Step[] = ["service", "datetime", "info", "payment"];
             const done = stepKeys.indexOf(step) > i || step === "success";
@@ -298,44 +296,82 @@ export default function WorkspacePublicBookingPage() {
               <span className="text-muted-foreground ml-2">· {formatBRL(selectedService.price_cents)} · {selectedService.duration_min} min</span>
             </div>
 
+            {/* Atalho: primeira data disponível */}
+            {!selectedDate && nextDate && (
+              <div>
+                <button
+                  type="button"
+                  onClick={jumpToNextAvailable}
+                  className="inline-flex items-center gap-1 rounded-full bg-[#e6f1eb] text-[#166b50] text-xs font-medium px-3 py-1.5 hover:bg-[#d5e9de] transition-colors"
+                >
+                  ⚡ Primeira data disponível: {formatDateBR(nextDate).slice(0, 5)}
+                </button>
+              </div>
+            )}
+
             {/* Calendar */}
-            <div className="space-y-5">
-              {Object.entries(monthGroups).map(([key, days]) => {
-                const [year, month] = key.split("-").map(Number);
-                return (
-                  <div key={key}>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                      {MONTHS[month]} {year}
-                    </p>
-                    <div className="grid grid-cols-7 gap-1">
-                      {["D","S","T","Q","Q","S","S"].map((d, i) => (
-                        <div key={i} className="text-center text-[10px] text-muted-foreground font-medium py-1">{d}</div>
-                      ))}
-                      {/* offset for first day */}
-                      {days[0] && Array.from({ length: days[0].date.getDay() }).map((_, i) => <div key={`e${i}`} />)}
-                      {days.map(({ date }) => {
-                        const iso = toISO(date);
-                        const isSelected = selectedDate === iso;
-                        return (
-                          <button
-                            key={iso}
-                            type="button"
-                            onClick={() => handleDateSelect(iso)}
-                            className={cn(
-                              "rounded-xl py-2.5 text-sm font-medium transition-all",
-                              isSelected
-                                ? "bg-[#166b50] text-white shadow-sm"
-                                : "hover:bg-[#e6f1eb] hover:text-[#166b50] text-foreground",
-                            )}
-                          >
-                            {date.getDate()}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="rounded-2xl border border-border bg-white p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => goToMonth(-1)}
+                  disabled={!prevEnabled}
+                  aria-label="Mês anterior"
+                  className="rounded-xl p-2 text-foreground hover:bg-[#e6f1eb] disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <p className="text-sm font-semibold text-foreground">
+                  {MONTHS[viewMonth]} {viewYear}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => goToMonth(1)}
+                  disabled={!nextEnabled}
+                  aria-label="Próximo mês"
+                  className="rounded-xl p-2 text-foreground hover:bg-[#e6f1eb] disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1">
+                {["D","S","T","Q","Q","S","S"].map((d, i) => (
+                  <div key={i} className="text-center text-[10px] text-muted-foreground font-medium py-1">{d}</div>
+                ))}
+                {monthGrid.map(day => {
+                  const isSelected = selectedDate === day.iso;
+                  if (!day.selectable) {
+                    return (
+                      <div
+                        key={day.iso}
+                        aria-disabled="true"
+                        className={cn(
+                          "min-h-[44px] flex items-center justify-center rounded-xl text-center text-sm font-medium",
+                          day.inMonth ? "text-muted-foreground/35" : "text-transparent",
+                        )}
+                      >
+                        {day.date.getDate()}
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      key={day.iso}
+                      type="button"
+                      onClick={() => handleDateSelect(day.iso)}
+                      className={cn(
+                        "min-h-[44px] flex items-center justify-center rounded-xl text-sm font-medium transition-all",
+                        isSelected
+                          ? "bg-[#166b50] text-white shadow-sm"
+                          : "text-foreground hover:bg-[#e6f1eb] hover:text-[#166b50]",
+                      )}
+                    >
+                      {day.date.getDate()}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Time slots */}
@@ -355,7 +391,7 @@ export default function WorkspacePublicBookingPage() {
                         disabled={!slot.available}
                         onClick={() => setSelectedTime(slot.time)}
                         className={cn(
-                          "rounded-xl border py-2.5 text-sm font-medium transition-all",
+                          "min-h-[44px] rounded-xl border py-2.5 text-sm font-medium transition-all",
                           !slot.available && "opacity-30 cursor-not-allowed bg-muted",
                           slot.available && selectedTime === slot.time && "bg-[#166b50] text-white border-[#166b50] shadow-sm",
                           slot.available && selectedTime !== slot.time && "border-border bg-white hover:border-[#166b50]/50 hover:bg-[#e6f1eb]/50",
@@ -374,7 +410,7 @@ export default function WorkspacePublicBookingPage() {
                 onClick={() => setStep("info")}
                 className="w-full bg-[#166b50] hover:bg-[#145e45] text-white py-6 rounded-2xl text-base"
               >
-                Continuar
+                Continuar · {formatDateBR(selectedDate).slice(0, 5)} às {selectedTime}
               </Button>
             )}
           </div>
@@ -408,16 +444,29 @@ export default function WorkspacePublicBookingPage() {
                   <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" required className="rounded-xl" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-sm">Telefone / WhatsApp <span className="text-muted-foreground">(opcional)</span></Label>
+                  <Label className="text-sm">Telefone / WhatsApp <span className="text-muted-foreground">(recomendado)</span></Label>
                   <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="(00) 00000-0000" className="rounded-xl" />
+                  <p className="text-[11px] text-muted-foreground">Usamos para confirmar e lembrar da sua consulta.</p>
                 </div>
+              </div>
+
+              <div className="flex items-start gap-3 px-1">
+                <Checkbox
+                  id="consent-lgpd"
+                  checked={consent}
+                  onCheckedChange={(value) => setConsent(value === true)}
+                  className="mt-0.5 border-[#166b50] data-[state=checked]:bg-[#166b50] data-[state=checked]:border-[#166b50]"
+                />
+                <Label htmlFor="consent-lgpd" className="text-xs text-muted-foreground font-normal leading-relaxed cursor-pointer">
+                  Li e concordo com o uso dos meus dados para agendamento e contato, conforme a LGPD.
+                </Label>
               </div>
 
               {error && <p className="text-sm text-destructive text-center">{error}</p>}
 
               <Button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || !consent}
                 className="w-full bg-[#166b50] hover:bg-[#145e45] text-white py-6 rounded-2xl text-base"
               >
                 {submitting ? <><Loader2 size={16} className="animate-spin mr-2" />Aguarde...</> : `Pagar ${selectedService && formatBRL(selectedService.price_cents)}`}
@@ -493,6 +542,41 @@ export default function WorkspacePublicBookingPage() {
               <p><span className="text-muted-foreground">Data:</span> <strong>{formatDateBR(selectedDate)}</strong></p>
               <p><span className="text-muted-foreground">Horário:</span> <strong>{selectedTime}</strong></p>
             </div>
+            {selectedService && selectedDate && selectedTime && (() => {
+              const startDate = (() => { const d = parseISODate(selectedDate); const [h, m] = selectedTime.split(":").map(Number); d.setHours(h, m, 0, 0); return d; })();
+              const calEvent = { title: `${selectedService.name ?? "Consulta"}${settings?.presentation_name ? " — " + settings.presentation_name : ""}`, description: "Agendamento confirmado.", start: startDate, durationMin: selectedService.duration_min ?? 60 };
+              return (
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <a
+                    href={googleCalendarUrl(calEvent)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#166b50] px-4 py-2 text-sm font-medium text-[#166b50] hover:bg-[#e6f1eb]/50 transition-colors"
+                  >
+                    <CalendarDays size={16} />
+                    Adicionar ao Google Agenda
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const blob = new Blob([buildICS(calEvent)], { type: "text/calendar" });
+                      const objectUrl = URL.createObjectURL(blob);
+                      const link = document.createElement("a");
+                      link.href = objectUrl;
+                      link.download = "agendamento.ics";
+                      document.body.appendChild(link);
+                      link.click();
+                      link.remove();
+                      setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#166b50] px-4 py-2 text-sm font-medium text-[#166b50] hover:bg-[#e6f1eb]/50 transition-colors"
+                  >
+                    <Clock size={16} />
+                    Baixar .ics
+                  </button>
+                </div>
+              );
+            })()}
             <p className="text-xs text-muted-foreground">Em breve o profissional entrará em contato para confirmar os detalhes.</p>
           </div>
         )}

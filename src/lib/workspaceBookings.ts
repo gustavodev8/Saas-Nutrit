@@ -393,19 +393,59 @@ export async function fetchPublicBlockedDates(workspaceId: string): Promise<stri
   return (data ?? []).map((r: { blocked_date: string }) => r.blocked_date);
 }
 
+/** TTL (minutes) after which an unpaid pending_payment booking stops blocking its slot. */
+export const PENDING_TTL_MIN = 15;
+
+/** Booking row normalized for TTL filtering. */
+interface BookedRow {
+  time: string;        // "HH:MM"
+  durationMin: number;
+  status: string;
+  createdAtMs: number;
+}
+
+/**
+ * Keeps only the bookings that still block a slot.
+ * - Any status other than "pending_payment" always blocks.
+ * - "pending_payment" blocks only while its age is within ttlMin minutes.
+ * Pure: no I/O, no clock access (nowMs is injected).
+ */
+export function pruneExpiredPending(
+  rows: BookedRow[],
+  nowMs: number,
+  ttlMin = PENDING_TTL_MIN,
+): BookedSlot[] {
+  const ttlMs = ttlMin * 60 * 1000;
+  return rows
+    .filter((r) => r.status !== "pending_payment" || nowMs - r.createdAtMs <= ttlMs)
+    .map((r) => ({ time: r.time, durationMin: r.durationMin }));
+}
+
+/** Row shape returned by the workspace_bookings select in fetchBookedSlots. */
+interface BookedSlotDbRow {
+  booking_time: string;
+  service_duration_min: number | null;
+  status: string;
+  created_at: string;
+}
+
 /**
  * Returns existing bookings for a workspace+date with time and service duration.
- * Includes pending_payment to prevent race-condition double-bookings.
+ * Includes pending_payment to prevent race-condition double-bookings, but abandoned
+ * pending_payment rows older than PENDING_TTL_MIN are ignored (slot becomes free again).
  */
 export async function fetchBookedSlots(workspaceId: string, date: string): Promise<BookedSlot[]> {
   const { data } = await supabase
     .from("workspace_bookings")
-    .select("booking_time, service_duration_min")
+    .select("booking_time, service_duration_min, status, created_at")
     .eq("workspace_id", workspaceId)
     .eq("booking_date", date)
     .in("status", ["pending_payment", "paid", "confirmed", "completed"]);
-  return (data ?? []).map((r: { booking_time: string; service_duration_min: number }) => ({
+  const rows: BookedRow[] = ((data ?? []) as BookedSlotDbRow[]).map((r) => ({
     time: r.booking_time.slice(0, 5),
     durationMin: r.service_duration_min ?? 60,
+    status: r.status,
+    createdAtMs: Date.parse(r.created_at),
   }));
+  return pruneExpiredPending(rows, Date.now());
 }
