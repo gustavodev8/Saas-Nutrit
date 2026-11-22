@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { jsonResponse, requireAuthenticatedAdmin } from "../_shared/adminAuth.ts";
+import { addLegacyWorkspaceFilter } from "../_shared/workspaceGuards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("SITE_URL") || "*",
@@ -20,13 +21,16 @@ serve(async (req) => {
       return jsonResponse({ error: "booking_id obrigatório" }, 400, corsHeaders);
     }
 
-    const res = await fetch(`${auth.supabaseUrl}/rest/v1/bookings?id=eq.${encodeURIComponent(String(booking_id))}`, {
+    const updateUrl = addLegacyWorkspaceFilter(
+      new URL(`${auth.supabaseUrl}/rest/v1/bookings?id=eq.${encodeURIComponent(String(booking_id))}`),
+    );
+    const res = await fetch(updateUrl.toString(), {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
         apikey: auth.serviceKey,
         Authorization: `Bearer ${auth.serviceKey}`,
-        Prefer: "return=minimal",
+        Prefer: "return=representation",
       },
       body: JSON.stringify({ status: "completed", completed_at: new Date().toISOString() }),
     });
@@ -34,6 +38,11 @@ serve(async (req) => {
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`DB update failed: ${err}`);
+    }
+
+    const updatedRows = await res.json().catch(() => []);
+    if (!Array.isArray(updatedRows) || updatedRows.length !== 1) {
+      return jsonResponse({ error: "Agendamento legado nao encontrado." }, 404, corsHeaders);
     }
 
     return jsonResponse({ success: true }, 200, corsHeaders);

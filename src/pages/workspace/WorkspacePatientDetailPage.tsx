@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Activity, ArrowLeft, BookOpen, CalendarDays, ClipboardList, Dumbbell,
-  FileDown, LayoutDashboard, Mail, MapPin, Pencil, Phone, Save, User, UserRound,
+  FileDown, LayoutDashboard, Mail, MapPin, Pencil, Phone, Save, User, UserRound, Utensils,
 } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PatientAnthropometryTab } from "@/components/admin/patient/PatientAnthropometryTab";
 import { WorkspaceAnamnesisForm } from "@/components/workspace/WorkspaceAnamnesisForm";
+import { WorkspaceConsultasTab } from "@/components/workspace/WorkspaceConsultasTab";
+import { WorkspaceMeasurementCharts } from "@/components/workspace/WorkspaceMeasurementCharts";
+import { WorkspaceRecordatorioTab } from "@/components/workspace/WorkspaceRecordatorioTab";
 import { WorkspaceTrainingTab } from "@/components/workspace/WorkspaceTrainingTab";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
@@ -27,7 +30,7 @@ import { cn } from "@/lib/utils";
 
 // --- Types -------------------------------------------------------------------
 
-type TabKey = "central" | "perfil" | "anamnese" | "medidas" | "planos" | "treinos";
+type TabKey = "central" | "perfil" | "anamnese" | "medidas" | "consultas" | "recordatorio" | "planos" | "treinos";
 
 interface TabDef {
   key: TabKey;
@@ -38,12 +41,14 @@ interface TabDef {
 // --- Constants ---------------------------------------------------------------
 
 const TABS: TabDef[] = [
-  { key: "central",   label: "Central",   icon: <LayoutDashboard size={15} aria-hidden="true" /> },
-  { key: "perfil",    label: "Perfil",    icon: <User             size={15} aria-hidden="true" /> },
-  { key: "anamnese",  label: "Anamnese",  icon: <ClipboardList    size={15} aria-hidden="true" /> },
-  { key: "medidas",   label: "Medidas",   icon: <Activity         size={15} aria-hidden="true" /> },
-  { key: "planos",    label: "Planos",    icon: <BookOpen         size={15} aria-hidden="true" /> },
-  { key: "treinos",   label: "Treinos",   icon: <Dumbbell         size={15} aria-hidden="true" /> },
+  { key: "central",      label: "Central",      icon: <LayoutDashboard size={15} aria-hidden="true" /> },
+  { key: "perfil",       label: "Perfil",       icon: <User             size={15} aria-hidden="true" /> },
+  { key: "anamnese",     label: "Anamnese",     icon: <ClipboardList    size={15} aria-hidden="true" /> },
+  { key: "medidas",      label: "Medidas",      icon: <Activity         size={15} aria-hidden="true" /> },
+  { key: "consultas",    label: "Consultas",    icon: <CalendarDays     size={15} aria-hidden="true" /> },
+  { key: "recordatorio", label: "R24h",         icon: <Utensils         size={15} aria-hidden="true" /> },
+  { key: "planos",       label: "Planos",       icon: <BookOpen         size={15} aria-hidden="true" /> },
+  { key: "treinos",      label: "Treinos",      icon: <Dumbbell         size={15} aria-hidden="true" /> },
 ];
 
 const DEFAULT_TAB: TabKey = "central";
@@ -417,6 +422,13 @@ export default function WorkspacePatientDetailPage() {
                       <FileDown size={13} aria-hidden="true" /> Relatório PDF
                     </Link>
                   </div>
+                  {workspaceId && (
+                    <WorkspaceMeasurementCharts
+                      key={`${workspaceId}:${patient.id}:charts`}
+                      workspaceId={workspaceId}
+                      patientId={patient.id}
+                    />
+                  )}
                   <PatientAnthropometryTab
                     key={`${workspaceId}:${patient.id}`}
                     patientId={String(patient.id)}
@@ -426,6 +438,24 @@ export default function WorkspacePatientDetailPage() {
                     workspacePatient={patient}
                   />
                 </div>
+              )}
+
+              {/* ── Consultas ── */}
+              {activeTab === "consultas" && workspaceId && (
+                <WorkspaceConsultasTab
+                  key={`${workspaceId}:${patient.id}:consultas`}
+                  workspaceId={workspaceId}
+                  patient={patient}
+                />
+              )}
+
+              {/* ── Recordatório ── */}
+              {activeTab === "recordatorio" && workspaceId && (
+                <WorkspaceRecordatorioTab
+                  key={`${workspaceId}:${patient.id}:recordatorio`}
+                  workspaceId={workspaceId}
+                  patient={patient}
+                />
               )}
 
               {/* ── Planos ── */}

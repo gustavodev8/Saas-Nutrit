@@ -56,6 +56,34 @@ describe("calculateFoodMacros", () => {
     expect(result).toMatchObject({ calories: undefined, protein: undefined, carbs: undefined, fat: undefined });
   });
 
+  it.each([undefined, Number.NaN])("clears derived totals without discarding per-100g macros for quantity %s", (quantity) => {
+    const result = calculateFoodMacros({
+      meal_id: 0,
+      food_name: "Arroz",
+      quantity,
+      unit: "g",
+      kcal_per_100g: 128,
+      protein_per_100g: 2.5,
+      carbs_per_100g: 28.1,
+      fat_per_100g: 0.2,
+      calories: 256,
+      protein: 5,
+      carbs: 56.2,
+      fat: 0.4,
+    });
+
+    expect(result).toMatchObject({
+      kcal_per_100g: 128,
+      protein_per_100g: 2.5,
+      carbs_per_100g: 28.1,
+      fat_per_100g: 0.2,
+      calories: undefined,
+      protein: undefined,
+      carbs: undefined,
+      fat: undefined,
+    });
+  });
+
   it("flags generic unit conversions when the food has no specific household measure", () => {
     expect(usesEstimatedFoodUnitConversion({
       meal_id: 0,

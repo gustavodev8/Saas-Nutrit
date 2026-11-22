@@ -46,7 +46,8 @@ describe("PlatformResetPasswordPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("inválido, expirou ou já foi utilizado");
     expect(screen.queryByLabelText("Nova senha")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Voltar ao login" })).toHaveAttribute("href", "/platform/invitations");
+    expect(screen.getByRole("link", { name: "Login profissional" })).toHaveAttribute("href", "/workspace/login");
+    expect(screen.getByRole("link", { name: "Login administrativo de convites" })).toHaveAttribute("href", "/platform/invitations");
     expect(window.sessionStorage.getItem("platform-password-recovery")).toBeNull();
   });
 
@@ -88,7 +89,8 @@ describe("PlatformResetPasswordPage", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Senha atualizada");
     expect(mocks.updateUser).toHaveBeenCalledWith({ password: "new-password-123" });
     expect(mocks.signOut).toHaveBeenCalledWith({ scope: "local" });
-    expect(screen.getByRole("link", { name: "Voltar ao login" })).toHaveAttribute("href", "/platform/invitations");
+    expect(screen.getByRole("link", { name: "Login profissional" })).toHaveAttribute("href", "/workspace/login");
+    expect(screen.getByRole("link", { name: "Login administrativo de convites" })).toHaveAttribute("href", "/platform/invitations");
     expect(window.sessionStorage.getItem("platform-password-recovery")).toBeNull();
   });
 
@@ -109,5 +111,40 @@ describe("PlatformResetPasswordPage", () => {
     render(<MemoryRouter><PlatformResetPasswordPage /></MemoryRouter>);
     expect(await screen.findByRole("alert")).toHaveTextContent("inválido, expirou ou já foi utilizado");
     expect(screen.queryByLabelText("Nova senha")).not.toBeInTheDocument();
+  });
+
+  it("invalidates an active recovery when authentication changes to another user", async () => {
+    render(<MemoryRouter><PlatformResetPasswordPage /></MemoryRouter>);
+    await screen.findByRole("status");
+    act(() => mocks.authListener("PASSWORD_RECOVERY", recoverySession));
+    expect(await screen.findByLabelText("Nova senha")).toBeInTheDocument();
+
+    act(() => mocks.authListener("SIGNED_IN", {
+      ...recoverySession,
+      user: { id: "different-user-id", email: "other@example.test" },
+    }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("inválido, expirou ou já foi utilizado");
+    expect(screen.queryByLabelText("Nova senha")).not.toBeInTheDocument();
+    expect(window.sessionStorage.getItem("platform-password-recovery")).toBeNull();
+  });
+
+  it("rejects a recovery link that expires while the reset page is open", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<MemoryRouter><PlatformResetPasswordPage /></MemoryRouter>);
+      await act(async () => { await Promise.resolve(); });
+      act(() => mocks.authListener("PASSWORD_RECOVERY", recoverySession));
+      fireEvent.change(screen.getByLabelText("Nova senha"), { target: { value: "new-password-123" } });
+      fireEvent.change(screen.getByLabelText("Confirmar nova senha"), { target: { value: "new-password-123" } });
+      vi.advanceTimersByTime(15 * 60 * 1000 + 1);
+      fireEvent.click(screen.getByRole("button", { name: "Atualizar senha" }));
+
+      expect(screen.getByRole("alert")).toHaveTextContent("inválido, expirou ou já foi utilizado");
+      expect(screen.queryByLabelText("Nova senha")).not.toBeInTheDocument();
+      expect(mocks.updateUser).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

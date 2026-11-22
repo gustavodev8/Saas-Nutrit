@@ -66,6 +66,7 @@ serve(async (req) => {
       Authorization: `Bearer ${serviceKey}`,
     };
 
+    // payment_logs has no workspace_id; eligibility remains legacy-only.
     const byCpfUrl =
       `${supabaseUrl}/rest/v1/payment_logs` +
       `?customer_cpf_hash=eq.${encodeURIComponent(cpfHash)}` +
@@ -84,6 +85,9 @@ serve(async (req) => {
       }
     } else {
       console.error("check-cpf-eligible CPF query error:", cpfRes.status);
+      const remaining = 250 - (Date.now() - startTime);
+      if (remaining > 0) await delay(remaining);
+      return jsonResponse({ eligible: false }, 200, corsHeaders);
     }
 
     const byEmailUrl =
@@ -104,6 +108,9 @@ serve(async (req) => {
       }
     } else {
       console.error("check-cpf-eligible email query error:", emailRes.status);
+      const remaining = 250 - (Date.now() - startTime);
+      if (remaining > 0) await delay(remaining);
+      return jsonResponse({ eligible: false }, 200, corsHeaders);
     }
 
     const remaining = 250 - (Date.now() - startTime);

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Apple, BookOpen, ChevronLeft, ChevronRight, Home,
+  Apple, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Home,
   LayoutDashboard, LogOut, Settings, UsersRound,
 } from "lucide-react";
 import { Link, NavLink, Outlet } from "react-router-dom";
@@ -16,6 +16,7 @@ import {
 const NAV_ITEMS = [
   { to: "/workspace",            end: true,  icon: Home,         label: "Início" },
   { to: "/workspace/patients",   end: false, icon: UsersRound,   label: "Pacientes" },
+  { to: "/workspace/agenda",     end: false, icon: CalendarDays, label: "Agenda" },
   { to: "/workspace/modelos",    end: false, icon: BookOpen,     label: "Modelos" },
   { to: "/workspace/alimentos",  end: false, icon: Apple,        label: "Alimentos" },
   { to: "/workspace/configuracoes", end: false, icon: Settings,  label: "Configurações" },

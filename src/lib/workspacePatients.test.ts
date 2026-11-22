@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createWorkspacePatient,
+  fetchWorkspacePatient,
   fetchWorkspacePatients,
   filterWorkspacePatients,
   getWorkspacePatientCities,
@@ -74,6 +75,14 @@ describe("workspacePatients service", () => {
     expect(mocks.select).toHaveBeenCalledWith("id, workspace_id, name, email, phone, birth_date, gender, occupation, city, created_at");
     expect(mocks.eq).toHaveBeenCalledWith("workspace_id", "workspace-a");
     expect(mocks.order).toHaveBeenCalledWith("name");
+  });
+
+  it("fetches a direct patient ID only inside the requested workspace", async () => {
+    await expect(fetchWorkspacePatient("workspace-a", 41)).resolves.toEqual(patient());
+    expect(mocks.from).toHaveBeenCalledWith("patients");
+    expect(mocks.eq).toHaveBeenNthCalledWith(1, "workspace_id", "workspace-a");
+    expect(mocks.eq).toHaveBeenNthCalledWith(2, "id", 41);
+    expect(mocks.single).toHaveBeenCalledTimes(1);
   });
 
   it("persists all supported profile fields on create and trims blank values to null", async () => {

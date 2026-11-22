@@ -7,46 +7,9 @@ import {
   handlePublicOptions,
   jsonResponse,
 } from "../_shared/publicEndpoint.ts";
+import { confirmLegacyBookingGroup } from "../_shared/bookingGroupConfirmation.ts";
 
 const corsHeaders = buildCorsHeaders();
-
-async function confirmBookingGroup(
-  bookingGroupId: string,
-  paymentMethod: "pix" | "card",
-) {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceKey) return false;
-
-  const res = await fetch(
-    `${supabaseUrl}/rest/v1/bookings?booking_group_id=eq.${encodeURIComponent(bookingGroupId)}`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        status: "confirmed",
-        payment_status: "paid",
-        payment_method: paymentMethod,
-      }),
-    },
-  );
-
-  if (!res.ok) {
-    console.error(
-      "process-consultation-payment booking confirm error:",
-      res.status,
-      await res.text().catch(() => ""),
-    );
-    return false;
-  }
-
-  return true;
-}
 
 interface DiscountConfig {
   active?: boolean;
@@ -238,12 +201,17 @@ serve(async (req) => {
       );
     }
 
-    const bookingConfirmed = payment.status === "approved"
-      ? await confirmBookingGroup(
-          bookingGroupId,
-          paymentMethod === "pix" ? "pix" : "card",
-        )
-      : false;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const confirmation = payment.status === "approved" && serviceKey
+      ? await confirmLegacyBookingGroup({
+        supabaseUrl,
+        serviceKey,
+        bookingGroupId: String(bookingGroupId),
+        paymentMethod: paymentMethod === "pix" ? "pix" : "card",
+      })
+      : null;
+    const bookingConfirmed = confirmation?.status === "confirmed"
+      || confirmation?.status === "already_confirmed";
 
     if (paymentMethod === "pix") {
       const transactionData = payment.point_of_interaction?.transaction_data;

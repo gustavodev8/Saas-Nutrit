@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { jsonResponse, requireAuthenticatedAdmin } from "../_shared/adminAuth.ts";
+import { addLegacyWorkspaceFilter } from "../_shared/workspaceGuards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get("SITE_URL") || "*",
@@ -48,13 +49,16 @@ serve(async (req) => {
     const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "noreply@nutrivida.com.br";
     const brandName = Deno.env.get("BRAND_NAME") || "NutriVida";
 
-    const updateRes = await fetch(`${auth.supabaseUrl}/rest/v1/bookings?id=eq.${encodeURIComponent(String(booking_id))}`, {
+    const updateUrl = addLegacyWorkspaceFilter(
+      new URL(`${auth.supabaseUrl}/rest/v1/bookings?id=eq.${encodeURIComponent(String(booking_id))}`),
+    );
+    const updateRes = await fetch(updateUrl.toString(), {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
         apikey: auth.serviceKey,
         Authorization: `Bearer ${auth.serviceKey}`,
-        Prefer: "return=minimal",
+        Prefer: "return=representation",
       },
       body: JSON.stringify({
         appointment_date: new_date,
@@ -65,6 +69,11 @@ serve(async (req) => {
     if (!updateRes.ok) {
       const err = await updateRes.text();
       throw new Error(`DB update failed: ${err}`);
+    }
+
+    const updatedRows = await updateRes.json().catch(() => []);
+    if (!Array.isArray(updatedRows) || updatedRows.length !== 1) {
+      return jsonResponse({ error: "Agendamento legado nao encontrado." }, 404, corsHeaders);
     }
 
     const dateObj = new Date(`${new_date}T12:00:00`);

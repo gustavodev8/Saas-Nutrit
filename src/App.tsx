@@ -91,6 +91,7 @@ const WorkspaceAlimentosPage = lazy(() => import("./pages/workspace/WorkspaceAli
 const WorkspaceAcceptInvitationPage = lazy(() => import("./pages/workspace/WorkspaceAcceptInvitationPage"));
 const WorkspaceSettingsPage = lazy(() => import("./pages/workspace/WorkspaceSettingsPage"));
 const WorkspaceRelatorioAntropometrico = lazy(() => import("./pages/workspace/WorkspaceRelatorioAntropometrico"));
+const WorkspaceAgendaPage = lazy(() => import("./pages/workspace/WorkspaceAgendaPage"));
 const WorkspaceSignupPage = lazy(() => import("./pages/workspace/WorkspaceSignupPage"));
 const WorkspaceProtectedRoute = lazy(() => import("@/components/workspace/WorkspaceProtectedRoute"));
 const WorkspaceShell = lazy(() => import("@/components/workspace/WorkspaceShell"));
@@ -230,6 +231,7 @@ const App = () => (
                     <Route path="patients/:id/relatorio-antropometrico" element={<WorkspaceRelatorioAntropometrico />} />
                     <Route path="modelos" element={<WorkspaceModelosPage />} />
                     <Route path="modelos/:templateId" element={<WorkspaceModeloDetailPage />} />
+                    <Route path="agenda" element={<WorkspaceAgendaPage />} />
                     <Route path="alimentos" element={<WorkspaceAlimentosPage />} />
                     <Route path="configuracoes" element={<WorkspaceSettingsPage />} />
                   </Route>
