@@ -131,8 +131,7 @@ export default function WorkspacePublicBookingPage() {
       return;
     }
 
-    const mpPublicKey = (import.meta.env as Record<string, string>).VITE_MP_PUBLIC_KEY;
-    if (!mpPublicKey) return;
+    const mpPublicKey = (import.meta.env as Record<string, string>).VITE_MP_PUBLIC_KEY || "APP_USR-212668b0-38b2-4bab-be22-8b4d2449a105";
 
     function initBrick() {
       if (!selectedService) return;
@@ -361,8 +360,9 @@ export default function WorkspacePublicBookingPage() {
     setViewMonth(d.getMonth());
   }
 
-  const mpPublicKey = (import.meta.env as Record<string, string>).VITE_MP_PUBLIC_KEY ?? "";
-  const hasMpPublicKey = mpPublicKey.length > 0;
+  // MP public key is public by design (not a secret) — safe to include in source
+  const mpPublicKey = (import.meta.env as Record<string, string>).VITE_MP_PUBLIC_KEY || "APP_USR-212668b0-38b2-4bab-be22-8b4d2449a105";
+  const hasMpPublicKey = true;
 
   return (
     <div className="min-h-screen bg-[#e8ede5]">
