@@ -87,12 +87,15 @@ export function WorkspaceDashboardPage() {
   const [data, setData]   = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const workspaceId = membership?.workspaceId ?? membership?.workspace_id ?? null;
+
   useEffect(() => {
-    if (!membership?.workspace_id) return;
-    fetchDashboardData(membership.workspace_id)
+    if (!workspaceId) return;
+    fetchDashboardData(workspaceId)
       .then(setData)
+      .catch(() => setData({ patientCount: 0, patientsThisMonth: 0, patientsWithRecentMeasurement: 0, recentPatients: [], consultationsThisMonth: 0, recentConsultations: [] }))
       .finally(() => setLoading(false));
-  }, [membership?.workspace_id]);
+  }, [workspaceId]);
 
   const firstName = userEmail?.split("@")[0] ?? "Nutricionista";
 
@@ -110,8 +113,8 @@ export function WorkspaceDashboardPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-8">
-      {membership?.workspace_id && (
-        <WorkspaceOnboarding workspaceId={membership.workspace_id} />
+      {workspaceId && (
+        <WorkspaceOnboarding workspaceId={workspaceId} />
       )}
 
       {/* Welcome */}
