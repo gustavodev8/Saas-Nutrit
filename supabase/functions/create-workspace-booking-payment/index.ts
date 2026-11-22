@@ -5,6 +5,11 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function timeToMin(t: string): number {
+  const [h, m] = t.slice(0, 5).split(":").map(Number);
+  return h * 60 + m;
+}
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -60,15 +65,22 @@ serve(async (req) => {
     const service = svcs[0];
     if (!service) return json({ error: "Serviço não encontrado." }, 404);
 
-    // 2. Check slot is still available
+    // 2. Check slot availability with duration-aware overlap detection
     const slotRes = await fetch(
-      `${supabaseUrl}/rest/v1/workspace_bookings?workspace_id=eq.${workspace_id}&booking_date=eq.${booking_date}&booking_time=eq.${booking_time}&status=in.(paid,confirmed,completed)&limit=1`,
+      `${supabaseUrl}/rest/v1/workspace_bookings?workspace_id=eq.${workspace_id}&booking_date=eq.${booking_date}&status=in.(pending_payment,paid,confirmed,completed)&select=booking_time,service_duration_min`,
       { headers },
     );
     if (slotRes.ok) {
-      const existing = await slotRes.json();
-      if (Array.isArray(existing) && existing.length > 0) {
-        return json({ error: "Este horário já foi reservado. Escolha outro." }, 409);
+      const existing = await slotRes.json() as { booking_time: string; service_duration_min: number }[];
+      const newStart = timeToMin(booking_time);
+      const newEnd = newStart + (service.duration_min ?? 60);
+      const conflict = existing.some((b) => {
+        const bStart = timeToMin(b.booking_time);
+        const bEnd = bStart + (b.service_duration_min ?? 60);
+        return newStart < bEnd && newEnd > bStart;
+      });
+      if (conflict) {
+        return json({ error: "Este horário já foi reservado ou está em conflito. Escolha outro." }, 409);
       }
     }
 
@@ -94,6 +106,7 @@ serve(async (req) => {
         total_amount_cents: totalCents,
         platform_fee_cents: platformFeeCents,
         repasse_amount_cents: repasseCents,
+        service_duration_min: service.duration_min ?? 60,
       }),
     });
     if (!bookingRes.ok) return json({ error: "Erro ao criar agendamento." }, 500);

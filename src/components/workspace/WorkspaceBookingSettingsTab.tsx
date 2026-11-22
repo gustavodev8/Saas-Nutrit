@@ -108,6 +108,10 @@ export function WorkspaceBookingSettingsTab({ workspaceId, workspaceName }: { wo
   const [presentationName, setPresentationName] = useState("");
   const [bio, setBio] = useState("");
   const [active, setActive] = useState(false);
+  const [bufferMinutes, setBufferMinutes] = useState(0);
+  const [minNoticeHours, setMinNoticeHours] = useState(2);
+  const [maxAdvanceDays, setMaxAdvanceDays] = useState(60);
+  const [slotIntervalMin, setSlotIntervalMin] = useState(30);
 
   useEffect(() => {
     async function load() {
@@ -125,6 +129,10 @@ export function WorkspaceBookingSettingsTab({ workspaceId, workspaceName }: { wo
         setPresentationName(s.presentation_name ?? "");
         setBio(s.bio ?? "");
         setActive(s.active);
+        setBufferMinutes(s.buffer_minutes ?? 0);
+        setMinNoticeHours(s.min_notice_hours ?? 2);
+        setMaxAdvanceDays(s.max_advance_days ?? 60);
+        setSlotIntervalMin(s.slot_interval_min ?? 30);
       } else {
         const newSlug = generateSlug(workspaceName ?? "nutri");
         setSlug(newSlug);
@@ -153,6 +161,10 @@ export function WorkspaceBookingSettingsTab({ workspaceId, workspaceName }: { wo
         presentation_name: presentationName.trim() || null,
         bio: bio.trim() || null,
         active,
+        buffer_minutes: bufferMinutes,
+        min_notice_hours: minNoticeHours,
+        max_advance_days: maxAdvanceDays,
+        slot_interval_min: slotIntervalMin,
       });
       toast({ title: "Configurações salvas!" });
     } catch {
@@ -265,6 +277,68 @@ export function WorkspaceBookingSettingsTab({ workspaceId, workspaceName }: { wo
 
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
           <strong>Taxa da plataforma:</strong> 5% por agendamento. 95% cai automaticamente no seu PIX após confirmação do pagamento.
+        </div>
+
+        {/* Regras de agendamento */}
+        <div className="space-y-3">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Regras de agendamento</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Intervalo entre horários</Label>
+              <Select value={String(slotIntervalMin)} onValueChange={v => setSlotIntervalMin(Number(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="15">15 min</SelectItem>
+                  <SelectItem value="30">30 min</SelectItem>
+                  <SelectItem value="45">45 min</SelectItem>
+                  <SelectItem value="60">60 min</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Passo entre opções no calendário.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Pausa entre consultas</Label>
+              <Select value={String(bufferMinutes)} onValueChange={v => setBufferMinutes(Number(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Sem pausa</SelectItem>
+                  <SelectItem value="10">10 min</SelectItem>
+                  <SelectItem value="15">15 min</SelectItem>
+                  <SelectItem value="30">30 min</SelectItem>
+                  <SelectItem value="60">60 min</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Bloqueio após cada consulta.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Antecedência mínima</Label>
+              <Select value={String(minNoticeHours)} onValueChange={v => setMinNoticeHours(Number(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Sem mínimo</SelectItem>
+                  <SelectItem value="1">1 hora</SelectItem>
+                  <SelectItem value="2">2 horas</SelectItem>
+                  <SelectItem value="4">4 horas</SelectItem>
+                  <SelectItem value="24">24 horas</SelectItem>
+                  <SelectItem value="48">48 horas</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Mínimo antes do horário.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Janela de agendamento</Label>
+              <Select value={String(maxAdvanceDays)} onValueChange={v => setMaxAdvanceDays(Number(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="14">14 dias</SelectItem>
+                  <SelectItem value="30">30 dias</SelectItem>
+                  <SelectItem value="60">60 dias</SelectItem>
+                  <SelectItem value="90">90 dias</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Até quando aceitar agendamentos.</p>
+            </div>
+          </div>
         </div>
 
         {/* Perfil público */}

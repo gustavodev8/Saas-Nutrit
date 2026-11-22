@@ -10,6 +10,7 @@ import {
   FULL_DAY_NAMES,
   fetchBookedSlots,
   fetchPublicAvailability,
+  fetchPublicBlockedDates,
   fetchPublicBookingSettings,
   fetchPublicServices,
   formatBRL,
@@ -38,16 +39,20 @@ function toISO(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-// Generate next 60 days that have availability
-function buildCalendar(availability: BookingAvailability[]): { date: Date; dayOfWeek: number }[] {
+// Generate next N days that have availability and are not blocked
+function buildCalendar(
+  availability: BookingAvailability[],
+  blockedDates: Set<string>,
+  maxDays = 60,
+): { date: Date; dayOfWeek: number }[] {
   const activeDays = new Set(availability.filter(a => a.active).map(a => a.day_of_week));
   const result: { date: Date; dayOfWeek: number }[] = [];
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  for (let i = 1; i <= 60; i++) {
+  for (let i = 1; i <= maxDays; i++) {
     const d = addDays(start, i);
     const dow = d.getDay();
-    if (activeDays.has(dow)) {
+    if (activeDays.has(dow) && !blockedDates.has(toISO(d))) {
       result.push({ date: d, dayOfWeek: dow });
     }
   }
@@ -69,6 +74,7 @@ export default function WorkspacePublicBookingPage() {
   const [settings, setSettings] = useState<BookingSettings | null>(null);
   const [services, setServices] = useState<BookingService[]>([]);
   const [availability, setAvailability] = useState<BookingAvailability[]>([]);
+  const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -98,12 +104,14 @@ export default function WorkspacePublicBookingPage() {
       const s = await fetchPublicBookingSettings(slug!);
       if (!s) { setNotFound(true); setLoading(false); return; }
       setSettings(s);
-      const [svcs, avail] = await Promise.all([
+      const [svcs, avail, blocked] = await Promise.all([
         fetchPublicServices(s.workspace_id),
         fetchPublicAvailability(s.workspace_id),
+        fetchPublicBlockedDates(s.workspace_id),
       ]);
       setServices(svcs);
       setAvailability(avail);
+      setBlockedDates(new Set(blocked));
       setLoading(false);
     }
     load();
@@ -118,11 +126,16 @@ export default function WorkspacePublicBookingPage() {
     const avail = availability.find(a => a.day_of_week === dow);
     if (!avail) { setSlots([]); setLoadingSlots(false); return; }
     const generated = generateTimeSlots(
+      date,
       avail.start_time.slice(0, 5),
       avail.end_time.slice(0, 5),
       selectedService!.duration_min,
       booked,
-      date,
+      {
+        bufferMin: settings!.buffer_minutes ?? 0,
+        minNoticeMin: (settings!.min_notice_hours ?? 2) * 60,
+        slotIntervalMin: settings!.slot_interval_min ?? selectedService!.duration_min,
+      },
     );
     setSlots(generated);
     setLoadingSlots(false);
@@ -202,7 +215,7 @@ export default function WorkspacePublicBookingPage() {
     </div>
   );
 
-  const calendarDays = buildCalendar(availability);
+  const calendarDays = buildCalendar(availability, blockedDates, settings?.max_advance_days ?? 60);
   const monthGroups = groupByMonth(calendarDays);
 
   return (

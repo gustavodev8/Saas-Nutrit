@@ -12,6 +12,10 @@ export interface BookingSettings {
   active: boolean;
   presentation_name: string | null;
   bio: string | null;
+  buffer_minutes: number;
+  min_notice_hours: number;
+  max_advance_days: number;
+  slot_interval_min: number;
 }
 
 export interface BookingService {
@@ -49,12 +53,28 @@ export interface WorkspaceBooking {
   platform_fee_cents: number;
   repasse_amount_cents: number;
   repasse_status: "pending" | "sent" | "failed";
+  service_duration_min: number;
   created_at: string;
+}
+
+/** A booked slot with its duration — used for overlap detection */
+export interface BookedSlot {
+  time: string;        // "HH:MM"
+  durationMin: number;
 }
 
 export interface BookingSlot {
   time: string; // "HH:MM"
   available: boolean;
+}
+
+export interface SlotOptions {
+  /** Minutes of break after each appointment. Default 0. */
+  bufferMin?: number;
+  /** Minutes of advance notice required from now. Default 120 (2 h). */
+  minNoticeMin?: number;
+  /** Step between generated slot options. Default = serviceDurationMin. */
+  slotIntervalMin?: number;
 }
 
 export const DAY_NAMES = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -103,6 +123,72 @@ export function generateSlug(name: string): string {
   return `${base}-${suffix}`;
 }
 
+// ── Core slot generation ─────────────────────────────────────────────────────────
+
+/**
+ * Generates available time slots for a given date and service.
+ *
+ * Key invariants:
+ * - A slot is unavailable if it overlaps any existing booking (considering durations)
+ * - Overlap: [slot, slot+serviceDuration) ∩ [booking, booking+bookingDuration+buffer) ≠ ∅
+ * - Past dates always return []
+ * - Today's slots before (now + minNoticeMin) are skipped
+ */
+export function generateTimeSlots(
+  date: string,            // "YYYY-MM-DD"
+  startTime: string,       // "HH:MM"
+  endTime: string,         // "HH:MM"
+  serviceDurationMin: number,
+  existingBookings: BookedSlot[],
+  opts: SlotOptions = {},
+): BookingSlot[] {
+  const { bufferMin = 0, minNoticeMin = 120, slotIntervalMin } = opts;
+  const interval = slotIntervalMin ?? serviceDurationMin;
+
+  // Reject past dates
+  const [yyyy, mm, dd] = date.split("-").map(Number);
+  const targetDay = new Date(yyyy, mm - 1, dd);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (targetDay < today) return [];
+
+  const isToday = targetDay.getTime() === today.getTime();
+
+  const [startH, startM] = startTime.split(":").map(Number);
+  const [endH, endM] = endTime.split(":").map(Number);
+  const startTotal = startH * 60 + startM;
+  const endTotal = endH * 60 + endM;
+
+  // Earliest allowed slot start (minutes from midnight)
+  const now = new Date();
+  const minStart = isToday ? now.getHours() * 60 + now.getMinutes() + minNoticeMin : 0;
+
+  // Pre-compute existing bookings in minutes
+  const bookings = existingBookings.map((b) => {
+    const [bh, bm] = b.time.split(":").map(Number);
+    return { startMin: bh * 60 + bm, endMin: bh * 60 + bm + b.durationMin + bufferMin };
+  });
+
+  const slots: BookingSlot[] = [];
+
+  for (let t = startTotal; t + serviceDurationMin <= endTotal; t += interval) {
+    if (t < minStart) continue;
+
+    // Overlap: new slot [t, t+serviceDurationMin) intersects existing [B.start, B.start+duration+buffer)?
+    // i.e. t < B.endMin AND t + serviceDurationMin > B.startMin
+    const hasConflict = bookings.some(
+      (b) => t < b.endMin && t + serviceDurationMin > b.startMin,
+    );
+
+    slots.push({
+      time: `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`,
+      available: !hasConflict,
+    });
+  }
+
+  return slots;
+}
+
 // ── Workspace-authenticated operations ──────────────────────────────────────────
 
 export async function fetchBookingSettings(workspaceId: string): Promise<BookingSettings | null> {
@@ -148,13 +234,25 @@ export async function upsertBookingService(
   if (service.id) {
     await workspaceSupabase
       .from("workspace_booking_services")
-      .update({ name: service.name, description: service.description, price_cents: service.price_cents, duration_min: service.duration_min ?? 60, active: service.active ?? true })
+      .update({
+        name: service.name,
+        description: service.description,
+        price_cents: service.price_cents,
+        duration_min: service.duration_min ?? 60,
+        active: service.active ?? true,
+      })
       .eq("id", service.id)
       .eq("workspace_id", workspaceId);
   } else {
     await workspaceSupabase
       .from("workspace_booking_services")
-      .insert({ workspace_id: workspaceId, name: service.name, description: service.description ?? null, price_cents: service.price_cents, duration_min: service.duration_min ?? 60 });
+      .insert({
+        workspace_id: workspaceId,
+        name: service.name,
+        description: service.description ?? null,
+        price_cents: service.price_cents,
+        duration_min: service.duration_min ?? 60,
+      });
   }
 }
 
@@ -208,7 +306,7 @@ export async function fetchWorkspaceBookings(workspaceId: string): Promise<Works
     .eq("workspace_id", workspaceId)
     .order("booking_date", { ascending: false })
     .order("booking_time", { ascending: false })
-    .limit(100);
+    .limit(200);
   return (data ?? []) as WorkspaceBooking[];
 }
 
@@ -222,6 +320,38 @@ export async function updateBookingStatus(
     .update({ status, updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("workspace_id", workspaceId);
+}
+
+export async function fetchBlockedDates(workspaceId: string): Promise<string[]> {
+  const { data } = await workspaceSupabase
+    .from("workspace_booking_blocked_dates")
+    .select("blocked_date")
+    .eq("workspace_id", workspaceId);
+  return (data ?? []).map((r: { blocked_date: string }) => r.blocked_date);
+}
+
+export async function toggleBlockedDate(
+  workspaceId: string,
+  date: string,
+  reason?: string,
+): Promise<void> {
+  const { data: existing } = await workspaceSupabase
+    .from("workspace_booking_blocked_dates")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("blocked_date", date)
+    .maybeSingle();
+
+  if (existing) {
+    await workspaceSupabase
+      .from("workspace_booking_blocked_dates")
+      .delete()
+      .eq("id", existing.id);
+  } else {
+    await workspaceSupabase
+      .from("workspace_booking_blocked_dates")
+      .insert({ workspace_id: workspaceId, blocked_date: date, reason: reason ?? null });
+  }
 }
 
 // ── Public (anon) operations — used by the public booking page ───────────────────
@@ -255,47 +385,27 @@ export async function fetchPublicAvailability(workspaceId: string): Promise<Book
   return (data ?? []) as BookingAvailability[];
 }
 
-export async function fetchBookedSlots(workspaceId: string, date: string): Promise<string[]> {
+export async function fetchPublicBlockedDates(workspaceId: string): Promise<string[]> {
   const { data } = await supabase
-    .from("workspace_bookings")
-    .select("booking_time")
-    .eq("workspace_id", workspaceId)
-    .eq("booking_date", date)
-    .in("status", ["paid", "confirmed", "completed"]);
-  return (data ?? []).map((r: { booking_time: string }) => r.booking_time.slice(0, 5));
+    .from("workspace_booking_blocked_dates")
+    .select("blocked_date")
+    .eq("workspace_id", workspaceId);
+  return (data ?? []).map((r: { blocked_date: string }) => r.blocked_date);
 }
 
-// Generate HH:MM slots within a window for a given duration
-export function generateTimeSlots(
-  startTime: string,
-  endTime: string,
-  durationMin: number,
-  bookedTimes: string[],
-  date: string,
-): BookingSlot[] {
-  const slots: BookingSlot[] = [];
-  const [startH, startM] = startTime.split(":").map(Number);
-  const [endH, endM] = endTime.split(":").map(Number);
-  const startTotal = startH * 60 + startM;
-  const endTotal = endH * 60 + endM;
-  const now = new Date();
-  const isToday = date === now.toISOString().slice(0, 10);
-
-  for (let t = startTotal; t + durationMin <= endTotal; t += durationMin) {
-    const h = Math.floor(t / 60);
-    const m = t % 60;
-    const timeStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-
-    // Skip past slots for today
-    if (isToday) {
-      const slotDate = new Date();
-      slotDate.setHours(h, m, 0, 0);
-      if (slotDate <= now) continue;
-    }
-
-    const available = !bookedTimes.includes(timeStr);
-    slots.push({ time: timeStr, available });
-  }
-
-  return slots;
+/**
+ * Returns existing bookings for a workspace+date with time and service duration.
+ * Includes pending_payment to prevent race-condition double-bookings.
+ */
+export async function fetchBookedSlots(workspaceId: string, date: string): Promise<BookedSlot[]> {
+  const { data } = await supabase
+    .from("workspace_bookings")
+    .select("booking_time, service_duration_min")
+    .eq("workspace_id", workspaceId)
+    .eq("booking_date", date)
+    .in("status", ["pending_payment", "paid", "confirmed", "completed"]);
+  return (data ?? []).map((r: { booking_time: string; service_duration_min: number }) => ({
+    time: r.booking_time.slice(0, 5),
+    durationMin: r.service_duration_min ?? 60,
+  }));
 }
