@@ -729,8 +729,8 @@ export default function WorkspaceSettingsPage() {
           <p className="mt-1 text-sm text-muted-foreground">Gerencie as informações e a equipe do seu workspace.</p>
         </header>
 
-        <div className="border-b">
-          <nav className="flex gap-1 -mb-px" aria-label="Seções">
+        <div className="border-b overflow-x-auto">
+          <nav className="flex gap-1 -mb-px min-w-max" aria-label="Seções">
             {TABS.map((tab) => (
               <button
                 key={tab.key}
