@@ -361,7 +361,8 @@ export default function WorkspacePublicBookingPage() {
     setViewMonth(d.getMonth());
   }
 
-  const hasMpPublicKey = !!(import.meta.env as Record<string, string>).VITE_MP_PUBLIC_KEY;
+  const mpPublicKey = (import.meta.env as Record<string, string>).VITE_MP_PUBLIC_KEY ?? "";
+  const hasMpPublicKey = mpPublicKey.length > 0;
 
   return (
     <div className="min-h-screen bg-[#e8ede5]">
