@@ -121,7 +121,7 @@ export default function WorkspacePatientsPage() {
   };
 
   return (
-    <main className="min-h-screen bg-muted/30 px-4 py-6 sm:px-8">
+    <main className="bg-muted/30 px-4 py-6 sm:px-8">
       <div className="mx-auto max-w-7xl space-y-5">
 
         {/* Header */}

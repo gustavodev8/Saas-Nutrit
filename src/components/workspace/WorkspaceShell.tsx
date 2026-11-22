@@ -178,7 +178,7 @@ export default function WorkspaceShell() {
       </aside>
 
       {/* ── Main content ── */}
-      <div className="flex flex-1 flex-col min-w-0 overflow-y-auto">
+      <div className="flex flex-1 flex-col min-w-0 h-screen overflow-y-auto">
         {trialBanner}
         <Outlet />
       </div>
