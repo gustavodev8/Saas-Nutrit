@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type React from "react";
 import {
   Apple, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Home,
   LayoutDashboard, LogOut, Settings, UsersRound,
@@ -13,14 +14,14 @@ import {
   trialDaysLeft,
 } from "@/lib/workspaceSubscription";
 
-const NAV_ITEMS = [
-  { to: "/workspace",            end: true,  icon: Home,         label: "Início" },
-  { to: "/workspace/patients",   end: false, icon: UsersRound,   label: "Pacientes" },
-  { to: "/workspace/agenda",     end: false, icon: CalendarDays, label: "Agenda" },
-  { to: "/workspace/modelos",    end: false, icon: BookOpen,     label: "Modelos" },
-  { to: "/workspace/alimentos",  end: false, icon: Apple,        label: "Alimentos" },
-  { to: "/workspace/configuracoes", end: false, icon: Settings,  label: "Configurações" },
-] as const;
+const NAV_ITEMS: Array<{ to: string; end: boolean; icon: React.ElementType; label: string }> = [
+  { to: "/workspace",               end: true,  icon: Home,         label: "Início" },
+  { to: "/workspace/patients",      end: false, icon: UsersRound,   label: "Pacientes" },
+  { to: "/workspace/agenda",        end: false, icon: CalendarDays, label: "Agenda" },
+  { to: "/workspace/modelos",       end: false, icon: BookOpen,     label: "Modelos" },
+  { to: "/workspace/alimentos",     end: false, icon: Apple,        label: "Alimentos" },
+  { to: "/workspace/configuracoes", end: false, icon: Settings,     label: "Configurações" },
+];
 
 export default function WorkspaceShell() {
   const { membership, userEmail, logout, subscription } = useWorkspaceAuth();
