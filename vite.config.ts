@@ -7,6 +7,7 @@ export default defineConfig(({ command, mode }) => ({
   define: {
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
+  cacheDir: "/tmp/vite-cache",
   server: {
     host: "127.0.0.1",
     port: 8080,
