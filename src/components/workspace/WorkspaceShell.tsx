@@ -1,8 +1,9 @@
 import { useState } from "react";
 import {
   Apple, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Home,
-  LayoutDashboard, LogOut, Settings, UsersRound,
+  LayoutDashboard, LogOut, Moon, Settings, Sun, UsersRound,
 } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
@@ -24,6 +25,7 @@ const navCls = (isActive: boolean, collapsed: boolean) =>
 
 export default function WorkspaceShell() {
   const { membership, userEmail, logout, subscription } = useWorkspaceAuth();
+  const { theme, toggle: toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
 
   if (subscription && !isSubscriptionAccessible(subscription.status)) {
@@ -162,6 +164,20 @@ export default function WorkspaceShell() {
               {initials}
             </div>
           )}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={theme === "dark" ? "Modo claro" : "Modo escuro"}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              collapsed && "justify-center px-0",
+            )}
+          >
+            {theme === "dark"
+              ? <Sun size={16} className="shrink-0" aria-hidden="true" />
+              : <Moon size={16} className="shrink-0" aria-hidden="true" />}
+            {!collapsed && <span>{theme === "dark" ? "Modo claro" : "Modo escuro"}</span>}
+          </button>
           <button
             type="button"
             onClick={() => void logout()}

@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // Contexts
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { ContentProvider } from "@/contexts/ContentContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PatientPortalAuthProvider } from "@/contexts/PatientPortalAuthContext";
@@ -156,6 +157,7 @@ const WorkspaceRoot = () => (
 );
 
 const App = () => (
+  <ThemeProvider>
   <QueryClientProvider client={queryClient}>
     <ContentProvider>
       <PatientPortalSettingsProvider>
@@ -309,6 +311,7 @@ const App = () => (
       </PatientPortalSettingsProvider>
     </ContentProvider>
   </QueryClientProvider>
+  </ThemeProvider>
 );
 
 export default App;
