@@ -33,15 +33,24 @@ serve(async (req) => {
       patient_name,
       patient_email,
       patient_phone,
+      // payment type (default pix for backwards compat)
+      payment_method_type = "pix",
+      card_token,
+      installments,
+      card_payment_method_id,
+      issuer_id,
     } = body;
 
     if (!workspace_id || !service_id || !booking_date || !booking_time || !patient_name || !patient_email) {
       return json({ error: "Dados incompletos." }, 400);
     }
 
-    // Validate email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patient_email)) {
       return json({ error: "E-mail inválido." }, 400);
+    }
+
+    if (payment_method_type === "credit_card" && !card_token) {
+      return json({ error: "Token do cartão não informado." }, 400);
     }
 
     const headers = {
@@ -66,8 +75,7 @@ serve(async (req) => {
     const repasseCents = totalCents - platformFeeCents;
     const totalAmount = totalCents / 100;
 
-    // 2+4. Atomic conflict check + insert (pending_payment) in one transaction.
-    // Requires migration 20261122120000_workspace_booking_atomic_insert.sql applied first.
+    // 2+4. Atomic conflict check + insert
     const durationMin = service.duration_min ?? 60;
     const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/create_workspace_booking_atomic`, {
       method: "POST",
@@ -96,29 +104,46 @@ serve(async (req) => {
     }
     const bookingId = (await rpcRes.json()) as string | null;
     if (!bookingId) return json({ error: "Erro ao criar agendamento." }, 500);
-    const booking = { id: bookingId };
 
-    // 5. Create MP PIX payment
-    const externalRef = `workspace_booking|${booking.id}|${workspace_id}|${patient_email.trim().toLowerCase()}`;
-
+    // 5. Create MP payment
+    const externalRef = `workspace_booking|${bookingId}|${workspace_id}|${patient_email.trim().toLowerCase()}`;
     const nameParts = patient_name.trim().split(" ");
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(" ") || "Paciente";
+    const idempotencyKey = `workspace-booking-${bookingId}`;
 
-    const mpBody = {
-      transaction_amount: totalAmount,
-      payment_method_id: "pix",
-      description: `${service.name} — Agendamento`,
-      external_reference: externalRef,
-      notification_url: `${supabaseUrl}/functions/v1/payment-webhook`,
-      payer: {
-        email: patient_email.trim().toLowerCase(),
-        first_name: firstName,
-        last_name: lastName,
-      },
-    };
+    let mpBody: Record<string, unknown>;
 
-    const idempotencyKey = `workspace-booking-${booking.id}`;
+    if (payment_method_type === "credit_card") {
+      mpBody = {
+        transaction_amount: totalAmount,
+        token: card_token,
+        description: `${service.name} — Agendamento`,
+        installments: installments ?? 1,
+        payment_method_id: card_payment_method_id,
+        issuer_id: issuer_id ?? undefined,
+        external_reference: externalRef,
+        notification_url: `${supabaseUrl}/functions/v1/payment-webhook`,
+        payer: {
+          email: patient_email.trim().toLowerCase(),
+          first_name: firstName,
+          last_name: lastName,
+        },
+      };
+    } else {
+      mpBody = {
+        transaction_amount: totalAmount,
+        payment_method_id: "pix",
+        description: `${service.name} — Agendamento`,
+        external_reference: externalRef,
+        notification_url: `${supabaseUrl}/functions/v1/payment-webhook`,
+        payer: {
+          email: patient_email.trim().toLowerCase(),
+          first_name: firstName,
+          last_name: lastName,
+        },
+      };
+    }
 
     const mpRes = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
@@ -134,34 +159,57 @@ serve(async (req) => {
 
     if (!mpRes.ok) {
       console.error("MP error:", JSON.stringify(mpPayment));
-      // Cleanup the pending booking
-      await fetch(`${supabaseUrl}/rest/v1/workspace_bookings?id=eq.${booking.id}`, {
+      await fetch(`${supabaseUrl}/rest/v1/workspace_bookings?id=eq.${bookingId}`, {
         method: "PATCH",
         headers: { ...headers, Prefer: "return=minimal" },
         body: JSON.stringify({ status: "cancelled" }),
       });
+      if (payment_method_type === "credit_card") {
+        const cause = mpPayment?.cause?.[0]?.description ?? "";
+        return json({ error: `Pagamento recusado. ${cause}`.trim() }, 422);
+      }
       return json({ error: "Erro ao criar pagamento PIX." }, 500);
     }
 
-    // 6. Update booking with payment_id
-    await fetch(`${supabaseUrl}/rest/v1/workspace_bookings?id=eq.${booking.id}`, {
+    // 6. Update booking with payment info
+    const bookingStatus =
+      mpPayment.status === "approved" ? "paid"
+      : mpPayment.status === "rejected" ? "cancelled"
+      : "pending_payment";
+
+    await fetch(`${supabaseUrl}/rest/v1/workspace_bookings?id=eq.${bookingId}`, {
       method: "PATCH",
       headers: { ...headers, Prefer: "return=minimal" },
       body: JSON.stringify({
         mp_payment_id: String(mpPayment.id),
         mp_payment_status: mpPayment.status,
+        status: bookingStatus,
         updated_at: new Date().toISOString(),
       }),
     });
 
-    const txData = mpPayment.point_of_interaction?.transaction_data;
+    if (payment_method_type === "credit_card") {
+      if (mpPayment.status === "rejected") {
+        const detail = mpPayment.status_detail ?? "";
+        return json({ error: `Pagamento recusado (${detail}). Verifique os dados do cartão.` }, 422);
+      }
+      return json({
+        booking_id: bookingId,
+        payment_id: String(mpPayment.id),
+        payment_status: mpPayment.status,
+        payment_type: "credit_card",
+      });
+    }
 
+    // PIX: return QR code
+    const txData = mpPayment.point_of_interaction?.transaction_data;
     return json({
-      booking_id: booking.id,
+      booking_id: bookingId,
       payment_id: String(mpPayment.id),
       qr_code: txData?.qr_code ?? "",
       qr_code_base64: txData?.qr_code_base64 ?? "",
       total_amount: totalAmount,
+      payment_type: "pix",
     });
   } catch (err) {
     console.error("create-workspace-booking-payment error:", err);

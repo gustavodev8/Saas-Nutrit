@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock, Copy, Loader2 } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock, Copy, CreditCard, Loader2, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,36 @@ import { buildICS, googleCalendarUrl } from "@/lib/icsBooking";
 import { buildMonthGrid, canGoNextMonth, canGoPrevMonth, findNextAvailableDate } from "@/lib/bookingCalendar";
 
 type Step = "service" | "datetime" | "info" | "payment" | "success";
+type PaymentMethod = "pix" | "credit_card";
+
+// Minimal type for MP Checkout Bricks controller
+declare global {
+  interface Window {
+    MercadoPago?: new (key: string, opts: { locale: string }) => {
+      bricks: () => {
+        create: (
+          type: string,
+          containerId: string,
+          config: {
+            initialization: { amount: number };
+            callbacks: {
+              onReady?: () => void;
+              onSubmit: (data: MpCardData) => Promise<void>;
+              onError?: (err: unknown) => void;
+            };
+          }
+        ) => Promise<{ unmount: () => void }>;
+      };
+    };
+  }
+}
+
+interface MpCardData {
+  token: string;
+  installments: number;
+  payment_method_id: string;
+  issuer_id?: string;
+}
 
 const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
@@ -59,6 +89,11 @@ export default function WorkspacePublicBookingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  // Payment method selection
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
+  const [brickReady, setBrickReady] = useState(false);
+  const brickControllerRef = useRef<{ unmount: () => void } | null>(null);
+
   // Payment state
   const [paymentId, setPaymentId] = useState<string>("");
   const [qrCode, setQrCode] = useState<string>("");
@@ -85,6 +120,67 @@ export default function WorkspacePublicBookingPage() {
     load();
   }, [slug]);
 
+  // Load and init MP Checkout Bricks when credit_card is selected
+  useEffect(() => {
+    if (step !== "info" || paymentMethod !== "credit_card") {
+      if (brickControllerRef.current) {
+        brickControllerRef.current.unmount();
+        brickControllerRef.current = null;
+        setBrickReady(false);
+      }
+      return;
+    }
+
+    const mpPublicKey = (import.meta.env as Record<string, string>).VITE_MP_PUBLIC_KEY;
+    if (!mpPublicKey) return;
+
+    function initBrick() {
+      if (!selectedService) return;
+      const totalAmount = selectedService.price_cents / 100;
+
+      window.MercadoPago!(mpPublicKey, { locale: "pt-BR" })
+        .bricks()
+        .create("cardPayment", "mp-card-brick", {
+          initialization: { amount: totalAmount },
+          callbacks: {
+            onReady: () => setBrickReady(true),
+            onSubmit: handleCardSubmit,
+            onError: (err) => {
+              console.error("MP Brick error:", err);
+              setError("Erro no formulário do cartão.");
+            },
+          },
+        })
+        .then((ctrl) => { brickControllerRef.current = ctrl; });
+    }
+
+    if (window.MercadoPago) {
+      initBrick();
+      return;
+    }
+
+    const existing = document.getElementById("mp-sdk");
+    if (existing) {
+      existing.addEventListener("load", initBrick, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "mp-sdk";
+    script.src = "https://sdk.mercadopago.com/js/v2";
+    script.onload = initBrick;
+    document.head.appendChild(script);
+
+    return () => {
+      if (brickControllerRef.current) {
+        brickControllerRef.current.unmount();
+        brickControllerRef.current = null;
+        setBrickReady(false);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, paymentMethod]);
+
   async function handleDateSelect(date: string) {
     setSelectedDate(date);
     setSelectedTime("");
@@ -109,40 +205,89 @@ export default function WorkspacePublicBookingPage() {
     setLoadingSlots(false);
   }
 
+  async function callEdgeFunction(extraBody: Record<string, unknown>) {
+    const supabaseUrl = (import.meta.env as Record<string, string>).VITE_SUPABASE_URL;
+    const anonKey = (import.meta.env as Record<string, string>).VITE_SUPABASE_ANON_KEY;
+    return fetch(`${supabaseUrl}/functions/v1/create-workspace-booking-payment`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${anonKey}`,
+        "apikey": anonKey,
+      },
+      body: JSON.stringify({
+        workspace_id: settings!.workspace_id,
+        service_id: selectedService!.id,
+        booking_date: selectedDate,
+        booking_time: selectedTime,
+        patient_name: name.trim(),
+        patient_email: email.trim().toLowerCase(),
+        patient_phone: phone.trim() || null,
+        ...extraBody,
+      }),
+    });
+  }
+
   async function handleSubmitInfo(e: React.FormEvent) {
     e.preventDefault();
+    if (paymentMethod !== "pix") return;
     if (!consent) return;
     if (!name.trim() || !email.trim()) return;
     setSubmitting(true);
     setError("");
     try {
-      const supabaseUrl = (import.meta.env as Record<string, string>).VITE_SUPABASE_URL;
-      const anonKey = (import.meta.env as Record<string, string>).VITE_SUPABASE_ANON_KEY;
-      const res = await fetch(`${supabaseUrl}/functions/v1/create-workspace-booking-payment`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}`, "apikey": anonKey },
-        body: JSON.stringify({
-          workspace_id: settings!.workspace_id,
-          service_id: selectedService!.id,
-          booking_date: selectedDate,
-          booking_time: selectedTime,
-          patient_name: name.trim(),
-          patient_email: email.trim().toLowerCase(),
-          patient_phone: phone.trim() || null,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok || json.error) {
-        setError(json.error ?? "Erro ao criar pagamento. Tente novamente.");
+      const res = await callEdgeFunction({ payment_method_type: "pix" });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error ?? "Erro ao criar pagamento. Tente novamente.");
         setSubmitting(false);
         return;
       }
-      setPaymentId(json.payment_id);
-      setQrCode(json.qr_code);
-      setQrBase64(json.qr_code_base64);
-      setBookingId(json.booking_id);
+      setPaymentId(data.payment_id);
+      setQrCode(data.qr_code);
+      setQrBase64(data.qr_code_base64);
+      setBookingId(data.booking_id);
       setStep("payment");
-      startPolling(json.payment_id);
+      startPolling(data.payment_id);
+    } catch {
+      setError("Erro de conexão. Tente novamente.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleCardSubmit(cardData: MpCardData) {
+    if (!consent || !name.trim() || !email.trim()) {
+      setError("Preencha todos os campos obrigatórios.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await callEdgeFunction({
+        payment_method_type: "credit_card",
+        card_token: cardData.token,
+        installments: cardData.installments,
+        card_payment_method_id: cardData.payment_method_id,
+        issuer_id: cardData.issuer_id,
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error ?? "Pagamento recusado. Tente novamente.");
+        setSubmitting(false);
+        return;
+      }
+      setPaymentId(data.payment_id);
+      setBookingId(data.booking_id);
+      if (data.payment_status === "approved") {
+        setStep("success");
+      } else if (data.payment_status === "rejected") {
+        setError("Pagamento recusado. Verifique os dados do cartão e tente novamente.");
+      } else {
+        // in_process: wait for webhook
+        setStep("payment");
+        startPolling(data.payment_id);
+      }
     } catch {
       setError("Erro de conexão. Tente novamente.");
     } finally {
@@ -171,7 +316,6 @@ export default function WorkspacePublicBookingPage() {
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
-  // Auto-seleção do primeiro horário livre após o atalho "Primeira data disponível"
   useEffect(() => {
     if (!autoPick || loadingSlots || !selectedDate) return;
     const firstFree = slots.find(s => s.available);
@@ -216,6 +360,8 @@ export default function WorkspacePublicBookingPage() {
     setViewYear(d.getFullYear());
     setViewMonth(d.getMonth());
   }
+
+  const hasMpPublicKey = !!(import.meta.env as Record<string, string>).VITE_MP_PUBLIC_KEY;
 
   return (
     <div className="min-h-screen bg-[#e8ede5]">
@@ -297,7 +443,6 @@ export default function WorkspacePublicBookingPage() {
               <span className="text-muted-foreground ml-2">· {formatBRL(selectedService.price_cents)} · {selectedService.duration_min} min</span>
             </div>
 
-            {/* Atalho: primeira data disponível */}
             {!selectedDate && nextDate && (
               <div>
                 <button
@@ -310,7 +455,6 @@ export default function WorkspacePublicBookingPage() {
               </div>
             )}
 
-            {/* Calendar */}
             <div className="rounded-2xl border border-border bg-white p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <button
@@ -375,7 +519,6 @@ export default function WorkspacePublicBookingPage() {
               </div>
             </div>
 
-            {/* Time slots */}
             {selectedDate && (
               <div className="space-y-2">
                 <p className="text-sm font-medium">{formatDateBR(selectedDate)} — Horários disponíveis</p>
@@ -451,6 +594,60 @@ export default function WorkspacePublicBookingPage() {
                 </div>
               </div>
 
+              {/* Payment method selector */}
+              <div className="rounded-2xl border border-border bg-white p-5 space-y-3">
+                <p className="text-sm font-medium">Forma de pagamento</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setPaymentMethod("pix"); setError(""); }}
+                    className={cn(
+                      "flex items-center justify-center gap-2 rounded-xl border p-3 text-sm font-medium transition-all",
+                      paymentMethod === "pix"
+                        ? "border-[#166b50] bg-[#e6f1eb] text-[#166b50]"
+                        : "border-border bg-white text-foreground hover:border-[#166b50]/40",
+                    )}
+                  >
+                    <QrCode size={16} />
+                    PIX
+                  </button>
+                  {hasMpPublicKey && (
+                    <button
+                      type="button"
+                      onClick={() => { setPaymentMethod("credit_card"); setError(""); }}
+                      className={cn(
+                        "flex items-center justify-center gap-2 rounded-xl border p-3 text-sm font-medium transition-all",
+                        paymentMethod === "credit_card"
+                          ? "border-[#166b50] bg-[#e6f1eb] text-[#166b50]"
+                          : "border-border bg-white text-foreground hover:border-[#166b50]/40",
+                      )}
+                    >
+                      <CreditCard size={16} />
+                      Cartão
+                    </button>
+                  )}
+                </div>
+                {paymentMethod === "pix" && (
+                  <p className="text-[11px] text-muted-foreground">Pague via PIX instantâneo. O agendamento é confirmado assim que o pagamento for identificado.</p>
+                )}
+                {paymentMethod === "credit_card" && (
+                  <p className="text-[11px] text-muted-foreground">Pagamento por cartão de crédito em até 12x. Confirmação imediata.</p>
+                )}
+              </div>
+
+              {/* MP Card Brick container */}
+              {paymentMethod === "credit_card" && (
+                <div className="rounded-2xl border border-border bg-white p-4">
+                  {!brickReady && (
+                    <div className="flex items-center justify-center py-8 gap-2 text-sm text-muted-foreground">
+                      <Loader2 size={16} className="animate-spin" />
+                      Carregando formulário do cartão...
+                    </div>
+                  )}
+                  <div id="mp-card-brick" />
+                </div>
+              )}
+
               <div className="flex items-start gap-3 px-1">
                 <Checkbox
                   id="consent-lgpd"
@@ -465,13 +662,16 @@ export default function WorkspacePublicBookingPage() {
 
               {error && <p className="text-sm text-destructive text-center">{error}</p>}
 
-              <Button
-                type="submit"
-                disabled={submitting || !consent}
-                className="w-full bg-[#166b50] hover:bg-[#145e45] text-white py-6 rounded-2xl text-base"
-              >
-                {submitting ? <><Loader2 size={16} className="animate-spin mr-2" />Aguarde...</> : `Pagar ${selectedService && formatBRL(selectedService.price_cents)}`}
-              </Button>
+              {/* PIX submit button (card submit is handled by the brick itself) */}
+              {paymentMethod === "pix" && (
+                <Button
+                  type="submit"
+                  disabled={submitting || !consent}
+                  className="w-full bg-[#166b50] hover:bg-[#145e45] text-white py-6 rounded-2xl text-base"
+                >
+                  {submitting ? <><Loader2 size={16} className="animate-spin mr-2" />Aguarde...</> : `Pagar com PIX · ${selectedService && formatBRL(selectedService.price_cents)}`}
+                </Button>
+              )}
             </form>
           </div>
         )}
@@ -479,7 +679,9 @@ export default function WorkspacePublicBookingPage() {
         {/* ── Step: payment ── */}
         {step === "payment" && (
           <div className="space-y-4">
-            <h2 className="font-semibold text-foreground">Pagamento via PIX</h2>
+            <h2 className="font-semibold text-foreground">
+              {qrCode ? "Pagamento via PIX" : "Aguardando confirmação"}
+            </h2>
 
             <div className="rounded-2xl border border-border bg-white p-4 space-y-1 text-sm">
               <p className="font-medium">{selectedService?.name}</p>
@@ -488,17 +690,17 @@ export default function WorkspacePublicBookingPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-border bg-white p-6 flex flex-col items-center gap-4">
-              {qrBase64 ? (
-                <img src={`data:image/png;base64,${qrBase64}`} alt="QR Code PIX" className="w-52 h-52 rounded-xl" />
-              ) : (
-                <div className="w-52 h-52 rounded-xl bg-muted flex items-center justify-center">
-                  <Loader2 size={24} className="animate-spin text-muted-foreground" />
-                </div>
-              )}
-              <p className="text-sm text-muted-foreground text-center">Escaneie o QR Code com seu app do banco</p>
+            {qrCode ? (
+              <div className="rounded-2xl border border-border bg-white p-6 flex flex-col items-center gap-4">
+                {qrBase64 ? (
+                  <img src={`data:image/png;base64,${qrBase64}`} alt="QR Code PIX" className="w-52 h-52 rounded-xl" />
+                ) : (
+                  <div className="w-52 h-52 rounded-xl bg-muted flex items-center justify-center">
+                    <Loader2 size={24} className="animate-spin text-muted-foreground" />
+                  </div>
+                )}
+                <p className="text-sm text-muted-foreground text-center">Escaneie o QR Code com seu app do banco</p>
 
-              {qrCode && (
                 <div className="w-full space-y-2">
                   <p className="text-xs text-muted-foreground text-center">ou copie o código PIX:</p>
                   <div className="flex gap-2">
@@ -516,13 +718,18 @@ export default function WorkspacePublicBookingPage() {
                     </Button>
                   </div>
                 </div>
-              )}
 
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 size={12} className="animate-spin" />
-                Aguardando confirmação do pagamento...
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 size={12} className="animate-spin" />
+                  Aguardando confirmação do pagamento...
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="rounded-2xl border border-border bg-white p-6 flex flex-col items-center gap-4">
+                <Loader2 size={32} className="animate-spin text-[#166b50]" />
+                <p className="text-sm text-muted-foreground text-center">Processando pagamento...</p>
+              </div>
+            )}
           </div>
         )}
 
