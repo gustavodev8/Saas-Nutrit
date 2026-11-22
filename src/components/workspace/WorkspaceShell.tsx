@@ -19,7 +19,7 @@ const navCls = (isActive: boolean, collapsed: boolean) =>
     "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
     collapsed && "justify-center px-0",
     isActive
-      ? "bg-[#e6f1eb] text-[#166b50]"
+      ? "bg-[#e6f1eb] dark:bg-primary/20 text-[#166b50] dark:text-primary"
       : "text-muted-foreground hover:bg-muted hover:text-foreground",
   );
 
@@ -81,11 +81,11 @@ export default function WorkspaceShell() {
     : "?";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f5f7f3]">
+    <div className="flex h-screen overflow-hidden bg-muted dark:bg-background">
       {/* ── Sidebar ── */}
       <aside
         className={cn(
-          "relative flex flex-col border-r bg-background transition-all duration-200 shrink-0 h-full overflow-y-auto",
+          "relative flex flex-col border-r bg-background transition-all duration-200 shrink-0 h-full overflow-y-auto overflow-x-hidden",
           collapsed ? "w-[60px]" : "w-[220px]",
         )}
       >
