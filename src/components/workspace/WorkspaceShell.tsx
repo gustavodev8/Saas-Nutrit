@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type React from "react";
 import {
   Apple, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Home,
   LayoutDashboard, LogOut, Settings, UsersRound,
@@ -14,14 +13,14 @@ import {
   trialDaysLeft,
 } from "@/lib/workspaceSubscription";
 
-const NAV_ITEMS: Array<{ to: string; end: boolean; icon: React.ElementType; label: string }> = [
-  { to: "/workspace",               end: true,  icon: Home,         label: "Início" },
-  { to: "/workspace/patients",      end: false, icon: UsersRound,   label: "Pacientes" },
-  { to: "/workspace/agenda",        end: false, icon: CalendarDays, label: "Agenda" },
-  { to: "/workspace/modelos",       end: false, icon: BookOpen,     label: "Modelos" },
-  { to: "/workspace/alimentos",     end: false, icon: Apple,        label: "Alimentos" },
-  { to: "/workspace/configuracoes", end: false, icon: Settings,     label: "Configurações" },
-];
+const navCls = (isActive: boolean, collapsed: boolean) =>
+  cn(
+    "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
+    collapsed && "justify-center px-0",
+    isActive
+      ? "bg-[#e6f1eb] text-[#166b50]"
+      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+  );
 
 export default function WorkspaceShell() {
   const { membership, userEmail, logout, subscription } = useWorkspaceAuth();
@@ -108,26 +107,36 @@ export default function WorkspaceShell() {
 
         {/* Nav */}
         <nav className="flex flex-col gap-1 px-2 py-3 flex-1" aria-label="Navegação">
-          {NAV_ITEMS.map(({ to, end, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              title={collapsed ? label : undefined}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
-                  collapsed && "justify-center px-0",
-                  isActive
-                    ? "bg-[#e6f1eb] text-[#166b50]"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )
-              }
-            >
-              <Icon size={17} className="shrink-0" aria-hidden="true" />
-              {!collapsed && <span>{label}</span>}
-            </NavLink>
-          ))}
+          <NavLink to="/workspace" end title={collapsed ? "Início" : undefined}
+            className={({ isActive }) => navCls(isActive, collapsed)}>
+            <Home size={17} className="shrink-0" aria-hidden="true" />
+            {!collapsed && <span>Início</span>}
+          </NavLink>
+          <NavLink to="/workspace/patients" title={collapsed ? "Pacientes" : undefined}
+            className={({ isActive }) => navCls(isActive, collapsed)}>
+            <UsersRound size={17} className="shrink-0" aria-hidden="true" />
+            {!collapsed && <span>Pacientes</span>}
+          </NavLink>
+          <NavLink to="/workspace/agenda" title={collapsed ? "Agenda" : undefined}
+            className={({ isActive }) => navCls(isActive, collapsed)}>
+            <CalendarDays size={17} className="shrink-0" aria-hidden="true" />
+            {!collapsed && <span>Agenda</span>}
+          </NavLink>
+          <NavLink to="/workspace/modelos" title={collapsed ? "Modelos" : undefined}
+            className={({ isActive }) => navCls(isActive, collapsed)}>
+            <BookOpen size={17} className="shrink-0" aria-hidden="true" />
+            {!collapsed && <span>Modelos</span>}
+          </NavLink>
+          <NavLink to="/workspace/alimentos" title={collapsed ? "Alimentos" : undefined}
+            className={({ isActive }) => navCls(isActive, collapsed)}>
+            <Apple size={17} className="shrink-0" aria-hidden="true" />
+            {!collapsed && <span>Alimentos</span>}
+          </NavLink>
+          <NavLink to="/workspace/configuracoes" title={collapsed ? "Configurações" : undefined}
+            className={({ isActive }) => navCls(isActive, collapsed)}>
+            <Settings size={17} className="shrink-0" aria-hidden="true" />
+            {!collapsed && <span>Configurações</span>}
+          </NavLink>
         </nav>
 
         {/* User + logout */}
