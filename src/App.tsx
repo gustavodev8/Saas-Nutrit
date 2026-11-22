@@ -183,8 +183,6 @@ const App = () => (
                 <Route path="/blog/:slug" element={<BlogPost />} />
                 <Route path="/privacidade" element={<PrivacidadePage />} />
                 <Route path="/produto/:id" element={<ProdutoPage />} />
-                <Route path="/agendar/:planIndex" element={<BookingPage />} />
-
                 {/* Patient portal */}
                 <Route path="/portal" element={<PatientPortalRoot />}>
                   <Route path="login" element={<PatientPortalLogin />} />
@@ -203,8 +201,7 @@ const App = () => (
                   </Route>
                 </Route>
 
-                {/* Payment */}
-                {/* Public booking page (no auth required) */}
+                {/* Workspace public booking page (no auth required) */}
                 <Route path="/agendar/:slug" element={<WorkspacePublicBookingPage />} />
 
                 <Route path="/pagamento/sucesso" element={<PaymentSuccess />} />
