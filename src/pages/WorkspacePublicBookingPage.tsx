@@ -186,21 +186,32 @@ export default function WorkspacePublicBookingPage() {
     setLoadingSlots(true);
     const booked = await fetchBookedSlots(settings!.workspace_id, date);
     const dow = new Date(date + "T12:00:00").getDay();
-    const avail = availability.find(a => a.day_of_week === dow);
-    if (!avail) { setSlots([]); setLoadingSlots(false); return; }
-    const generated = generateTimeSlots(
-      date,
-      avail.start_time.slice(0, 5),
-      avail.end_time.slice(0, 5),
-      selectedService!.duration_min,
-      booked,
-      {
-        bufferMin: settings!.buffer_minutes ?? 0,
-        minNoticeMin: (settings!.min_notice_hours ?? 2) * 60,
-        slotIntervalMin: settings!.slot_interval_min ?? selectedService!.duration_min,
-      },
-    );
-    setSlots(generated);
+    const avails = availability.filter(a => a.day_of_week === dow && a.active);
+    if (avails.length === 0) { setSlots([]); setLoadingSlots(false); return; }
+    const genOpts = {
+      bufferMin: settings!.buffer_minutes ?? 0,
+      minNoticeMin: (settings!.min_notice_hours ?? 2) * 60,
+      slotIntervalMin: settings!.slot_interval_min ?? selectedService!.duration_min,
+    };
+    // Gera slots de cada janela do dia e mescla por horário (sem duplicatas; available = OR entre janelas)
+    const availByTime = new Map<string, boolean>();
+    for (const avail of avails) {
+      const windowSlots = generateTimeSlots(
+        date,
+        avail.start_time.slice(0, 5),
+        avail.end_time.slice(0, 5),
+        selectedService!.duration_min,
+        booked,
+        genOpts,
+      );
+      for (const slot of windowSlots) {
+        availByTime.set(slot.time, (availByTime.get(slot.time) ?? false) || slot.available);
+      }
+    }
+    const merged: BookingSlot[] = [...availByTime.entries()]
+      .map(([time, available]) => ({ time, available }))
+      .sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+    setSlots(merged);
     setLoadingSlots(false);
   }
 

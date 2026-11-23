@@ -36,6 +36,7 @@ export interface BookingAvailability {
   start_time: string;
   end_time: string;
   active: boolean;
+  sort_order?: number;
 }
 
 export interface WorkspaceBooking {
@@ -297,6 +298,83 @@ export async function upsertAvailability(
       .from("workspace_booking_availability")
       .insert({ workspace_id: workspaceId, day_of_week: day, start_time: startTime, end_time: endTime, active });
   }
+}
+
+/** Adds a new availability window (one of possibly several per day). */
+export async function addAvailabilityWindow(
+  workspaceId: string,
+  day: number,
+  startTime: string,
+  endTime: string,
+  sortOrder = 0,
+): Promise<void> {
+  await workspaceSupabase
+    .from("workspace_booking_availability")
+    .insert({
+      workspace_id: workspaceId,
+      day_of_week: day,
+      start_time: startTime,
+      end_time: endTime,
+      active: true,
+      sort_order: sortOrder,
+    });
+}
+
+/** Updates start/end time of a single availability window. */
+export async function updateAvailabilityWindow(
+  id: string,
+  workspaceId: string,
+  startTime: string,
+  endTime: string,
+): Promise<void> {
+  await workspaceSupabase
+    .from("workspace_booking_availability")
+    .update({ start_time: startTime, end_time: endTime })
+    .eq("id", id)
+    .eq("workspace_id", workspaceId);
+}
+
+/** Deletes a single availability window. */
+export async function deleteAvailabilityWindow(id: string, workspaceId: string): Promise<void> {
+  await workspaceSupabase
+    .from("workspace_booking_availability")
+    .delete()
+    .eq("id", id)
+    .eq("workspace_id", workspaceId);
+}
+
+/** Sets `active` on every availability window of a given weekday. */
+export async function setDayActive(workspaceId: string, day: number, active: boolean): Promise<void> {
+  await workspaceSupabase
+    .from("workspace_booking_availability")
+    .update({ active })
+    .eq("workspace_id", workspaceId)
+    .eq("day_of_week", day);
+}
+
+/**
+ * Groups availability windows by day_of_week (pure, no I/O).
+ * Within each day: sort_order asc, ties broken by start_time asc.
+ * Does not filter by `active`; every row is returned.
+ */
+export function groupAvailabilityByDay(rows: BookingAvailability[]): Map<number, BookingAvailability[]> {
+  const grouped = new Map<number, BookingAvailability[]>();
+  for (const row of rows) {
+    const list = grouped.get(row.day_of_week);
+    if (list) {
+      list.push(row);
+    } else {
+      grouped.set(row.day_of_week, [row]);
+    }
+  }
+  for (const list of grouped.values()) {
+    list.sort((a, b) => {
+      const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+      if (orderDiff !== 0) return orderDiff;
+      return a.start_time < b.start_time ? -1 : a.start_time > b.start_time ? 1 : 0;
+    });
+  }
+  return grouped;
 }
 
 export async function fetchWorkspaceBookings(workspaceId: string): Promise<WorkspaceBooking[]> {

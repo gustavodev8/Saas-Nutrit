@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, Check, Copy, ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, Check, CheckCircle2, Circle, ClipboardList, Copy, CreditCard, ExternalLink, Link2, Loader2, Plus, Settings2, Trash2, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,13 +13,17 @@ import {
   DAY_NAMES,
   FULL_DAY_NAMES,
   PIX_KEY_TYPE_LABELS,
+  addAvailabilityWindow,
+  deleteAvailabilityWindow,
   deleteBookingService,
   fetchBookingAvailability,
   fetchBookingServices,
   fetchBookingSettings,
   formatBRL,
   generateSlug,
-  upsertAvailability,
+  groupAvailabilityByDay,
+  setDayActive,
+  updateAvailabilityWindow,
   upsertBookingService,
   upsertBookingSettings,
 } from "@/lib/workspaceBookings";
@@ -27,6 +31,42 @@ import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const DEFAULT_TIMES = { start_time: "08:00", end_time: "18:00" };
+
+type SectionIcon = LucideIcon;
+
+function SectionHeader({
+  icon: Icon,
+  title,
+  status,
+  statusTone,
+  action,
+}: {
+  icon: SectionIcon;
+  title: string;
+  status: string;
+  statusTone: "success" | "warning" | "neutral";
+  action?: React.ReactNode;
+}) {
+  const toneClass =
+    statusTone === "success"
+      ? "bg-green-50 text-green-700"
+      : statusTone === "warning"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-muted text-muted-foreground";
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2.5">
+        <div className="rounded-lg bg-[#e6f1eb] p-1.5">
+          <Icon size={16} className="text-[#166b50]" />
+        </div>
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", toneClass)}>{status}</span>
+      </div>
+      {action}
+    </div>
+  );
+}
 
 function ServiceForm({
   service,
@@ -146,6 +186,11 @@ export function WorkspaceBookingSettingsTab({ workspaceId, workspaceName }: { wo
 
   const bookingUrl = `${window.location.origin}/agendar/${slug}`;
 
+  const hasService = services.some(s => s.active);
+  const hasPix = pixKey.trim().length > 0;
+  const hasDay = availability.some(a => a.active);
+  const allReady = hasService && hasPix && hasDay;
+
   async function handleSaveSettings(e: React.FormEvent) {
     e.preventDefault();
     if (!slug.trim() || !pixKey.trim()) {
@@ -188,23 +233,39 @@ export function WorkspaceBookingSettingsTab({ workspaceId, workspaceName }: { wo
     setServices(prev => prev.filter(s => s.id !== id));
   }
 
-  async function handleAvailabilityToggle(day: number, currentActive: boolean) {
-    const existing = availability.find(a => a.day_of_week === day);
-    const start = existing?.start_time ?? DEFAULT_TIMES.start_time;
-    const end = existing?.end_time ?? DEFAULT_TIMES.end_time;
-    await upsertAvailability(workspaceId, day, start, end, !currentActive);
-    const updated = await fetchBookingAvailability(workspaceId);
-    setAvailability(updated);
+  async function reloadAvailability() {
+    setAvailability(await fetchBookingAvailability(workspaceId));
   }
 
-  async function handleAvailabilityTime(day: number, field: "start_time" | "end_time", value: string) {
-    const existing = availability.find(a => a.day_of_week === day);
-    const start = field === "start_time" ? value : (existing?.start_time ?? DEFAULT_TIMES.start_time);
-    const end = field === "end_time" ? value : (existing?.end_time ?? DEFAULT_TIMES.end_time);
-    await upsertAvailability(workspaceId, day, start, end, existing?.active ?? false);
-    const updated = await fetchBookingAvailability(workspaceId);
-    setAvailability(updated);
+  async function handleDayToggle(day: number, turnOn: boolean, hasRows: boolean) {
+    if (turnOn && !hasRows) {
+      await addAvailabilityWindow(workspaceId, day, DEFAULT_TIMES.start_time, DEFAULT_TIMES.end_time, 0);
+    } else {
+      await setDayActive(workspaceId, day, turnOn);
+    }
+    await reloadAvailability();
   }
+
+  async function handleWindowTime(w: BookingAvailability, field: "start_time" | "end_time", value: string) {
+    if (!value) return;
+    const startTime = field === "start_time" ? value : w.start_time.slice(0, 5);
+    const endTime = field === "end_time" ? value : w.end_time.slice(0, 5);
+    await updateAvailabilityWindow(w.id, workspaceId, startTime, endTime);
+    await reloadAvailability();
+  }
+
+  async function handleWindowDelete(id: string) {
+    await deleteAvailabilityWindow(id, workspaceId);
+    await reloadAvailability();
+  }
+
+  async function handleWindowAdd(day: number, sortOrder: number) {
+    await addAvailabilityWindow(workspaceId, day, DEFAULT_TIMES.start_time, DEFAULT_TIMES.end_time, sortOrder);
+    await reloadAvailability();
+  }
+
+  const byDay = groupAvailabilityByDay(availability);
+  const activeDayCount = Array.from(byDay.values()).filter(ws => ws.some(w => w.active)).length;
 
   if (loading) return (
     <div className="flex items-center justify-center py-12">
@@ -229,59 +290,109 @@ export function WorkspaceBookingSettingsTab({ workspaceId, workspaceName }: { wo
         </div>
       </div>
 
+      {/* Checklist de ativação */}
+      <div className={cn("space-y-3 rounded-xl border p-4", allReady ? "border-green-200 bg-green-50" : "border-border bg-card")}>
+        <h3 className="text-sm font-semibold text-foreground">
+          {allReady ? "Tudo pronto — seu link está ativo 🎉" : "Para ativar seu agendamento"}
+        </h3>
+        <ul className="space-y-2">
+          {[
+            { done: hasService, label: "Pelo menos 1 serviço ativo" },
+            { done: hasPix, label: "Chave PIX configurada" },
+            { done: hasDay, label: "Pelo menos 1 dia de disponibilidade" },
+          ].map(item => (
+            <li key={item.label} className={cn("flex items-center gap-2.5 text-sm", item.done ? "text-muted-foreground" : "text-foreground")}>
+              {item.done
+                ? <CheckCircle2 size={16} className="shrink-0 text-green-600" />
+                : <Circle size={16} className="shrink-0 text-muted-foreground" />}
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      </div>
+
       {/* Settings form */}
-      <form onSubmit={handleSaveSettings} className="space-y-5 rounded-xl border border-border bg-card p-5">
-        <h3 className="text-sm font-semibold">Configurações gerais</h3>
+      <form onSubmit={handleSaveSettings} className="space-y-5">
+        {/* Card: Página & Perfil */}
+        <div className="space-y-4 rounded-xl border border-border bg-card p-5">
+          <SectionHeader
+            icon={Link2}
+            title="Página & Perfil"
+            status={slug.trim() ? "Completo" : "Incompleto"}
+            statusTone={slug.trim() ? "success" : "warning"}
+          />
 
-        {/* Link público */}
-        <div className="space-y-1.5">
-          <Label className="text-xs">Seu link de agendamento</Label>
-          <div className="flex gap-2">
-            <div className="flex flex-1 items-center rounded-lg border border-border bg-muted/40 overflow-hidden">
-              <span className="px-3 text-xs text-muted-foreground whitespace-nowrap">{window.location.origin}/agendar/</span>
-              <input
-                value={slug}
-                onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
-                className="flex-1 bg-transparent py-2 pr-3 text-sm outline-none font-mono"
-                placeholder="seu-nome"
-              />
-            </div>
-            <Button type="button" variant="outline" size="icon"
-              onClick={() => { navigator.clipboard.writeText(bookingUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
-              {copied ? <Check size={15} className="text-green-600" /> : <Copy size={15} />}
-            </Button>
-            <Button type="button" variant="outline" size="icon" asChild>
-              <a href={bookingUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /></a>
-            </Button>
-          </div>
-        </div>
-
-        {/* PIX */}
-        <div className="grid grid-cols-3 gap-3">
+          {/* Link público */}
           <div className="space-y-1.5">
-            <Label className="text-xs">Tipo da chave PIX</Label>
-            <Select value={pixKeyType} onValueChange={setPixKeyType}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {Object.entries(PIX_KEY_TYPE_LABELS).map(([v, l]) => (
-                  <SelectItem key={v} value={v}>{l}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label className="text-xs">Seu link de agendamento</Label>
+            <div className="flex gap-2">
+              <div className="flex flex-1 items-center rounded-lg border border-border bg-muted/40 overflow-hidden">
+                <span className="px-3 text-xs text-muted-foreground whitespace-nowrap">{window.location.origin}/agendar/</span>
+                <input
+                  value={slug}
+                  onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
+                  className="flex-1 bg-transparent py-2 pr-3 text-sm outline-none font-mono"
+                  placeholder="seu-nome"
+                />
+              </div>
+              <Button type="button" variant="outline" size="icon"
+                onClick={() => { navigator.clipboard.writeText(bookingUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
+                {copied ? <Check size={15} className="text-green-600" /> : <Copy size={15} />}
+              </Button>
+              <Button type="button" variant="outline" size="icon" asChild>
+                <a href={bookingUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /></a>
+              </Button>
+            </div>
           </div>
-          <div className="col-span-2 space-y-1.5">
-            <Label className="text-xs">Chave PIX (recebe 95% de cada agendamento)</Label>
-            <Input value={pixKey} onChange={e => setPixKey(e.target.value)} placeholder="sua@chave.pix" required />
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nome exibido na página</Label>
+              <Input value={presentationName} onChange={e => setPresentationName(e.target.value)} placeholder="Dra. Ana Silva — Nutricionista" />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-xs">Mini bio (opcional)</Label>
+              <Textarea value={bio} onChange={e => setBio(e.target.value)} placeholder="Nutricionista clínica e esportiva, 10 anos de experiência..." rows={2} />
+            </div>
           </div>
         </div>
 
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
-          <strong>Taxa da plataforma:</strong> 5% por agendamento. 95% cai automaticamente no seu PIX após confirmação do pagamento.
+        {/* Card: Pagamento */}
+        <div className="space-y-4 rounded-xl border border-border bg-card p-5">
+          <SectionHeader
+            icon={CreditCard}
+            title="Pagamento"
+            status={pixKey.trim() ? "Completo" : "Pendente"}
+            statusTone={pixKey.trim() ? "success" : "warning"}
+          />
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tipo da chave PIX</Label>
+              <Select value={pixKeyType} onValueChange={setPixKeyType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(PIX_KEY_TYPE_LABELS).map(([v, l]) => (
+                    <SelectItem key={v} value={v}>{l}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-xs">Chave PIX (recebe 95% de cada agendamento)</Label>
+              <Input value={pixKey} onChange={e => setPixKey(e.target.value)} placeholder="sua@chave.pix" required />
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+            <strong>Taxa da plataforma:</strong> 5% por agendamento. 95% cai automaticamente no seu PIX após confirmação do pagamento.
+          </div>
         </div>
 
-        {/* Regras de agendamento */}
-        <div className="space-y-3">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Regras de agendamento</h4>
+        {/* Card: Regras & Limites */}
+        <div className="space-y-4 rounded-xl border border-border bg-card p-5">
+          <SectionHeader icon={Settings2} title="Regras & Limites" status="Personalizado" statusTone="neutral" />
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Intervalo entre horários</Label>
@@ -341,18 +452,6 @@ export function WorkspaceBookingSettingsTab({ workspaceId, workspaceName }: { wo
           </div>
         </div>
 
-        {/* Perfil público */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Nome exibido na página</Label>
-            <Input value={presentationName} onChange={e => setPresentationName(e.target.value)} placeholder="Dra. Ana Silva — Nutricionista" />
-          </div>
-          <div className="col-span-2 space-y-1.5">
-            <Label className="text-xs">Mini bio (opcional)</Label>
-            <Textarea value={bio} onChange={e => setBio(e.target.value)} placeholder="Nutricionista clínica e esportiva, 10 anos de experiência..." rows={2} />
-          </div>
-        </div>
-
         <Button type="submit" disabled={savingSettings} className="bg-[#166b50] hover:bg-[#145e45] text-white">
           {savingSettings ? <Loader2 size={14} className="animate-spin mr-1.5" /> : <Check size={14} className="mr-1.5" />}
           Salvar configurações
@@ -360,13 +459,18 @@ export function WorkspaceBookingSettingsTab({ workspaceId, workspaceName }: { wo
       </form>
 
       {/* Services */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Tipos de consulta</h3>
-          <Button size="sm" variant="outline" onClick={() => setAddingService(true)} disabled={addingService}>
-            <Plus size={14} className="mr-1" /> Adicionar
-          </Button>
-        </div>
+      <div className="space-y-3 rounded-xl border border-border bg-card p-5">
+        <SectionHeader
+          icon={ClipboardList}
+          title="Tipos de consulta"
+          status={`${services.filter(s => s.active).length} ativos`}
+          statusTone="neutral"
+          action={
+            <Button size="sm" variant="outline" onClick={() => setAddingService(true)} disabled={addingService}>
+              <Plus size={14} className="mr-1" /> Adicionar
+            </Button>
+          }
+        />
 
         {addingService && (
           <ServiceForm onSave={handleServiceSave} onCancel={() => setAddingService(false)} />
@@ -402,28 +506,49 @@ export function WorkspaceBookingSettingsTab({ workspaceId, workspaceName }: { wo
       </div>
 
       {/* Availability */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold">Disponibilidade semanal</h3>
-        <div className="rounded-xl border border-border bg-card divide-y overflow-hidden">
+      <div className="space-y-3 rounded-xl border border-border bg-card p-5">
+        <SectionHeader
+          icon={CalendarDays}
+          title="Disponibilidade semanal"
+          status={`${activeDayCount} dias`}
+          statusTone="neutral"
+        />
+        <div className="rounded-xl border border-border divide-y overflow-hidden">
           {[1, 2, 3, 4, 5, 6, 0].map(day => {
-            const avail = availability.find(a => a.day_of_week === day);
-            const isActive = avail?.active ?? false;
+            const dayRows = byDay.get(day) ?? [];
+            const windows = dayRows.filter(w => w.active);
+            const isActive = windows.length > 0;
             return (
-              <div key={day} className="flex items-center gap-4 px-4 py-3">
-                <Switch checked={isActive} onCheckedChange={() => handleAvailabilityToggle(day, isActive)} />
-                <span className="w-16 text-sm font-medium">{FULL_DAY_NAMES[day]}</span>
+              <div key={day} className="flex items-start gap-4 px-4 py-3">
+                <div className="flex w-28 shrink-0 items-center gap-3 pt-1">
+                  <Switch checked={isActive} onCheckedChange={v => handleDayToggle(day, v, dayRows.length > 0)} />
+                  <span className="text-sm font-medium">{FULL_DAY_NAMES[day]}</span>
+                </div>
                 {isActive ? (
-                  <div className="flex items-center gap-2 text-sm">
-                    <input type="time" value={avail?.start_time?.slice(0, 5) ?? DEFAULT_TIMES.start_time}
-                      onChange={e => handleAvailabilityTime(day, "start_time", e.target.value)}
-                      className="rounded border border-border px-2 py-1 text-sm bg-background" />
-                    <span className="text-muted-foreground">até</span>
-                    <input type="time" value={avail?.end_time?.slice(0, 5) ?? DEFAULT_TIMES.end_time}
-                      onChange={e => handleAvailabilityTime(day, "end_time", e.target.value)}
-                      className="rounded border border-border px-2 py-1 text-sm bg-background" />
+                  <div className="flex flex-1 flex-col gap-2 text-sm">
+                    {windows.map(w => (
+                      <div key={w.id} className="flex items-center gap-2">
+                        <input type="time" value={w.start_time.slice(0, 5)}
+                          onChange={e => handleWindowTime(w, "start_time", e.target.value)}
+                          className="rounded border border-border px-2 py-1 text-sm bg-background" />
+                        <span className="text-muted-foreground">até</span>
+                        <input type="time" value={w.end_time.slice(0, 5)}
+                          onChange={e => handleWindowTime(w, "end_time", e.target.value)}
+                          className="rounded border border-border px-2 py-1 text-sm bg-background" />
+                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7"
+                          aria-label="Remover intervalo" onClick={() => handleWindowDelete(w.id)}>
+                          <Trash2 size={14} className="text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button type="button" variant="ghost" size="sm"
+                      className="h-7 w-fit px-2 text-xs text-[#166b50]"
+                      onClick={() => handleWindowAdd(day, windows.length)}>
+                      <Plus size={12} className="mr-1" /> Adicionar intervalo
+                    </Button>
                   </div>
                 ) : (
-                  <span className="text-xs text-muted-foreground">Indisponível</span>
+                  <span className="pt-1 text-xs text-muted-foreground">Indisponível</span>
                 )}
               </div>
             );
