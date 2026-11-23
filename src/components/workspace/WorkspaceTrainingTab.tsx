@@ -4,7 +4,8 @@ import {
 } from "react";
 import {
   AlertTriangle, ArrowLeft, Brain, CalendarDays, CheckCircle2, ChevronRight,
-  Dumbbell, Edit2, Info, Loader2, PauseCircle, Plus, Sparkles, Trash2, Zap,
+  ChevronDown, ChevronUp, Copy,
+  Dumbbell, Edit2, Info, Loader2, PauseCircle, Plus, Sparkles, Trash2, Users, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,9 +16,16 @@ import {
   createWorkspaceTrainingPlan,
   deleteWorkspaceTrainingExercise,
   deleteWorkspaceTrainingPlan,
+  duplicatePlanName,
+  duplicateWorkspaceTrainingDay,
+  duplicateWorkspaceTrainingExercise,
+  duplicateWorkspaceTrainingPlan,
+  fetchWorkspaceExerciseNames,
   fetchWorkspaceTrainingExercises,
   fetchWorkspaceTrainingPlans,
+  nextDuplicateDayLabel,
   updateWorkspaceTrainingExercise,
+  updateWorkspaceTrainingExercisePosition,
   updateWorkspaceTrainingPlan,
   type TrainingGoal,
   type TrainingStatus,
@@ -33,7 +41,8 @@ import {
   TRAINING_TEMPLATES,
   type TrainingWarning,
 } from "@/lib/workspaceTrainingIntelligence";
-import type { WorkspacePatient } from "@/lib/workspacePatients";
+import { filterExerciseSuggestions } from "@/lib/workoutExerciseSuggestions";
+import { fetchWorkspacePatients, type WorkspacePatient } from "@/lib/workspacePatients";
 
 // ── Prop types ────────────────────────────────────────────────────────────────
 
@@ -79,6 +88,26 @@ const emptyPlanInput: WorkspaceTrainingPlanInput = {
 const emptyExerciseInput: WorkspaceTrainingExerciseInput = {
   day_label: "A", exercise_name: "", sets: "", reps: "", load_kg: "", rest_seconds: "", notes: "",
 };
+
+type InlineField = "sets" | "reps" | "load_kg" | "rest_seconds";
+
+const INLINE_FIELDS: {
+  field: InlineField;
+  label: string;
+  placeholder: string;
+  width: string;
+  inputMode: "numeric" | "text" | "decimal";
+}[] = [
+  { field: "sets",         label: "Séries",     placeholder: "—", width: "w-12", inputMode: "numeric" },
+  { field: "reps",         label: "Reps",       placeholder: "—", width: "w-16", inputMode: "text" },
+  { field: "load_kg",      label: "Carga kg",   placeholder: "—", width: "w-16", inputMode: "decimal" },
+  { field: "rest_seconds", label: "Descanso s", placeholder: "—", width: "w-16", inputMode: "numeric" },
+];
+
+function inlineValue(ex: WorkspaceTrainingExercise, field: InlineField): string {
+  const v = ex[field];
+  return v != null ? String(v) : "";
+}
 
 function WarningBadge({ w }: { w: TrainingWarning }) {
   const cls = w.level === "danger"
@@ -179,34 +208,65 @@ function PlanForm({
 
 // ── Exercise form ─────────────────────────────────────────────────────────────
 
+const SETS_REPS_PRESETS: { sets: string; reps: string }[] = [
+  { sets: "3", reps: "10" },
+  { sets: "3", reps: "12" },
+  { sets: "4", reps: "10" },
+  { sets: "4", reps: "12" },
+];
+
 function ExerciseForm({
   initial,
   onSave,
   onCancel,
   saving,
   error,
+  allowAddAnother = false,
+  history = [],
 }: {
   initial: WorkspaceTrainingExerciseInput;
-  onSave: (input: WorkspaceTrainingExerciseInput) => void;
+  onSave: (input: WorkspaceTrainingExerciseInput, addAnother: boolean) => void;
   onCancel: () => void;
   saving: boolean;
   error: string;
+  allowAddAnother?: boolean;
+  history?: string[];
 }) {
   const [form, setForm] = useState(initial);
+  const [showSug, setShowSug] = useState(false);
   const set = (k: keyof WorkspaceTrainingExerciseInput, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
+  const suggestions = filterExerciseSuggestions(form.exercise_name, history, 8);
 
   return (
     <form
       className="rounded-lg border border-dashed bg-muted/20 p-4 space-y-3"
-      onSubmit={(e: FormEvent) => { e.preventDefault(); onSave(form); }}
+      onSubmit={(e: FormEvent) => { e.preventDefault(); onSave(form, false); }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="ex-name" className="text-xs">Exercício *</Label>
-          <Input id="ex-name" value={form.exercise_name} required
-            onChange={(e) => set("exercise_name", e.target.value)}
-            placeholder="Ex: Supino reto" maxLength={120} />
+          <div className="relative">
+            <Input id="ex-name" value={form.exercise_name} required autoComplete="off"
+              onFocus={() => setShowSug(true)}
+              onChange={(e) => { set("exercise_name", e.target.value); setShowSug(true); }}
+              onBlur={() => setTimeout(() => setShowSug(false), 120)}
+              placeholder="Ex: Supino reto" maxLength={120} />
+            {showSug && suggestions.length > 0 && (
+              <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover shadow-md">
+                {suggestions.map((s) => (
+                  <li key={s}>
+                    <button type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => { set("exercise_name", s); setShowSug(false); }}
+                      className="block w-full text-left px-3 py-1.5 text-sm hover:bg-muted">
+                      {s}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
         <div className="space-y-1">
           <Label htmlFor="ex-day" className="text-xs">Dia / Divisão</Label>
@@ -214,6 +274,25 @@ function ExerciseForm({
             onChange={(e) => set("day_label", e.target.value)}
             placeholder="A, B ou Segunda..." maxLength={30} />
         </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-muted-foreground mr-1">Atalhos:</span>
+        {SETS_REPS_PRESETS.map((p) => {
+          const active = form.sets === p.sets && form.reps === p.reps;
+          return (
+            <button
+              key={`${p.sets}x${p.reps}`}
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, sets: p.sets, reps: p.reps }))}
+              className={cn(
+                "rounded border px-2 py-0.5 text-xs transition-colors hover:border-[#166b50] hover:text-[#166b50]",
+                active ? "border-[#166b50] bg-[#166b50] text-white hover:text-white" : "border-input bg-background",
+              )}
+            >
+              {p.sets}×{p.reps}
+            </button>
+          );
+        })}
       </div>
       <div className="grid gap-3 sm:grid-cols-4">
         <div className="space-y-1">
@@ -243,6 +322,15 @@ function ExerciseForm({
         <Button type="submit" size="sm" className="bg-[#166b50] hover:bg-[#145e45] text-white h-8 text-xs" disabled={saving}>
           {saving ? <><Loader2 size={11} className="animate-spin" />…</> : "Salvar"}
         </Button>
+        {allowAddAnother && (
+          <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={saving}
+            onClick={() => {
+              if (!form.exercise_name.trim()) return;
+              onSave(form, true);
+            }}>
+            Salvar e adicionar outro
+          </Button>
+        )}
         <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" onClick={onCancel}>Cancelar</Button>
       </div>
     </form>
@@ -338,6 +426,8 @@ function PlanDetail({
   const [planError, setPlanError] = useState("");
 
   const [addingEx, setAddingEx] = useState(false);
+  const [addFormSeed, setAddFormSeed] = useState<WorkspaceTrainingExerciseInput>(emptyExerciseInput);
+  const [addFormKey, setAddFormKey] = useState(0);
   const [editingExId, setEditingExId] = useState<number | null>(null);
   const [exFormSaving, setExFormSaving] = useState(false);
   const [exFormError, setExFormError] = useState("");
@@ -345,6 +435,21 @@ function PlanDetail({
   const [deletingPlan, setDeletingPlan] = useState(false);
   const [confirmDeletePlan, setConfirmDeletePlan] = useState(false);
   const [deletingExId, setDeletingExId] = useState<number | null>(null);
+
+  const [exerciseNameHistory, setExerciseNameHistory] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const names = await fetchWorkspaceExerciseNames(workspaceId);
+        if (active) setExerciseNameHistory(names);
+      } catch {
+        if (active) setExerciseNameHistory([]);
+      }
+    })();
+    return () => { active = false; };
+  }, [workspaceId]);
 
   const loadExercises = useCallback(async () => {
     setLoadingEx(true); setExError("");
@@ -374,12 +479,17 @@ function PlanDetail({
     } catch { setDeletingPlan(false); }
   };
 
-  const handleAddExercise = async (input: WorkspaceTrainingExerciseInput) => {
+  const handleAddExercise = async (input: WorkspaceTrainingExerciseInput, addAnother = false) => {
     setExFormSaving(true); setExFormError("");
     try {
-      await createWorkspaceTrainingExercise(workspaceId, plan.id, input, exercises.length);
-      await loadExercises();
-      setAddingEx(false);
+      const created = await createWorkspaceTrainingExercise(workspaceId, plan.id, input, exercises.length);
+      setExercises((prev) => [...prev, created]);
+      if (addAnother) {
+        setAddFormSeed({ ...emptyExerciseInput, day_label: input.day_label });
+        setAddFormKey((k) => k + 1);
+      } else {
+        setAddingEx(false);
+      }
     } catch (e) {
       setExFormError(e instanceof Error ? e.message : "Erro ao salvar exercício.");
     } finally { setExFormSaving(false); }
@@ -396,6 +506,48 @@ function PlanDetail({
     } finally { setExFormSaving(false); }
   };
 
+  const handleInlineUpdate = async (ex: WorkspaceTrainingExercise, field: InlineField, value: string) => {
+    const next = value.trim();
+    if (next === inlineValue(ex, field)) return;
+    const input: WorkspaceTrainingExerciseInput = {
+      day_label: ex.day_label,
+      exercise_name: ex.exercise_name,
+      sets: field === "sets" ? next : (ex.sets != null ? String(ex.sets) : ""),
+      reps: field === "reps" ? next : (ex.reps ?? ""),
+      load_kg: field === "load_kg" ? next : (ex.load_kg != null ? String(ex.load_kg) : ""),
+      rest_seconds: field === "rest_seconds" ? next : (ex.rest_seconds != null ? String(ex.rest_seconds) : ""),
+      notes: ex.notes ?? "",
+    };
+    try {
+      const updated = await updateWorkspaceTrainingExercise(workspaceId, ex.id, input);
+      setExercises((prev) => prev.map((e) => (e.id === ex.id ? updated : e)));
+    } catch (e) {
+      setExError(e instanceof Error ? e.message : "Erro ao salvar exercício.");
+    }
+  };
+
+  const handleMoveExercise = async (ex: WorkspaceTrainingExercise, dir: "up" | "down") => {
+    const dayList = exercises
+      .filter(e => e.day_label === ex.day_label)
+      .sort((a, b) => a.position - b.position);
+    const idx = dayList.findIndex(e => e.id === ex.id);
+    const neighbor = dir === "up" ? dayList[idx - 1] : dayList[idx + 1];
+    if (!neighbor) return;
+    const posA = ex.position, posB = neighbor.position;
+    try {
+      await Promise.all([
+        updateWorkspaceTrainingExercisePosition(workspaceId, ex.id, posB),
+        updateWorkspaceTrainingExercisePosition(workspaceId, neighbor.id, posA),
+      ]);
+      setExercises(prev => prev
+        .map(e => e.id === ex.id ? { ...e, position: posB }
+                : e.id === neighbor.id ? { ...e, position: posA } : e)
+        .sort((a, b) => a.day_label.localeCompare(b.day_label) || a.position - b.position));
+    } catch (e) {
+      setExError(e instanceof Error ? e.message : "Erro ao reordenar.");
+    }
+  };
+
   const handleDeleteExercise = async (exId: number) => {
     setDeletingExId(exId);
     try {
@@ -403,6 +555,24 @@ function PlanDetail({
       setExercises((prev) => prev.filter((e) => e.id !== exId));
     } catch {}
     finally { setDeletingExId(null); }
+  };
+
+  const handleDuplicateExercise = async (ex: WorkspaceTrainingExercise) => {
+    try {
+      const created = await duplicateWorkspaceTrainingExercise(workspaceId, ex, exercises.length);
+      setExercises(prev => [...prev, created].sort((a,b)=>a.day_label.localeCompare(b.day_label)||a.position-b.position));
+    } catch (e) { setExError(e instanceof Error ? e.message : "Erro ao duplicar exercício."); }
+  };
+
+  const handleDuplicateDay = async (day: string) => {
+    const dayExs = exercises.filter(e => e.day_label === day).sort((a,b)=>a.position-b.position);
+    if (dayExs.length === 0) return;
+    const existingDays = Array.from(new Set(exercises.map(e => e.day_label)));
+    const newDay = nextDuplicateDayLabel(day, existingDays);
+    try {
+      const created = await duplicateWorkspaceTrainingDay(workspaceId, plan.id, dayExs, newDay, exercises.length);
+      setExercises(prev => [...prev, ...created].sort((a,b)=>a.day_label.localeCompare(b.day_label)||a.position-b.position));
+    } catch (e) { setExError(e instanceof Error ? e.message : "Erro ao duplicar dia."); }
   };
 
   // Group exercises by day
@@ -513,7 +683,8 @@ function PlanDetail({
         {exError && <p className="text-sm text-destructive">{exError}</p>}
 
         {addingEx && (
-          <ExerciseForm initial={emptyExerciseInput} onSave={handleAddExercise}
+          <ExerciseForm key={addFormKey} initial={addFormSeed} onSave={handleAddExercise}
+            allowAddAnother history={exerciseNameHistory}
             onCancel={() => { setAddingEx(false); setExFormError(""); }}
             saving={exFormSaving} error={exFormError} />
         )}
@@ -537,9 +708,14 @@ function PlanDetail({
               <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Treino {day}
               </span>
+              <Button type="button" size="sm" variant="ghost"
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => void handleDuplicateDay(day)}>
+                <Copy size={11} />Duplicar dia
+              </Button>
             </div>
             <div className="space-y-1">
-              {exs.map((ex) => {
+              {exs.map((ex, i) => {
                 const isStale = analyzeTrainingProfile(patient, plan, exercises, anamnesis).staleExercises.includes(ex.id);
                 if (editingExId === ex.id) {
                   const exInput: WorkspaceTrainingExerciseInput = {
@@ -552,7 +728,7 @@ function PlanDetail({
                     notes: ex.notes ?? "",
                   };
                   return (
-                    <ExerciseForm key={ex.id} initial={exInput}
+                    <ExerciseForm key={ex.id} initial={exInput} history={exerciseNameHistory}
                       onSave={(input) => void handleUpdateExercise(ex.id, input)}
                       onCancel={() => { setEditingExId(null); setExFormError(""); }}
                       saving={exFormSaving} error={exFormError} />
@@ -574,19 +750,46 @@ function PlanDetail({
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {ex.sets ? `${ex.sets} séries` : ""}
-                        {ex.sets && ex.reps ? " × " : ""}
-                        {ex.reps ?? ""}
-                        {ex.load_kg ? ` · ${ex.load_kg} kg` : ""}
-                        {ex.rest_seconds ? ` · ${ex.rest_seconds}s descanso` : ""}
-                        {ex.notes ? ` · ${ex.notes}` : ""}
-                      </p>
+                      {ex.notes && <p className="text-xs text-muted-foreground mt-0.5 truncate">{ex.notes}</p>}
+                    </div>
+                    <div className="flex items-end gap-1.5 shrink-0">
+                      {INLINE_FIELDS.map((f) => (
+                        <label key={`${f.field}-${ex.id}-${inlineValue(ex, f.field)}`}
+                          className="flex flex-col items-center gap-0.5 text-[10px] leading-none text-muted-foreground">
+                          {f.label}
+                          <input
+                            type="text"
+                            inputMode={f.inputMode}
+                            defaultValue={inlineValue(ex, f.field)}
+                            placeholder={f.placeholder}
+                            onBlur={(e) => void handleInlineUpdate(ex, f.field, e.currentTarget.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                            className={cn(
+                              "h-7 rounded-md border border-input bg-background px-1.5 text-center text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-[#166b50]",
+                              f.width,
+                            )}
+                          />
+                        </label>
+                      ))}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
+                      <button type="button" disabled={i === 0}
+                        onClick={() => void handleMoveExercise(ex, "up")}
+                        className="rounded p-1 hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Mover para cima">
+                        <ChevronUp size={12} className="text-muted-foreground" />
+                      </button>
+                      <button type="button" disabled={i === exs.length - 1}
+                        onClick={() => void handleMoveExercise(ex, "down")}
+                        className="rounded p-1 hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Mover para baixo">
+                        <ChevronDown size={12} className="text-muted-foreground" />
+                      </button>
                       <button type="button" onClick={() => setEditingExId(ex.id)}
                         className="rounded p-1 hover:bg-muted" title="Editar">
                         <Edit2 size={12} className="text-muted-foreground" />
+                      </button>
+                      <button type="button" onClick={() => void handleDuplicateExercise(ex)}
+                        className="rounded p-1 hover:bg-muted" title="Duplicar">
+                        <Copy size={12} className="text-muted-foreground" />
                       </button>
                       <button type="button" disabled={deletingExId === ex.id}
                         onClick={() => void handleDeleteExercise(ex.id)}
@@ -619,6 +822,7 @@ function PlanList({
   onSelectPlan,
   onCreatePlan,
   onTemplateApplied,
+  onPlanDuplicated,
 }: {
   workspaceId: string;
   patient: WorkspacePatient;
@@ -629,9 +833,87 @@ function PlanList({
   onSelectPlan: (p: WorkspaceTrainingPlan) => void;
   onCreatePlan: () => void;
   onTemplateApplied: () => void;
+  onPlanDuplicated: () => void;
 }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState<string | null>(null);
+  const [duplicatingPlanId, setDuplicatingPlanId] = useState<number | null>(null);
+  const [duplicateError, setDuplicateError] = useState("");
+
+  // "Copiar de outro paciente" panel state
+  const [showCopyPanel, setShowCopyPanel] = useState(false);
+  const [copyPatients, setCopyPatients] = useState<WorkspacePatient[]>([]);
+  const [loadingCopyPatients, setLoadingCopyPatients] = useState(false);
+  const [copyPatientsError, setCopyPatientsError] = useState("");
+  const [sourcePatientId, setSourcePatientId] = useState("");
+  const [sourcePlans, setSourcePlans] = useState<WorkspaceTrainingPlan[]>([]);
+  const [loadingSourcePlans, setLoadingSourcePlans] = useState(false);
+  const [sourcePlanId, setSourcePlanId] = useState("");
+  const [copyingFromPatient, setCopyingFromPatient] = useState(false);
+  const [copyFromError, setCopyFromError] = useState("");
+  const sourcePlansReqRef = useRef(0);
+
+  const resetCopyPanel = () => {
+    sourcePlansReqRef.current += 1;
+    setSourcePatientId(""); setSourcePlans([]); setSourcePlanId("");
+    setLoadingSourcePlans(false); setCopyFromError("");
+  };
+
+  const closeCopyPanel = () => { setShowCopyPanel(false); resetCopyPanel(); };
+
+  const openCopyPanel = async () => {
+    setShowCopyPanel(true); setCopyPatientsError("");
+    setLoadingCopyPatients(true);
+    try {
+      const all = await fetchWorkspacePatients(workspaceId);
+      // Exclui o paciente atual: não faz sentido copiar a ficha dele para ele mesmo
+      setCopyPatients(all.filter((p) => p.id !== patient.id));
+    } catch (e) {
+      setCopyPatientsError(e instanceof Error ? e.message : "Erro ao carregar pacientes.");
+    } finally { setLoadingCopyPatients(false); }
+  };
+
+  const handleSourcePatientChange = async (value: string) => {
+    resetCopyPanel();
+    setSourcePatientId(value);
+    if (!value) return;
+    const reqId = sourcePlansReqRef.current;
+    setLoadingSourcePlans(true);
+    try {
+      const data = await fetchWorkspaceTrainingPlans(workspaceId, Number(value));
+      if (sourcePlansReqRef.current === reqId) setSourcePlans(data);
+    } catch (e) {
+      if (sourcePlansReqRef.current === reqId)
+        setCopyFromError(e instanceof Error ? e.message : "Erro ao carregar fichas.");
+    } finally {
+      if (sourcePlansReqRef.current === reqId) setLoadingSourcePlans(false);
+    }
+  };
+
+  const handleCopyFromPatient = async () => {
+    const sourcePlan = sourcePlans.find((p) => String(p.id) === sourcePlanId);
+    if (!sourcePlan) return;
+    const newName = duplicatePlanName(sourcePlan.name, plans.map((x) => x.name));
+    setCopyingFromPatient(true); setCopyFromError("");
+    try {
+      await duplicateWorkspaceTrainingPlan(workspaceId, sourcePlan.id, patient.id, newName);
+      onPlanDuplicated();
+      closeCopyPanel();
+    } catch (e) {
+      setCopyFromError(e instanceof Error ? e.message : "Erro ao copiar ficha.");
+    } finally { setCopyingFromPatient(false); }
+  };
+
+  const handleDuplicatePlan = async (p: WorkspaceTrainingPlan) => {
+    const newName = duplicatePlanName(p.name, plans.map(x => x.name));
+    setDuplicatingPlanId(p.id); setDuplicateError("");
+    try {
+      await duplicateWorkspaceTrainingPlan(workspaceId, p.id, p.patient_id, newName);
+      onPlanDuplicated();
+    } catch (e) {
+      setDuplicateError(e instanceof Error ? e.message : "Erro ao duplicar plano.");
+    } finally { setDuplicatingPlanId(null); }
+  };
 
   // Smart goal suggestion (global — no plan selected yet)
   const suggestion = useMemo(
@@ -669,7 +951,10 @@ function PlanList({
           <h2 className="font-semibold">Planos de treino</h2>
           <p className="text-sm text-muted-foreground">Prescrições de exercício deste paciente.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => (showCopyPanel ? closeCopyPanel() : void openCopyPanel())}>
+            <Users size={14} />Copiar de outro paciente
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setShowTemplates((v) => !v)}>
             <Sparkles size={14} />Templates
           </Button>
@@ -678,6 +963,68 @@ function PlanList({
           </Button>
         </div>
       </div>
+
+      {/* Copy plan from another patient */}
+      {showCopyPanel && (
+        <div className="rounded-lg border border-[#166b50]/30 bg-[#166b50]/5 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-[#153f34]">Copiar ficha de outro paciente</p>
+            <button type="button" onClick={closeCopyPanel}
+              className="text-xs text-muted-foreground hover:text-foreground">Fechar</button>
+          </div>
+
+          {loadingCopyPatients && (
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 size={14} className="animate-spin" />Carregando pacientes…
+            </p>
+          )}
+          {copyPatientsError && <p className="text-sm text-destructive">{copyPatientsError}</p>}
+          {!loadingCopyPatients && !copyPatientsError && copyPatients.length === 0 && (
+            <p className="text-sm text-muted-foreground">Nenhum outro paciente neste workspace.</p>
+          )}
+
+          {!loadingCopyPatients && copyPatients.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="copy-src-patient" className="text-xs">Paciente de origem</Label>
+                <select id="copy-src-patient"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={sourcePatientId} disabled={copyingFromPatient}
+                  onChange={(e) => void handleSourcePatientChange(e.target.value)}>
+                  <option value="">Selecione um paciente</option>
+                  {copyPatients.map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="copy-src-plan" className="text-xs">Ficha</Label>
+                <select id="copy-src-plan"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={sourcePlanId}
+                  disabled={!sourcePatientId || loadingSourcePlans || sourcePlans.length === 0 || copyingFromPatient}
+                  onChange={(e) => setSourcePlanId(e.target.value)}>
+                  <option value="">{loadingSourcePlans ? "Carregando fichas…" : "Selecione uma ficha"}</option>
+                  {sourcePlans.map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                </select>
+                {sourcePatientId && !loadingSourcePlans && sourcePlans.length === 0 && !copyFromError && (
+                  <p className="text-xs text-muted-foreground">Nenhuma ficha neste paciente</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {copyFromError && <p className="text-sm text-destructive">{copyFromError}</p>}
+
+          {copyPatients.length > 0 && (
+            <Button type="button" size="sm" className="bg-[#166b50] hover:bg-[#145e45] text-white"
+              disabled={!sourcePlanId || loadingSourcePlans || copyingFromPatient}
+              onClick={() => void handleCopyFromPatient()}>
+              {copyingFromPatient
+                ? <><Loader2 size={13} className="animate-spin" />Copiando…</>
+                : <><Copy size={13} />Copiar para {patient.name}</>}
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Smart suggestion (when no plans yet) */}
       {plans.length === 0 && suggestion.suggestedGoal && (
@@ -741,6 +1088,7 @@ function PlanList({
         </p>
       )}
       {plansError && <p className="text-sm text-destructive">{plansError}</p>}
+      {duplicateError && <p className="text-sm text-destructive">{duplicateError}</p>}
 
       {/* Empty state */}
       {!loadingPlans && plans.length === 0 && (
@@ -763,35 +1111,45 @@ function PlanList({
       {!loadingPlans && plans.length > 0 && (
         <div className="space-y-2">
           {plans.map((plan) => (
-            <button
-              key={plan.id}
-              type="button"
-              onClick={() => onSelectPlan(plan)}
-              className="w-full rounded-lg border bg-background p-4 text-left transition-colors hover:bg-muted/50 flex items-center gap-3"
-            >
-              <Dumbbell size={18} className="text-[#166b50] shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium">{plan.name}</span>
-                  {plan.goal && (
-                    <span className={cn("text-xs rounded-full border px-2 py-0.5 font-medium", GOAL_COLORS[plan.goal])}>
-                      {GOAL_LABELS[plan.goal]}
+            <div key={plan.id} className="flex items-stretch gap-2">
+              <button
+                type="button"
+                onClick={() => onSelectPlan(plan)}
+                className="flex-1 min-w-0 rounded-lg border bg-background p-4 text-left transition-colors hover:bg-muted/50 flex items-center gap-3"
+              >
+                <Dumbbell size={18} className="text-[#166b50] shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium">{plan.name}</span>
+                    {plan.goal && (
+                      <span className={cn("text-xs rounded-full border px-2 py-0.5 font-medium", GOAL_COLORS[plan.goal])}>
+                        {GOAL_LABELS[plan.goal]}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      {STATUS_ICON[plan.status]}
+                      {STATUS_OPTIONS.find((s) => s.value === plan.status)?.label}
                     </span>
-                  )}
-                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    {STATUS_ICON[plan.status]}
-                    {STATUS_OPTIONS.find((s) => s.value === plan.status)?.label}
-                  </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {plan.frequency_per_week ? `${plan.frequency_per_week}×/semana` : ""}
+                    {plan.frequency_per_week && plan.duration_weeks ? " · " : ""}
+                    {plan.duration_weeks ? `${plan.duration_weeks} semanas` : ""}
+                    {!plan.frequency_per_week && !plan.duration_weeks ? "Sem periodicidade definida" : ""}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {plan.frequency_per_week ? `${plan.frequency_per_week}×/semana` : ""}
-                  {plan.frequency_per_week && plan.duration_weeks ? " · " : ""}
-                  {plan.duration_weeks ? `${plan.duration_weeks} semanas` : ""}
-                  {!plan.frequency_per_week && !plan.duration_weeks ? "Sem periodicidade definida" : ""}
-                </p>
-              </div>
-              <ChevronRight size={16} className="text-muted-foreground shrink-0" />
-            </button>
+                <ChevronRight size={16} className="text-muted-foreground shrink-0" />
+              </button>
+              <Button type="button" size="sm" variant="outline"
+                className="h-auto shrink-0 px-3 text-xs"
+                disabled={duplicatingPlanId === plan.id}
+                onClick={() => void handleDuplicatePlan(plan)}>
+                {duplicatingPlanId === plan.id
+                  ? <Loader2 size={12} className="animate-spin" />
+                  : <Copy size={12} />}
+                Duplicar
+              </Button>
+            </div>
           ))}
         </div>
       )}
@@ -885,6 +1243,7 @@ export function WorkspaceTrainingTab({ workspaceId, patient, anamnesis }: Props)
       onSelectPlan={setSelectedPlan}
       onCreatePlan={() => setCreatingPlan(true)}
       onTemplateApplied={() => void loadPlans()}
+      onPlanDuplicated={() => void loadPlans()}
     />
   );
 }
