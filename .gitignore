@@ -33,3 +33,5 @@ test-results/
 *.sw?
 agitated-carson/
 .codex-tools/
+.vercel
+.env*
