@@ -137,7 +137,7 @@ export default function WorkspacePublicBookingPage() {
       if (!selectedService) return;
       const totalAmount = selectedService.price_cents / 100;
 
-      window.MercadoPago!(mpPublicKey, { locale: "pt-BR" })
+      new window.MercadoPago!(mpPublicKey, { locale: "pt-BR" })
         .bricks()
         .create("cardPayment", "mp-card-brick", {
           initialization: { amount: totalAmount },
