@@ -78,3 +78,74 @@ export async function fetchWorkspaceTemplateById(id: number): Promise<WorkspaceD
       })),
   };
 }
+
+interface TemplateSourcePlan {
+  title: string;
+  strategy_type?: string;
+  daily_calories?: number;
+  target_calories?: number;
+  target_protein_g?: number;
+  target_carbs_g?: number;
+  target_fat_g?: number;
+  meals: Array<{
+    meal_name: string;
+    time_suggestion?: string;
+    notes?: string;
+    foods?: Array<{
+      food_name: string;
+      quantity?: number;
+      unit?: string;
+      household_measure?: string;
+      measure_amount?: number;
+      kcal_per_100g?: number;
+      protein_per_100g?: number;
+      carbs_per_100g?: number;
+      fat_per_100g?: number;
+      food_group?: string;
+      notes?: string;
+    }>;
+  }>;
+}
+
+/** Salva um plano alimentar como MODELO do workspace via RPC SECURITY DEFINER. Retorna o id do modelo. */
+export async function createWorkspaceTemplate(
+  workspaceId: string,
+  name: string,
+  plan: TemplateSourcePlan,
+): Promise<number> {
+  const p_template = {
+    name: name.trim() || plan.title,
+    strategy: plan.strategy_type ?? null,
+    total_kcal: plan.daily_calories ?? plan.target_calories ?? null,
+    protein_g: plan.target_protein_g ?? null,
+    carbs_g: plan.target_carbs_g ?? null,
+    fat_g: plan.target_fat_g ?? null,
+  };
+  const p_meals = plan.meals.map((m) => ({
+    meal_name: m.meal_name,
+    time_suggestion: m.time_suggestion ?? null,
+    notes: m.notes ?? null,
+    foods: (m.foods ?? []).map((f) => ({
+      food_name: f.food_name,
+      quantity: f.quantity ?? null,
+      unit: f.unit ?? null,
+      household_measure: f.household_measure ?? null,
+      measure_amount: f.measure_amount ?? null,
+      kcal_per_100g: f.kcal_per_100g ?? null,
+      protein_per_100g: f.protein_per_100g ?? null,
+      carbs_per_100g: f.carbs_per_100g ?? null,
+      fat_per_100g: f.fat_per_100g ?? null,
+      food_group: f.food_group ?? null,
+      notes: f.notes ?? null,
+    })),
+  }));
+  const { data, error } = await workspaceSupabase.rpc("create_workspace_diet_template", {
+    p_workspace_id: workspaceId,
+    p_template,
+    p_meals,
+  });
+  if (error) throw new Error(error.message);
+  const id = typeof data === "number" ? data : Number(data);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error("O RPC não retornou um modelo válido.");
+  return id;
+}

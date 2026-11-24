@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Printer, ShoppingCart, Utensils } from "lucide-react";
+import { ArrowLeft, Bookmark, Printer, ShoppingCart, Utensils } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { buildShoppingList, shoppingListToText } from "@/lib/shoppingList";
 import { WorkspaceMealPlanEditor } from "@/components/workspace/WorkspaceMealPlanEditor";
@@ -19,7 +20,7 @@ import {
   WORKSPACE_MEAL_PLANS_GATE_MESSAGE,
   type WorkspaceMealPlanInput,
 } from "@/lib/workspaceMealPlans";
-import { fetchWorkspaceTemplateById } from "@/lib/workspaceTemplates";
+import { createWorkspaceTemplate, fetchWorkspaceTemplateById } from "@/lib/workspaceTemplates";
 
 const DEFAULT_MEALS = [
   ["Café da manhã", "07:00 - 08:00"],
@@ -73,6 +74,10 @@ export default function WorkspaceMealPlanPage() {
   const scopedPlan = snapshot.scope === scope ? snapshot.plan : null;
   const [pdfScope, setPdfScope] = useState<string | null>(null);
   const [shoppingOpen, setShoppingOpen] = useState(false);
+  const [tplOpen, setTplOpen] = useState(false);
+  const [tplName, setTplName] = useState("");
+  const [tplSaving, setTplSaving] = useState(false);
+  const [tplMsg, setTplMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const shoppingItems = useMemo(() => (scopedPlan ? buildShoppingList(scopedPlan.meals) : []), [scopedPlan]);
   const [issuer, setIssuer] = useState<{ id: string; name: string } | null>(null);
   useEffect(() => {
@@ -149,6 +154,25 @@ export default function WorkspaceMealPlanPage() {
     }
   };
 
+  const openTemplateDialog = () => {
+    setTplName(scopedPlan?.title ?? "");
+    setTplMsg(null);
+    setTplOpen(true);
+  };
+  const handleSaveAsTemplate = async () => {
+    if (!workspaceId || !scopedPlan) return;
+    setTplSaving(true);
+    setTplMsg(null);
+    try {
+      await createWorkspaceTemplate(workspaceId, tplName, scopedPlan);
+      setTplMsg({ type: "ok", text: "Modelo salvo! Ele já aparece na biblioteca de modelos do workspace." });
+    } catch (e) {
+      setTplMsg({ type: "err", text: e instanceof Error ? e.message : "Não foi possível salvar o modelo." });
+    } finally {
+      setTplSaving(false);
+    }
+  };
+
   const canExport = enabled && !isNew && !loading && !saving && !!scopedPatient && !!scopedPlan?.id;
   const exportPdf = (selectedAlternatives: Record<number, number[]>, substitutionLayout: MealPlanPdfOptions["substitutionLayout"]) => {
     if (!canExport || !scope || pdfScope !== scope || scopeRef.current !== scope || !scopedPatient || !scopedPlan) return;
@@ -201,6 +225,29 @@ export default function WorkspaceMealPlanPage() {
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => { void navigator.clipboard?.writeText(shoppingListToText(shoppingItems)); }}>Copiar lista</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button type="button" variant="outline" onClick={openTemplateDialog}>
+            <Bookmark size={16} />Salvar como modelo
+          </Button>
+          <Dialog open={tplOpen} onOpenChange={setTplOpen}>
+            <DialogContent className="w-[min(92vw,30rem)] rounded-2xl p-4 sm:p-5">
+              <DialogHeader>
+                <DialogTitle>Salvar como modelo</DialogTitle>
+                <DialogDescription>Cria um modelo reutilizável a partir deste plano salvo.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                <label htmlFor="tpl-name" className="text-sm font-medium">Nome do modelo</label>
+                <Input id="tpl-name" value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Ex.: Low carb 1500 kcal" />
+                {tplMsg ? (
+                  <p className={tplMsg.type === "ok" ? "text-sm text-green-600" : "text-sm text-destructive"} role={tplMsg.type === "ok" ? "status" : "alert"}>{tplMsg.text}</p>
+                ) : null}
+              </div>
+              <DialogFooter>
+                <Button type="button" onClick={() => void handleSaveAsTemplate()} disabled={tplSaving || !tplName.trim()}>
+                  {tplSaving ? "Salvando..." : "Salvar modelo"}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
