@@ -1,5 +1,12 @@
 # Continuidade Codex
 
+## Reconciliacao apos merge compartilhado — 2026-11-24
+
+- Estado confirmado apos `git fetch`: `HEAD` e `origin/main` estavam em `588eb8d5`; o WIP anterior ja estava incorporado em `a0562f20` e a arvore estava limpa.
+- Revisados manualmente os conflitos de `WorkspaceShell.tsx` e `WorkspacePatientsPage.tsx`: menu movel, responsividade, acoes acessiveis e tema do workspace foram preservados; restaurados apenas bordas, divisores, espaco de linha e foco do seletor perdidos do polish `4d635bb7`.
+- Publicado em fast-forward: `364a9739 style(workspace): restore shell and patient list polish`. Teste de Pacientes 14/14 e `npm run build` passaram. QA independente condicional: falta homologacao visual autenticada mobile/light/dark e teste especifico do shell.
+- A correcao de tema `588eb8d5` foi preservada: o site publico permanece claro e somente `/workspace` pode aplicar dark mode.
+
 ## Landing e acesso Nutrit — 2026-11-24
 
 - Redesign local da landing SaaS e telas de login, cadastro, recuperacao e convite. Hero mostra previa ilustrativa com dados ficticios, sem expor dados clinicos; oferta existente de 30 dias/R$79,90 permanece consistente.
