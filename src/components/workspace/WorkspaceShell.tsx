@@ -16,10 +16,10 @@ import {
 
 const navCls = (isActive: boolean, collapsed: boolean) =>
   cn(
-    "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
+    "flex min-h-10 items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     collapsed && "justify-center px-0",
     isActive
-      ? "bg-[#e6f1eb] dark:bg-primary/20 text-[#166b50] dark:text-primary"
+      ? "bg-primary/10 text-primary dark:bg-primary/20"
       : "text-muted-foreground hover:bg-muted hover:text-foreground",
   );
 
@@ -96,12 +96,12 @@ export default function WorkspaceShell() {
             collapsed && "justify-center px-0",
           )}
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#e6f1eb] text-[#166b50]">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
             <LayoutDashboard size={17} />
           </span>
           {!collapsed && (
             <div className="leading-tight">
-              <p className="text-sm font-bold text-[#153f34]">Nutrit</p>
+              <p className="text-sm font-bold text-primary">Nutrit</p>
               <p className="text-[10px] text-muted-foreground">Área clínica</p>
             </div>
           )}
@@ -145,7 +145,7 @@ export default function WorkspaceShell() {
         <div className={cn("border-t px-2 py-3 space-y-1", collapsed && "flex flex-col items-center")}>
           {!collapsed && (
             <div className="flex items-center gap-2 rounded-lg px-2.5 py-2">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#166b50]/10 text-[#166b50] text-xs font-bold">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
                 {initials}
               </span>
               <div className="min-w-0 leading-tight">
@@ -158,7 +158,7 @@ export default function WorkspaceShell() {
           )}
           {collapsed && (
             <div
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#166b50]/10 text-[#166b50] text-xs font-bold"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold"
               title={userEmail ?? ""}
             >
               {initials}
@@ -169,7 +169,7 @@ export default function WorkspaceShell() {
             onClick={toggleTheme}
             title={theme === "dark" ? "Modo claro" : "Modo escuro"}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              "flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               collapsed && "justify-center px-0",
             )}
           >
@@ -183,7 +183,7 @@ export default function WorkspaceShell() {
             onClick={() => void logout()}
             title={collapsed ? "Sair" : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              "flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               collapsed && "justify-center px-0",
             )}
           >
@@ -197,7 +197,7 @@ export default function WorkspaceShell() {
           type="button"
           onClick={() => setCollapsed((v) => !v)}
           aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-          className="absolute -right-3 top-[52px] flex h-6 w-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground transition-colors z-10"
+            className="absolute -right-3 top-[52px] z-10 flex h-7 w-7 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {collapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
         </button>
