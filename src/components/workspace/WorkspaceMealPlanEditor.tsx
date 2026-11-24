@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AlertTriangle, ChevronDown, ChevronUp, Copy, Plus, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import {
   type EditorMeal,
 } from "@/components/admin/MealTableEditor";
 import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
+import { mealAdherence } from "@/lib/mealAdherence";
 import { summarizeWorkspaceMealPlan } from "@/lib/workspaceMealPlanSummary";
 import type { AlternativeMeal, MealFood } from "@/lib/supabase";
 import type { WorkspaceMeal, WorkspaceMealFood, WorkspaceMealPlanInput } from "@/lib/workspaceMealPlans";
@@ -20,6 +21,8 @@ interface WorkspaceMealPlanEditorProps {
   initialPlan: WorkspaceMealPlanInput;
   onSave: (input: WorkspaceMealPlanInput) => Promise<void>;
   saving?: boolean;
+  onAutosave?: (input: WorkspaceMealPlanInput) => Promise<void>;
+  canAutosave?: boolean;
 }
 
 function clonePlan(plan: WorkspaceMealPlanInput): WorkspaceMealPlanInput {
@@ -93,9 +96,15 @@ function blankMeal(plan: WorkspaceMealPlanInput): WorkspaceMeal {
   };
 }
 
-export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, onSave, saving = false }: WorkspaceMealPlanEditorProps) {
+export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, onSave, saving = false, onAutosave, canAutosave = false }: WorkspaceMealPlanEditorProps) {
   const [draft, setDraft] = useState(() => clonePlan(initialPlan));
   const [error, setError] = useState("");
+  const [autosaveState, setAutosaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [lastSavedAt, setLastSavedAt] = useState("");
+  const lastSavedSnapshotRef = useRef<string>("");
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onAutosaveRef = useRef(onAutosave);
+  onAutosaveRef.current = onAutosave;
   const summary = useMemo(() => summarizeWorkspaceMealPlan(draft), [draft]);
   const mainTotals = useMemo(() => sumFoods(draft.meals.flatMap((meal) =>
     (meal.foods ?? []).map((food) => calculateFoodMacros(food)),
@@ -108,7 +117,30 @@ export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, on
   useEffect(() => {
     setDraft(clonePlan(initialPlan));
     setError("");
+    lastSavedSnapshotRef.current = JSON.stringify(initialPlan);
+    setAutosaveState("idle");
   }, [initialPlan, scopeKey]);
+
+  useEffect(() => {
+    if (!canAutosave) return;
+    const serialized = JSON.stringify(draft);
+    if (serialized === lastSavedSnapshotRef.current) return; // nada mudou
+    if (saving) return; // não concorrer com salvamento manual
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      const fn = onAutosaveRef.current;
+      if (!fn) return;
+      setAutosaveState("saving");
+      void fn(draft)
+        .then(() => {
+          lastSavedSnapshotRef.current = serialized;
+          setAutosaveState("saved");
+          setLastSavedAt(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
+        })
+        .catch(() => setAutosaveState("error"));
+    }, 2500);
+    return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
+  }, [draft, canAutosave, saving]);
 
   const updateMeal = (index: number, updated: EditorMeal) => setDraft((current) => ({
     ...current,
@@ -148,6 +180,7 @@ export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, on
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     setError("");
     try {
       await onSave(draft);
@@ -175,16 +208,28 @@ export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, on
         <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resumo nutricional</p><h2 id="workspace-plan-summary-title" className="text-lg font-semibold">Totais das refeições principais</h2><p className="text-xs text-muted-foreground">Opções e substituições não são somadas ao total diário.</p></div>
         <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
-            { label: "Energia", value: mainTotals.cal, unit: "kcal" },
-            { label: "Proteínas", value: mainTotals.prot, unit: "g" },
-            { label: "Carboidratos", value: mainTotals.carbs, unit: "g" },
-            { label: "Gorduras", value: mainTotals.fat, unit: "g" },
-          ].map((item) => (
-            <div key={item.label} className="rounded-md border bg-background p-3">
-              <dt className="text-xs font-medium text-muted-foreground">{item.label}</dt>
-              <dd className="mt-1 text-xl font-semibold tabular-nums">{nutritionNumber.format(item.value)} <span className="text-xs font-normal text-muted-foreground">{item.unit}</span></dd>
-            </div>
-          ))}
+            { label: "Energia", value: mainTotals.cal, unit: "kcal", target: draft.daily_calories ?? draft.target_calories },
+            { label: "Proteínas", value: mainTotals.prot, unit: "g", target: draft.target_protein_g },
+            { label: "Carboidratos", value: mainTotals.carbs, unit: "g", target: draft.target_carbs_g },
+            { label: "Gorduras", value: mainTotals.fat, unit: "g", target: draft.target_fat_g },
+          ].map((item: { label: string; value: number; unit: string; target?: number }) => {
+            const adh = mealAdherence(item.value, item.target);
+            const barColor = adh.status === "under" ? "bg-amber-500" : adh.status === "over" ? "bg-red-500" : "bg-green-500";
+            return (
+              <div key={item.label} className="rounded-md border bg-background p-3">
+                <dt className="text-xs font-medium text-muted-foreground">{item.label}</dt>
+                <dd className="mt-1 text-xl font-semibold tabular-nums">{nutritionNumber.format(item.value)} <span className="text-xs font-normal text-muted-foreground">{item.unit}</span></dd>
+                {adh.status !== "none" && item.target != null ? (
+                  <>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className={`h-full rounded-full ${barColor}`} style={{ width: `${adh.pct}%` }} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">meta {nutritionNumber.format(item.target)} {item.unit} · {Math.round(adh.rawPct)}%</p>
+                  </>
+                ) : null}
+              </div>
+            );
+          })}
         </dl>
         <div aria-label="Alertas de consistência" className="space-y-2">
           {summary.alerts.map((alert) => (
@@ -223,7 +268,11 @@ export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, on
           );
         })}
       </section>
-      <div className="flex justify-end border-t pt-4"><Button type="submit" disabled={saving}><Save size={16} />{saving ? "Salvando..." : "Salvar plano alimentar"}</Button></div>
+      <div className="flex justify-between border-t pt-4">
+        <span className="text-xs text-muted-foreground" aria-live="polite">
+          {autosaveState === "saving" ? "Salvando..." : autosaveState === "saved" ? `Salvo automaticamente às ${lastSavedAt}` : autosaveState === "error" ? "Falha ao salvar automaticamente" : ""}
+        </span>
+        <Button type="submit" disabled={saving}><Save size={16} />{saving ? "Salvando..." : "Salvar plano alimentar"}</Button></div>
     </form>
   );
 }

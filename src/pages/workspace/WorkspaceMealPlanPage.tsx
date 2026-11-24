@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Printer, Utensils } from "lucide-react";
+import { ArrowLeft, Printer, ShoppingCart, Utensils } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { buildShoppingList, shoppingListToText } from "@/lib/shoppingList";
 import { WorkspaceMealPlanEditor } from "@/components/workspace/WorkspaceMealPlanEditor";
 import { MealPlanPdfOptionsDialog } from "@/components/admin/MealPlanPdfOptionsDialog";
 import { generateMealPlanPdf, type MealPlanPdfOptions } from "@/lib/generateMealPlanPdf";
@@ -70,6 +72,8 @@ export default function WorkspaceMealPlanPage() {
   const scopedPatient = snapshot.scope === scope ? snapshot.patient : null;
   const scopedPlan = snapshot.scope === scope ? snapshot.plan : null;
   const [pdfScope, setPdfScope] = useState<string | null>(null);
+  const [shoppingOpen, setShoppingOpen] = useState(false);
+  const shoppingItems = useMemo(() => (scopedPlan ? buildShoppingList(scopedPlan.meals) : []), [scopedPlan]);
   const [issuer, setIssuer] = useState<{ id: string; name: string } | null>(null);
   useEffect(() => {
     if (!enabled || !workspaceId || isNew) return;
@@ -120,6 +124,11 @@ export default function WorkspaceMealPlanPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const handleAutosave = useCallback(async (input: WorkspaceMealPlanInput) => {
+    if (!workspaceId || patientId == null || isNew || !scopedPatient || scopedPatient.workspace_id !== workspaceId) return;
+    await saveWorkspaceMealPlan(workspaceId, patientId, input, "autosave");
+  }, [workspaceId, patientId, isNew, scopedPatient]);
+
   const handleSave = async (input: WorkspaceMealPlanInput) => {
     if (!workspaceId || patientId == null || !scopedPatient || scopedPatient.workspace_id !== workspaceId) throw new Error("Paciente fora do workspace ativo.");
     const saveRequestId = ++saveRequestRef.current;
@@ -167,12 +176,40 @@ export default function WorkspaceMealPlanPage() {
         {enabled && !loading && error && <p role="alert" className="rounded-md border border-destructive/30 bg-background p-4 text-sm text-destructive">{error}</p>}
         {canExport && scopedPlan && <>
           <Button type="button" variant="outline" onClick={() => setPdfScope(scope)}><Printer size={16} />PDF do plano salvo</Button>
+          <Button type="button" variant="outline" onClick={() => setShoppingOpen(true)}>
+            <ShoppingCart size={16} />Lista de compras
+          </Button>
+          <Dialog open={shoppingOpen} onOpenChange={setShoppingOpen}>
+            <DialogContent className="flex max-h-[86vh] w-[min(92vw,40rem)] flex-col overflow-hidden rounded-2xl p-4 sm:p-5">
+              <DialogHeader>
+                <DialogTitle>Lista de compras</DialogTitle>
+                <DialogDescription>Alimentos agregados do plano salvo (soma das quantidades por refeição).</DialogDescription>
+              </DialogHeader>
+              <div className="flex-1 overflow-y-auto">
+                {shoppingItems.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Nenhum alimento no plano.</p>
+                ) : (
+                  <ul className="divide-y">
+                    {shoppingItems.map((item) => (
+                      <li key={`${item.food_name}|${item.unit}`} className="flex items-center justify-between gap-3 py-2 text-sm">
+                        <span className="text-foreground">{item.food_name}{item.food_group ? <span className="ml-2 text-xs text-muted-foreground">{item.food_group}</span> : null}</span>
+                        <span className="tabular-nums text-muted-foreground">{item.quantity} {item.unit}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => { void navigator.clipboard?.writeText(shoppingListToText(shoppingItems)); }}>Copiar lista</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <MealPlanPdfOptionsDialog key={scope} open={pdfScope === scope} meals={scopedPlan.meals}
             title="Exportar plano alimentar" description="Escolha as opções que devem aparecer no PDF da versão salva."
             confirmLabel="Baixar PDF" emptyMessage="Nenhuma refeição com opções alternativas."
             onOpenChange={(open) => setPdfScope(open ? scope : null)} onConfirm={exportPdf} />
         </>}
-        {enabled && !loading && scopedPatient && scopedPlan && <><header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Workspace · Plano alimentar</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">{scopedPatient.name}</h1><p className="mt-1 text-sm text-muted-foreground">{scopedPlan.id ? "Editar plano" : "Novo plano"} · gravação transacional workspace</p></div><div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Paciente #{scopedPatient.id}</div></header><WorkspaceMealPlanEditor key={scope ?? "workspace-meal-plan-empty"} workspaceId={workspaceId ?? ""} scopeKey={scope ?? ""} initialPlan={scopedPlan} onSave={handleSave} saving={saving} /></>}
+        {enabled && !loading && scopedPatient && scopedPlan && <><header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Workspace · Plano alimentar</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">{scopedPatient.name}</h1><p className="mt-1 text-sm text-muted-foreground">{scopedPlan.id ? "Editar plano" : "Novo plano"} · gravação transacional workspace</p></div><div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Paciente #{scopedPatient.id}</div></header><WorkspaceMealPlanEditor key={scope ?? "workspace-meal-plan-empty"} workspaceId={workspaceId ?? ""} scopeKey={scope ?? ""} initialPlan={scopedPlan} onSave={handleSave} saving={saving} onAutosave={handleAutosave} canAutosave={!isNew && !!scopedPlan?.id} /></>}
       </div>
     </main>
   );
