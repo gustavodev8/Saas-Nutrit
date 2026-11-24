@@ -171,6 +171,67 @@ export async function saveWorkspaceMealPlan(
 
 export const workspaceMealPlanColumns = { PLAN_COLUMNS, MEAL_COLUMNS, FOOD_COLUMNS };
 
+/** "X" -> "X (cópia)"; se já existir (case-insensitive), "X (cópia 2)", "X (cópia 3)"... */
+export function duplicateMealPlanTitle(title: string, existingTitles: string[]): string {
+  const base = title.trim();
+  const taken = new Set(existingTitles.map((t) => t.trim().toLowerCase()));
+  const first = `${base} (cópia)`;
+  if (!taken.has(first.toLowerCase())) return first;
+  for (let i = 2; ; i++) {
+    const candidate = `${base} (cópia ${i})`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
+/**
+ * Duplica um plano alimentar reusando o RPC de save: o plano de origem é lido,
+ * clonado (ids zerados para inserir novos) e salvo no paciente de destino.
+ */
+export async function duplicateWorkspaceMealPlan(
+  workspaceId: string,
+  sourcePlanId: number,
+  sourcePatientId: number,
+  targetPatientId: number,
+  newTitle: string,
+): Promise<number> {
+  assertScope(workspaceId, sourcePatientId);
+  assertScope(workspaceId, targetPatientId);
+  const source = await fetchWorkspaceMealPlan(workspaceId, sourcePatientId, sourcePlanId);
+
+  const meals: WorkspaceMeal[] = source.meals.map((meal) => ({
+    ...meal,
+    workspace_id: workspaceId,
+    plan_id: 0,
+    id: undefined,
+    foods: (meal.foods ?? []).map((food) => ({ ...food, workspace_id: workspaceId, meal_id: 0, id: undefined })),
+    alternative_meals: (meal.alternative_meals ?? []).map((alternative) => ({
+      ...alternative,
+      foods: (alternative.foods ?? []).map((food) => ({ ...food })),
+    })),
+    substitution_items: (meal.substitution_items ?? []).map((item) => ({ ...item })),
+  }));
+
+  const input: WorkspaceMealPlanInput = {
+    id: undefined,
+    patient_id: targetPatientId,
+    title: newTitle.trim() || source.title,
+    start_date: source.start_date,
+    end_date: source.end_date,
+    daily_calories: source.daily_calories,
+    notes: source.notes,
+    strategy_type: source.strategy_type,
+    target_calories: source.target_calories,
+    target_protein_g: source.target_protein_g,
+    target_carbs_g: source.target_carbs_g,
+    target_fat_g: source.target_fat_g,
+    measurement_id: source.measurement_id,
+    get_kcal: source.get_kcal,
+    meals,
+  };
+
+  return await saveWorkspaceMealPlan(workspaceId, targetPatientId, input);
+}
+
 // ─── Template → Plan conversion ───────────────────────────────────────────────
 
 import type { WorkspaceDietTemplate } from "./workspaceTemplates";

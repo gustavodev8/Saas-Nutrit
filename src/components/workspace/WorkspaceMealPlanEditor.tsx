@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { AlertTriangle, ChevronDown, ChevronUp, Plus, Save } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Copy, Plus, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,7 @@ import {
 import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
 import { summarizeWorkspaceMealPlan } from "@/lib/workspaceMealPlanSummary";
 import type { AlternativeMeal, MealFood } from "@/lib/supabase";
-import type { WorkspaceMeal, WorkspaceMealPlanInput } from "@/lib/workspaceMealPlans";
+import type { WorkspaceMeal, WorkspaceMealFood, WorkspaceMealPlanInput } from "@/lib/workspaceMealPlans";
 
 interface WorkspaceMealPlanEditorProps {
   workspaceId: string;
@@ -125,6 +125,27 @@ export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, on
     return { ...current, meals: meals.map((meal, mealIndex) => ({ ...meal, sort_order: mealIndex })) };
   });
 
+  const duplicateMeal = (index: number) => setDraft((current) => {
+    const original = current.meals[index];
+    const clone: WorkspaceMeal = {
+      ...original,
+      id: undefined,
+      meal_name: `${original.meal_name} (cópia)`,
+      foods: (original.foods ?? []).map((food: WorkspaceMealFood) => {
+        const { id: _foodId, ...rest } = food;
+        return rest;
+      }),
+      alternative_meals: (original.alternative_meals ?? []).map((alt) => ({
+        ...alt,
+        foods: (alt.foods ?? []).map((food) => ({ ...food })),
+      })) as AlternativeMeal[],
+      substitution_items: (original.substitution_items ?? []).map((item) => ({ ...item })),
+    };
+    const meals = [...current.meals];
+    meals.splice(index + 1, 0, clone);
+    return { ...current, meals: meals.map((meal, mealIndex) => ({ ...meal, sort_order: mealIndex })) };
+  });
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
@@ -187,6 +208,7 @@ export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, on
               <div className="absolute right-16 top-4 z-10 flex gap-1">
                 <Button type="button" variant="ghost" size="icon" aria-label={`Subir refeição ${index + 1}`} onClick={() => moveMeal(index, -1)}><ChevronUp size={16} /></Button>
                 <Button type="button" variant="ghost" size="icon" aria-label={`Descer refeição ${index + 1}`} onClick={() => moveMeal(index, 1)}><ChevronDown size={16} /></Button>
+                <Button type="button" variant="ghost" size="icon" aria-label={`Duplicar refeição ${index + 1}`} onClick={() => duplicateMeal(index)}><Copy size={16} /></Button>
               </div>
               <MealSection
                 meal={editorMeal}
