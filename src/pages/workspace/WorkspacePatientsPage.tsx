@@ -214,12 +214,12 @@ export default function WorkspacePatientsPage() {
                 </div>
               ) : (
                 <>
-                  <ul className="divide-y">
+                  <ul className="divide-y divide-border/70 dark:divide-white/10">
                     {pageData.items.map((patient) => {
                       const age = calcAge(patient.birth_date ?? null);
                       const sub = [genderLabel(patient.gender), age, patient.city].filter(Boolean).join(" · ");
                       return (
-                        <li key={patient.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/30 dark:hover:bg-white/5 sm:flex-nowrap sm:px-4">
+                        <li key={patient.id} className="flex flex-wrap items-center gap-3 px-3 py-3 transition-colors hover:bg-muted/30 dark:hover:bg-white/5 sm:flex-nowrap sm:px-4">
                           {/* Avatar */}
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-semibold select-none">
                             {getInitials(patient.name)}
@@ -253,7 +253,7 @@ export default function WorkspacePatientsPage() {
                     })}
                   </ul>
                   {pageData.pageCount > 1 && (
-                    <footer className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3">
+                    <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 px-4 py-3 dark:border-white/10">
                       <p className="text-sm text-muted-foreground">{pageData.total} paciente{pageData.total !== 1 ? "s" : ""} · Pág. {pageData.page}/{pageData.pageCount}</p>
                       <div className="flex items-center gap-2">
                         <Button variant="outline" size="sm" disabled={pageData.page <= 1} onClick={() => setPage(pageData.page - 1)}><ChevronLeft size={14} />Anterior</Button>
@@ -268,7 +268,7 @@ export default function WorkspacePatientsPage() {
 
           {/* Form */}
           <form className="overflow-hidden rounded-md border border-border/80 bg-background dark:border-white/15 dark:bg-[#20332b] xl:sticky xl:top-5" onSubmit={handleSubmit}>
-            <div className="flex items-center justify-between border-b bg-muted/20 px-5 py-4">
+            <div className="flex items-center justify-between border-b border-border/70 bg-muted/20 px-5 py-4 dark:border-white/10">
               <div><p className="text-xs font-medium text-primary">Cadastro</p><h2 className="font-semibold text-sm">{visibleEditingId == null ? "Novo paciente" : "Editar paciente"}</h2></div>
               {visibleEditingId != null && (
                 <Button size="icon" variant="ghost" className="h-7 w-7" type="button" aria-label="Cancelar edição" onClick={resetForm}><X size={14} /></Button>
@@ -280,7 +280,7 @@ export default function WorkspacePatientsPage() {
                 <div className="space-y-1.5"><Label htmlFor="patient-birth-date" className="text-xs">Nascimento</Label><Input id="patient-birth-date" type="date" max={localDateString(new Date())} value={visibleForm.birth_date} onChange={(e) => setForm({ ...visibleForm, birth_date: e.target.value })} /></div>
                 <div className="space-y-1.5">
                   <Label htmlFor="patient-gender" className="text-xs">Sexo</Label>
-                  <select id="patient-gender" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={visibleForm.gender} onChange={(e) => setForm({ ...visibleForm, gender: e.target.value as WorkspacePatientInput["gender"] })}>
+                  <select id="patient-gender" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={visibleForm.gender} onChange={(e) => setForm({ ...visibleForm, gender: e.target.value as WorkspacePatientInput["gender"] })}>
                     <option value="">Não informado</option><option value="M">Masculino</option><option value="F">Feminino</option><option value="outro">Outro</option>
                   </select>
                 </div>

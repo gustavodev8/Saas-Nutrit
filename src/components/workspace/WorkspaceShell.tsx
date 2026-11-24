@@ -121,14 +121,14 @@ export default function WorkspaceShell() {
       {/* ── Sidebar ── */}
       <aside
         className={cn(
-          "relative hidden flex-col border-r bg-background transition-all duration-200 shrink-0 h-full overflow-y-auto overflow-x-hidden md:flex",
+          "relative hidden flex-col border-r border-border/80 bg-background transition-all duration-200 shrink-0 h-full overflow-y-auto overflow-x-hidden md:flex",
           collapsed ? "w-[60px]" : "w-[220px]",
         )}
       >
         {/* Logo */}
         <div
           className={cn(
-            "flex items-center gap-2.5 border-b px-3 py-4",
+            "flex items-center gap-2.5 border-b border-border/70 px-3 py-4",
             collapsed && "justify-center px-0",
           )}
         >
@@ -178,7 +178,7 @@ export default function WorkspaceShell() {
         </nav>
 
         {/* User + logout */}
-        <div className={cn("border-t px-2 py-3 space-y-1", collapsed && "flex flex-col items-center")}>
+        <div className={cn("border-t border-border/70 px-2 py-3 space-y-1", collapsed && "flex flex-col items-center")}>
           {!collapsed && (
             <div className="flex items-center gap-2 rounded-lg px-2.5 py-2">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
@@ -233,7 +233,7 @@ export default function WorkspaceShell() {
           type="button"
           onClick={() => setCollapsed((v) => !v)}
           aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-            className="absolute -right-3 top-[52px] z-10 flex h-7 w-7 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute -right-3 top-[52px] z-10 flex h-7 w-7 items-center justify-center rounded-full border border-border/80 bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {collapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
         </button>
