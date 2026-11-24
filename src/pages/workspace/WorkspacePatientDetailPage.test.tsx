@@ -303,6 +303,26 @@ describe("WorkspacePatientDetailPage", () => {
     expect(screen.queryByRole("link", { name: "Plano de novembro" })).not.toBeInTheDocument();
   });
 
+  it("cancels deletion without calling the scoped delete service", async () => {
+    mocks.fetchMealPlans.mockResolvedValueOnce([
+      { id: 73, patient_id: 41, workspace_id: "workspace-a", title: "Plano de novembro", meals: [] },
+    ]);
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Ana" });
+    fireEvent.click(screen.getByRole("tab", { name: "Planos" }));
+    expect(await screen.findByRole("link", { name: "Plano de novembro" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Excluir Plano de novembro" }));
+    expect(await screen.findByRole("heading", { name: "Excluir plano alimentar?" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Excluir plano alimentar?" })).not.toBeInTheDocument());
+    expect(mocks.deleteMealPlan).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Plano de novembro" })).toBeInTheDocument();
+    expect(mocks.fetchMealPlans).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the confirmation open and reports a delete failure", async () => {
     mocks.fetchMealPlans.mockResolvedValueOnce([{ id: 73, patient_id: 41, workspace_id: "workspace-a", title: "Plano de novembro", meals: [] }]);
     mocks.deleteMealPlan.mockRejectedValueOnce(new Error("delete denied"));
