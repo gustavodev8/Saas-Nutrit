@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // Contexts
-import { ThemeProvider } from "@/contexts/ThemeContext";
+import { ThemeProvider, ThemeScopeSync } from "@/contexts/ThemeContext";
 import { ContentProvider } from "@/contexts/ContentContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PatientPortalAuthProvider } from "@/contexts/PatientPortalAuthContext";
@@ -167,6 +167,7 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
               <SaaSPilotRouteGate enabled={isSaaSPilotMode}>
+                <ThemeScopeSync />
                 <ScrollToTop />
                 <RouteErrorBoundary>
                 <Suspense fallback={<RouteLoadingFallback />}>
