@@ -6,6 +6,7 @@ import {
   type MacroGoals,
 } from "@/lib/planningUtils";
 import type { MealPlan } from "@/lib/supabase";
+import type { MealFood } from "@/lib/supabase";
 import type { WorkspaceMealPlanInput } from "@/lib/workspaceMealPlans";
 
 export interface WorkspaceMealPlanSummary {
@@ -46,11 +47,26 @@ function buildMacroGoals(plan: WorkspaceMealPlanInput): MacroGoals | undefined {
   };
 }
 
+function resolveSummaryFoodMacros(food: MealFood): MealFood {
+  const recalculated = calculateFoodMacros(food);
+  if (typeof food.quantity !== "number" || !Number.isFinite(food.quantity) || food.quantity <= 0) {
+    return recalculated;
+  }
+
+  return {
+    ...recalculated,
+    calories: Number.isFinite(food.calories) ? food.calories : recalculated.calories,
+    protein: Number.isFinite(food.protein) ? food.protein : recalculated.protein,
+    carbs: Number.isFinite(food.carbs) ? food.carbs : recalculated.carbs,
+    fat: Number.isFinite(food.fat) ? food.fat : recalculated.fat,
+  };
+}
+
 export function summarizeWorkspaceMealPlan(plan: WorkspaceMealPlanInput): WorkspaceMealPlanSummary {
   const meals = plan.meals.map((meal) => ({
     meal_name: meal.meal_name,
     time_suggestion: meal.time_suggestion,
-    foods: (meal.foods ?? []).map((food) => calculateFoodMacros(food)),
+    foods: (meal.foods ?? []).map(resolveSummaryFoodMacros),
   }));
 
   const totals = meals.reduce(

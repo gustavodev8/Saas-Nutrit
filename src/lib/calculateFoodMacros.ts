@@ -31,6 +31,7 @@ export function calculateFoodMacros(food: MealFood, foodDb?: FoodItem): MealFood
   if (qty === 0) {
     return { ...food, calories: 0, protein: 0, carbs: 0, fat: 0 };
   }
+
   if (food.kcal_per_100g === undefined) return food;
 
   const availableMeasures = food.household_measures ?? foodDb?.household_measures ?? getFoodHouseholdMeasures(food.food_name);

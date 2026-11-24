@@ -33,6 +33,28 @@ describe("summarizeWorkspaceMealPlan", () => {
     expect(result.totals).toEqual({ calories: 130, protein: 2.5, carbohydrates: 28, fat: 0.3 });
   });
 
+  it("keeps absolute macros for manual foods without per-100g values", () => {
+    const result = summarizeWorkspaceMealPlan(basePlan({
+      meals: [{
+        workspace_id: "workspace-a",
+        plan_id: 1,
+        meal_name: "Lanche",
+        foods: [{
+          meal_id: 1,
+          food_name: "Receita manual",
+          quantity: 1,
+          unit: "porção",
+          calories: 321,
+          protein: 18.4,
+          carbs: 27.2,
+          fat: 11.6,
+        }],
+      }],
+    }));
+
+    expect(result.totals).toEqual({ calories: 321, protein: 18.4, carbohydrates: 27.2, fat: 11.6 });
+  });
+
   it("does not add alternatives or substitutions to the daily totals or consistency check", () => {
     const result = summarizeWorkspaceMealPlan(basePlan({
       daily_calories: 1000,
@@ -40,7 +62,7 @@ describe("summarizeWorkspaceMealPlan", () => {
         workspace_id: "workspace-a",
         plan_id: 1,
         meal_name: "Almoço",
-        foods: [{ meal_id: 1, food_name: "Refeição principal", quantity: 100, unit: "g", kcal_per_100g: 500, protein_per_100g: 20, carbs_per_100g: 50, fat_per_100g: 10, calories: 500, protein: 20, carbs: 50, fat: 10 }],
+        foods: [{ meal_id: 1, food_name: "Refeição principal", quantity: 100, unit: "g", kcal_per_100g: 100, protein_per_100g: 2, carbs_per_100g: 3, fat_per_100g: 1, calories: 500, protein: 20, carbs: 50, fat: 10 }],
         alternative_meals: [{
           meal_name: "Opção 2",
           foods: [{ meal_id: 1, food_name: "Alternativa", calories: 5000, protein: 200, carbs: 500, fat: 100 }],

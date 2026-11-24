@@ -19,6 +19,25 @@ describe("calculateFoodMacros", () => {
     expect(result.fat).toBe(23.8);
   });
 
+  it("recalculates catalog macros when quantity changes", () => {
+    const result = calculateFoodMacros({
+      meal_id: 0,
+      food_name: "Alimento catalogado",
+      quantity: 150,
+      unit: "g",
+      calories: 321,
+      protein: 18.4,
+      carbs: 27.2,
+      fat: 11.6,
+      kcal_per_100g: 100,
+      protein_per_100g: 5,
+      carbs_per_100g: 10,
+      fat_per_100g: 2,
+    });
+
+    expect(result).toMatchObject({ calories: 150, protein: 7.5, carbs: 15, fat: 3 });
+  });
+
   it("clears previous macros when quantity becomes zero", () => {
     const result = calculateFoodMacros({
       meal_id: 0,
