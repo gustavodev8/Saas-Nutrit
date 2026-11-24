@@ -1,5 +1,12 @@
 # Continuidade Codex
 
+## Piloto — resumo nutricional e exclusão de planos — 2026-11-24
+
+- **Tarefa 0 verificada em producao:** o detalhe de `Biblioteca Dieta - Emagrecimento 1307 kcal - M001` abriu em `/workspace/modelos/124` com 5 refeicoes e alimentos visiveis; o RLS dos filhos do modelo esta operacional para o workspace Gustavo.
+- **Tarefa 1 concluida:** o resumo do plano passa a preferir macros absolutos ja salvos no alimento. O editor continua recalculando alimentos catalogados por `*_per_100g` ao mudar quantidade. Testes focados: 11/11; build e QA independente: `QA_PASS`.
+- **Tarefa 2 concluida:** exclusao de plano tem confirmacao, erro recuperavel, cancelamento sem `DELETE` e reload apos sucesso. O servico limita o `DELETE` por `workspace_id`, `patient_id` e `id`. Testes de servico/pagina: 22/22; build e QA independente: `QA_PASS`.
+- **Limite de publicacao:** nenhuma migration/DDL foi aplicada. O proximo pacote local seguro e inicializar a aba de configuracoes por `?tab=plano`; a limpeza remota de dados QA continua dependente de acao explicita do usuario.
+
 ## Tarefa 2 — exclusao de plano alimentar no workspace — 2026-11-24
 
 - **Escopo local:** adicionada exclusao de plano alimentar na jornada de prontuario workspace, com confirmacao acessivel, tratamento de erro e recarga da lista somente apos sucesso.
