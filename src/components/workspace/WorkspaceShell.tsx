@@ -151,7 +151,7 @@ export default function WorkspaceShell() {
               <div className="min-w-0 leading-tight">
                 <p className="truncate text-xs font-medium text-foreground">{userEmail}</p>
                 <p className="text-[10px] text-muted-foreground">
-                  {membership?.role === "owner" ? "Owner" : "Nutricionista"}
+                  {membership?.role === "owner" ? "Responsável" : "Nutricionista"}
                 </p>
               </div>
             </div>
