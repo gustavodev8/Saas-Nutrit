@@ -118,7 +118,7 @@ function MealCard({ meal, defaultOpen }: { meal: WorkspaceDietTemplateMeal; defa
 }
 
 export function WorkspaceModeloDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { templateId: id } = useParams<{ templateId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [template, setTemplate] = useState<WorkspaceDietTemplate | null>(null);
