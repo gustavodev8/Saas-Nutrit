@@ -1,5 +1,13 @@
 # Continuidade Codex
 
+## Tarefa 2 — exclusao de plano alimentar no workspace — 2026-11-24
+
+- **Escopo local:** adicionada exclusao de plano alimentar na jornada de prontuario workspace, com confirmacao acessivel, tratamento de erro e recarga da lista somente apos sucesso.
+- **Isolamento:** `deleteWorkspaceMealPlan` aplica filtros explicitos por `workspace_id`, `patient_id` e `id` no `DELETE`; nao houve alteracao de migration, RLS, Supabase remoto ou dados.
+- **Validacoes:** testes focados do servico e da pagina passaram (4 testes); `npm run build` e `git diff --check` passaram. A execucao ampla da pagina nesta base ainda possui falhas preexistentes relacionadas a testes que esperam a lista de planos fora da aba `Planos`.
+- **Publicacao:** commit apenas local; nenhum push ou deploy executado.
+- **Proximo passo seguro:** revisar o fluxo em sessao autenticada no piloto antes de qualquer publicacao.
+
 ## Reconciliacao apos merge compartilhado — 2026-11-24
 
 - Estado confirmado apos `git fetch`: `HEAD` e `origin/main` estavam em `588eb8d5`; o WIP anterior ja estava incorporado em `a0562f20` e a arvore estava limpa.
@@ -44,7 +52,6 @@
 - Validações locais: `npx tsc --noEmit`, ESLint direcionado, `npm run build` e `git diff --check` passaram.
 - Testes focados falham por condições preexistentes no checkout: `WorkspacePatientsPage.test.tsx` monta sem Router apesar de `useSearchParams()` já existir no HEAD; `WorkspacePatientDetailPage.test.tsx` falha em expectativas de dados/contrato fora dos dois arquivos alterados. Nenhum teste foi alterado para mascarar isso.
 - QA independente read-only: sem regressão funcional identificada no diff; status condicional por falhas preexistentes e ausência de screenshot/browser autenticado. Próximo passo seguro: revisão visual manual local antes de commit ou publicação.
-
 ## Redesign da listagem de pacientes — 2026-11-15
 
 - **Estado local:** redesign visual publicado no commit `34faf2b`; a correção que preserva a navegação lateral e móvel em `/admin/pacientes` está local, ainda não commitada, em `src/components/admin/AdminLayout.tsx`. Nenhuma migration, segredo ou deploy foi executado.

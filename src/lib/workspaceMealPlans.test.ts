@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchWorkspaceMealPlans, saveWorkspaceMealPlan, type WorkspaceMealPlanInput } from "./workspaceMealPlans";
+import { deleteWorkspaceMealPlan, fetchWorkspaceMealPlans, saveWorkspaceMealPlan, type WorkspaceMealPlanInput } from "./workspaceMealPlans";
 
 const mocks = vi.hoisted(() => ({ from: vi.fn(), rpc: vi.fn() }));
 vi.mock("@/lib/workspaceSupabase", () => ({ workspaceSupabase: { from: mocks.from, rpc: mocks.rpc } }));
 
 function builder(result: unknown) {
   const query = {
-    select: vi.fn(), eq: vi.fn(), in: vi.fn(), order: vi.fn(),
+    select: vi.fn(), delete: vi.fn(), eq: vi.fn(), in: vi.fn(), order: vi.fn(),
     then: (resolve: (value: unknown) => unknown) => resolve(result),
   };
-  query.select.mockReturnValue(query); query.eq.mockReturnValue(query); query.in.mockReturnValue(query); query.order.mockReturnValue(query);
+  query.select.mockReturnValue(query); query.delete.mockReturnValue(query); query.eq.mockReturnValue(query); query.in.mockReturnValue(query); query.order.mockReturnValue(query);
   return query;
 }
 
@@ -113,5 +113,25 @@ describe("workspaceMealPlans", () => {
   it("rejects a plan whose patient does not match the requested scope before calling RPC", async () => {
     await expect(saveWorkspaceMealPlan("workspace-a", 42, { ...plan, meals: [], patient_id: 41 })).rejects.toThrow(/paciente/i);
     expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("deletes a plan with an explicit workspace and patient scope", async () => {
+    const query = builder({ data: null, error: null });
+    mocks.from.mockReturnValue(query);
+
+    await expect(deleteWorkspaceMealPlan("workspace-a", 41, 10)).resolves.toBeUndefined();
+
+    expect(mocks.from).toHaveBeenCalledWith("meal_plans");
+    expect(query.delete).toHaveBeenCalledTimes(1);
+    expect(query.eq.mock.calls).toEqual([
+      ["workspace_id", "workspace-a"],
+      ["patient_id", 41],
+      ["id", 10],
+    ]);
+  });
+
+  it("rejects invalid plan IDs before issuing a delete", async () => {
+    await expect(deleteWorkspaceMealPlan("workspace-a", 41, 0)).rejects.toThrow(/inválido/i);
+    expect(mocks.from).not.toHaveBeenCalled();
   });
 });

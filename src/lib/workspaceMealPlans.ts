@@ -169,6 +169,26 @@ export async function saveWorkspaceMealPlan(
   return savedId;
 }
 
+export async function deleteWorkspaceMealPlan(
+  workspaceId: string,
+  patientId: number,
+  planId: number,
+): Promise<void> {
+  assertScope(workspaceId, patientId);
+  if (!Number.isSafeInteger(planId) || planId <= 0) {
+    throw new Error("Plano alimentar inválido.");
+  }
+
+  const { error } = await workspaceSupabase
+    .from("meal_plans")
+    .delete()
+    .eq("workspace_id", workspaceId)
+    .eq("patient_id", patientId)
+    .eq("id", planId);
+
+  if (error) throw new Error(error.message);
+}
+
 export const workspaceMealPlanColumns = { PLAN_COLUMNS, MEAL_COLUMNS, FOOD_COLUMNS };
 
 /** "X" -> "X (cópia)"; se já existir (case-insensitive), "X (cópia 2)", "X (cópia 3)"... */

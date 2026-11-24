@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Activity, ArrowLeft, BookOpen, CalendarDays, ClipboardList, Copy, Dumbbell,
-  FileDown, LayoutDashboard, Loader2, Mail, MapPin, Pencil, Phone, Save, User, UserRound, Users, Utensils,
+  FileDown, LayoutDashboard, Loader2, Mail, MapPin, Pencil, Phone, Save, Trash2, User, UserRound, Users, Utensils,
 } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PatientAnthropometryTab } from "@/components/admin/patient/PatientAnthropometryTab";
@@ -26,6 +35,7 @@ import {
 import {
   duplicateMealPlanTitle,
   duplicateWorkspaceMealPlan,
+  deleteWorkspaceMealPlan,
   fetchWorkspaceMealPlans,
   isWorkspaceMealPlansEnabled,
   type WorkspaceMealPlan,
@@ -133,6 +143,8 @@ export default function WorkspacePatientDetailPage() {
   }>({ scope: null, status: "loading", plans: [], error: "" });
   const [mealPlanReloadKey, setMealPlanReloadKey] = useState(0);
   const [duplicatingMealPlanId, setDuplicatingMealPlanId] = useState<number | null>(null);
+  const [deletingMealPlanId, setDeletingMealPlanId] = useState<number | null>(null);
+  const [mealPlanToDelete, setMealPlanToDelete] = useState<WorkspaceMealPlan | null>(null);
   const [mealPlanActionError, setMealPlanActionError] = useState("");
 
   // "Copiar de outro paciente" panel state (planos alimentares)
@@ -268,6 +280,22 @@ export default function WorkspacePatientDetailPage() {
     } catch (e) {
       setMealPlanActionError(e instanceof Error ? e.message : "Não foi possível duplicar o plano.");
     } finally { setDuplicatingMealPlanId(null); }
+  };
+
+  const handleDeleteMealPlan = async () => {
+    if (!workspaceId || !patient || !mealPlanToDelete?.id) return;
+    const planId = mealPlanToDelete.id;
+    setDeletingMealPlanId(planId);
+    setMealPlanActionError("");
+    try {
+      await deleteWorkspaceMealPlan(workspaceId, patient.id, planId);
+      setMealPlanToDelete(null);
+      reloadMealPlans();
+    } catch (e) {
+      setMealPlanActionError(e instanceof Error ? e.message : "Não foi possível excluir o plano.");
+    } finally {
+      setDeletingMealPlanId(null);
+    }
   };
 
   useEffect(() => {
@@ -576,7 +604,7 @@ export default function WorkspacePatientDetailPage() {
                       <p className="text-sm text-[#166b50]">Modelo selecionado — clique em <strong>Criar plano do modelo</strong> para pré-preencher o editor com as refeições do template.</p>
                     </div>
                   )}
-                  {mealPlanActionError && (
+                  {mealPlanActionError && !mealPlanToDelete && (
                     <p role="alert" className="rounded-md border border-destructive/30 bg-background p-3 text-sm text-destructive">{mealPlanActionError}</p>
                   )}
                   {copyPanelOpen && mealPlansEnabled && (
@@ -673,14 +701,23 @@ export default function WorkspacePatientDetailPage() {
                             </Link>
                             <p className="mt-1 text-xs text-muted-foreground">{formatDate(plan.start_date || plan.created_at || null)}</p>
                           </div>
-                          <Button type="button" size="sm" variant="outline" className="shrink-0"
-                            disabled={plan.id == null || duplicatingMealPlanId === plan.id || copyingMealPlan}
+                           <div className="flex shrink-0 items-center gap-2">
+                           <Button type="button" size="sm" variant="outline"
+                             disabled={plan.id == null || duplicatingMealPlanId === plan.id || deletingMealPlanId === plan.id || copyingMealPlan}
                             onClick={() => void handleDuplicateMealPlan(plan)}>
                             {duplicatingMealPlanId === plan.id
                               ? <Loader2 size={14} className="animate-spin" aria-hidden="true" />
                               : <Copy size={14} aria-hidden="true" />}
                             Duplicar
                           </Button>
+                           <Button type="button" size="sm" variant="outline"
+                             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                             aria-label={`Excluir ${plan.title || "plano alimentar"}`}
+                             disabled={plan.id == null || duplicatingMealPlanId === plan.id || deletingMealPlanId === plan.id || copyingMealPlan}
+                             onClick={() => { setMealPlanActionError(""); setMealPlanToDelete(plan); }}>
+                             <Trash2 size={14} aria-hidden="true" />Excluir
+                           </Button>
+                           </div>
                         </li>
                       ))}
                     </ul>
@@ -696,6 +733,38 @@ export default function WorkspacePatientDetailPage() {
                   patient={patient}
                 />
               )}
+
+              <AlertDialog
+                open={mealPlanToDelete !== null}
+                onOpenChange={(open) => { if (!open && deletingMealPlanId === null) setMealPlanToDelete(null); }}
+              >
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Excluir plano alimentar?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      O plano <strong>{mealPlanToDelete?.title || "Plano alimentar"}</strong> e suas refeições serão removidos deste paciente.
+                      Essa ação não pode ser desfeita.
+                    </AlertDialogDescription>
+                  {mealPlanActionError && (
+                    <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                      {mealPlanActionError}
+                    </p>
+                  )}
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={deletingMealPlanId !== null}>Cancelar</AlertDialogCancel>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={deletingMealPlanId !== null}
+                      onClick={() => void handleDeleteMealPlan()}
+                    >
+                      {deletingMealPlanId !== null ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Trash2 size={14} aria-hidden="true" />}
+                      {deletingMealPlanId !== null ? "Excluindo…" : "Excluir plano"}
+                    </Button>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
 
             </div>
           </>

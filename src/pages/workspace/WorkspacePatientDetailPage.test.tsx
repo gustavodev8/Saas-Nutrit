@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   update: vi.fn(),
   fetchMealPlans: vi.fn(),
+  deleteMealPlan: vi.fn(),
   mealPlansEnabled: vi.fn(),
   workspaceFrom: vi.fn(),
   workspaceSelect: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock("@/lib/workspacePatients", () => ({
 }));
 vi.mock("@/lib/workspaceMealPlans", () => ({
   fetchWorkspaceMealPlans: mocks.fetchMealPlans,
+  deleteWorkspaceMealPlan: mocks.deleteMealPlan,
   isWorkspaceMealPlansEnabled: mocks.mealPlansEnabled,
 }));
 vi.mock("@/lib/workspaceSupabase", () => ({
@@ -108,6 +110,7 @@ describe("WorkspacePatientDetailPage", () => {
     });
     mocks.fetch.mockResolvedValue(patient());
     mocks.fetchMealPlans.mockResolvedValue([]);
+    mocks.deleteMealPlan.mockResolvedValue(undefined);
     mocks.update.mockImplementation(async (_workspaceId: string, _patientId: number, input: Record<string, string>) => patient({ name: input.name, city: input.city }));
     mocks.workspaceFrom.mockReturnValue({ select: mocks.workspaceSelect });
     mocks.workspaceSelect.mockReturnValue({ eq: mocks.workspaceEq });
@@ -278,6 +281,42 @@ describe("WorkspacePatientDetailPage", () => {
     openTab("Planos");
     expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar os planos alimentares");
     expect(screen.queryByText("database detail")).not.toBeInTheDocument();
+  });
+
+  it("confirms deletion and reloads the scoped plan list after success", async () => {
+    mocks.fetchMealPlans
+      .mockResolvedValueOnce([{ id: 73, patient_id: 41, workspace_id: "workspace-a", title: "Plano de novembro", meals: [] }])
+      .mockResolvedValueOnce([]);
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Ana" });
+    fireEvent.click(screen.getByRole("tab", { name: "Planos" }));
+    expect(await screen.findByRole("link", { name: "Plano de novembro" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Excluir Plano de novembro" }));
+    expect(await screen.findByRole("heading", { name: "Excluir plano alimentar?" })).toBeInTheDocument();
+    expect(screen.getByText(/suas refeições serão removidos/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Excluir plano" }));
+    await waitFor(() => expect(mocks.deleteMealPlan).toHaveBeenCalledWith("workspace-a", 41, 73));
+    await waitFor(() => expect(mocks.fetchMealPlans).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Nenhum plano alimentar criado")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Plano de novembro" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the confirmation open and reports a delete failure", async () => {
+    mocks.fetchMealPlans.mockResolvedValueOnce([{ id: 73, patient_id: 41, workspace_id: "workspace-a", title: "Plano de novembro", meals: [] }]);
+    mocks.deleteMealPlan.mockRejectedValueOnce(new Error("delete denied"));
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Ana" });
+    fireEvent.click(screen.getByRole("tab", { name: "Planos" }));
+    await screen.findByRole("link", { name: "Plano de novembro" });
+    fireEvent.click(screen.getByRole("button", { name: "Excluir Plano de novembro" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Excluir plano" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("delete denied");
+    expect(screen.getByRole("heading", { name: "Excluir plano alimentar?" })).toBeInTheDocument();
+    expect(mocks.fetchMealPlans).toHaveBeenCalledTimes(1);
   });
 
   it("does not query or render meal plans while the feature gate is disabled", async () => {
