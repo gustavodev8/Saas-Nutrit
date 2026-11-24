@@ -50,7 +50,7 @@ export async function fetchWorkspaceTemplates(): Promise<WorkspaceDietTemplate[]
     .order("name");
   if (error) {
     console.error("[workspace] fetchWorkspaceTemplates:", error.message);
-    return [];
+    throw error;
   }
   return (data ?? []) as WorkspaceDietTemplate[];
 }

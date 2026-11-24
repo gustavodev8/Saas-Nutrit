@@ -37,7 +37,7 @@ export async function fetchWorkspaceFoods(
 
   if (error) {
     console.error("[workspace] fetchWorkspaceFoods:", error.message);
-    return { foods: [], total: 0 };
+    throw error;
   }
 
   const foods = (data ?? []).map((row) => ({
@@ -55,7 +55,10 @@ export async function fetchWorkspaceFoodCategories(): Promise<string[]> {
     .select("category")
     .order("category");
 
-  if (error) return [];
+  if (error) {
+    console.error("[workspace] fetchWorkspaceFoodCategories:", error.message);
+    throw error;
+  }
 
   const unique = Array.from(new Set((data ?? []).map((r) => repairMojibake(r.category as string)))).sort();
   return unique;

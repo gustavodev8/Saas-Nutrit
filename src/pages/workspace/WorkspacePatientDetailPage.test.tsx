@@ -79,6 +79,10 @@ function renderPage() {
   );
 }
 
+function openTab(name: string) {
+  fireEvent.click(screen.getByRole("tab", { name }));
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
@@ -111,21 +115,23 @@ describe("WorkspacePatientDetailPage", () => {
     mocks.workspaceMaybeSingle.mockResolvedValue({ data: { name: "Workspace Piloto" }, error: null });
   });
 
-  it("loads a direct ID through the active workspace and exposes only the basic profile", async () => {
+  it("loads a direct ID through the active workspace and exposes its profile tab", async () => {
     renderPage();
 
     expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
     expect(await screen.findByRole("heading", { name: "Ana" })).toBeInTheDocument();
     expect(mocks.fetch).toHaveBeenCalledWith("workspace-a", 41);
+    expect(screen.getByRole("tab", { name: "Central" })).toHaveAttribute("aria-selected", "true");
+    openTab("Perfil");
     expect(screen.getByLabelText("Nome")).toHaveValue("Ana");
-    expect(screen.getByRole("heading", { name: "Anamnese" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Avaliação antropométrica" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Perfil" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByText(/portal|prescrição/i)).not.toBeInTheDocument();
   });
 
   it("updates only the active workspace patient through the scoped service", async () => {
     renderPage();
     await screen.findByRole("heading", { name: "Ana" });
+    openTab("Perfil");
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Ana editada" } });
     fireEvent.change(screen.getByLabelText("Cidade"), { target: { value: "Alagoinhas" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
@@ -142,6 +148,7 @@ describe("WorkspacePatientDetailPage", () => {
     mocks.update.mockReturnValueOnce(saveA.promise);
     const view = renderPage();
     await screen.findByRole("heading", { name: "Ana" });
+    openTab("Perfil");
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Ana salva tarde" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
 
@@ -200,12 +207,15 @@ describe("WorkspacePatientDetailPage", () => {
     mocks.fetchAnamnesis
       .mockResolvedValueOnce({ id: 11, structured_data: { clinical_allergies: "A-only allergy" } })
       .mockResolvedValueOnce({ id: 22, structured_data: { clinical_allergies: "B-only allergy" } });
-    mocks.fetchMeasurements
-      .mockResolvedValueOnce([{ id: 101, workspace_id: "workspace-a", patient_id: 41, assessment_date: "2026-11-01", weight: 70, height: 170 }])
-      .mockResolvedValueOnce([{ id: 202, workspace_id: "workspace-b", patient_id: 41, assessment_date: "2026-11-02", weight: 82, height: 175 }]);
+    mocks.fetchMeasurements.mockImplementation(async (workspaceId: string) => workspaceId === "workspace-a"
+      ? [{ id: 101, workspace_id: "workspace-a", patient_id: 41, assessment_date: "2026-11-01", weight: 70, height: 170 }]
+      : [{ id: 202, workspace_id: "workspace-b", patient_id: 41, assessment_date: "2026-11-02", weight: 82, height: 175 }]);
     const view = renderPage();
+    await screen.findByRole("heading", { name: "Ana" });
+    openTab("Anamnese");
     expect(await screen.findByPlaceholderText(/^Ex: lactose/)).toHaveValue("A-only allergy");
-    expect(await screen.findAllByText("70 kg")).toHaveLength(2);
+    openTab("Medidas");
+    expect(await screen.findByText("70 kg")).toBeInTheDocument();
 
     mocks.fetch.mockResolvedValueOnce(patient({ workspace_id: "workspace-b", name: "Bia" }));
     mocks.auth.mockReturnValue({ authReady: true, membershipReady: true, isAuthenticated: true,
@@ -217,12 +227,15 @@ describe("WorkspacePatientDetailPage", () => {
 
     expect(screen.queryByDisplayValue("A-only allergy")).not.toBeInTheDocument();
     expect(screen.queryByText("70 kg")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Bia" })).toBeInTheDocument();
+    openTab("Anamnese");
     expect(await screen.findByPlaceholderText(/^Ex: lactose/)).toHaveValue("B-only allergy");
-    expect(await screen.findAllByText("82 kg")).toHaveLength(2);
-    expect(mocks.fetchAnamnesis).toHaveBeenNthCalledWith(1, "workspace-a", 41);
-    expect(mocks.fetchAnamnesis).toHaveBeenNthCalledWith(2, "workspace-b", 41);
-    expect(mocks.fetchMeasurements).toHaveBeenNthCalledWith(1, "workspace-a", 41);
-    expect(mocks.fetchMeasurements).toHaveBeenNthCalledWith(2, "workspace-b", 41);
+    openTab("Medidas");
+    expect(await screen.findByText("82 kg")).toBeInTheDocument();
+    expect(mocks.fetchAnamnesis).toHaveBeenCalledWith("workspace-a", 41);
+    expect(mocks.fetchAnamnesis).toHaveBeenCalledWith("workspace-b", 41);
+    expect(mocks.fetchMeasurements).toHaveBeenCalledWith("workspace-a", 41);
+    expect(mocks.fetchMeasurements).toHaveBeenCalledWith("workspace-b", 41);
   });
 
   it("rejects an invalid direct ID without querying the data service", async () => {
@@ -241,22 +254,28 @@ describe("WorkspacePatientDetailPage", () => {
       { id: 72, patient_id: 41, workspace_id: "workspace-a", title: "Plano anterior", created_at: "2026-10-12T10:00:00.000Z", meals: [] },
     ]);
     renderPage();
-
+    await screen.findByRole("heading", { name: "Ana" });
+    openTab("Planos");
     expect(await screen.findByRole("link", { name: "Plano de novembro" })).toHaveAttribute("href", "/workspace/patients/41/plan/73");
     expect(screen.getByRole("link", { name: "Plano anterior" })).toHaveAttribute("href", "/workspace/patients/41/plan/72");
-    expect(screen.getByRole("link", { name: "Novo plano alimentar" })).toHaveAttribute("href", "/workspace/patients/41/plan/novo");
+    expect(screen.getByRole("link", { name: "Novo plano" })).toHaveAttribute("href", "/workspace/patients/41/plan/novo");
     expect(screen.getByText("05/11/2026")).toBeInTheDocument();
     expect(mocks.fetchMealPlans).toHaveBeenCalledWith("workspace-a", 41);
   });
 
   it("shows an accessible empty state", async () => {
     renderPage();
-    expect(await screen.findByText("Nenhum plano alimentar salvo para este paciente.")).toHaveAttribute("role", "status");
+    await screen.findByRole("heading", { name: "Ana" });
+    openTab("Planos");
+    expect(await screen.findByText("Nenhum plano alimentar criado")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Criar primeiro plano" })).toHaveAttribute("href", "/workspace/patients/41/plan/novo");
   });
 
   it("shows an accessible error without retaining previous plans", async () => {
     mocks.fetchMealPlans.mockRejectedValueOnce(new Error("database detail"));
     renderPage();
+    await screen.findByRole("heading", { name: "Ana" });
+    openTab("Planos");
     expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar os planos alimentares");
     expect(screen.queryByText("database detail")).not.toBeInTheDocument();
   });
@@ -266,9 +285,10 @@ describe("WorkspacePatientDetailPage", () => {
     renderPage();
 
     await screen.findByRole("heading", { name: "Ana" });
+    openTab("Planos");
     expect(mocks.fetchMealPlans).not.toHaveBeenCalled();
-    expect(screen.queryByRole("heading", { name: "Planos alimentares" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Novo plano alimentar" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Módulo de planos alimentares não está ativo");
+    expect(screen.queryByText("Nenhum plano alimentar criado")).not.toBeInTheDocument();
   });
 
   it("discards stale plan results and hides prior workspace data during a scope change", async () => {
@@ -277,6 +297,7 @@ describe("WorkspacePatientDetailPage", () => {
     mocks.fetchMealPlans.mockReturnValueOnce(plansA.promise).mockReturnValueOnce(plansB.promise);
     const view = renderPage();
     await screen.findByRole("heading", { name: "Ana" });
+    openTab("Planos");
     await waitFor(() => expect(mocks.fetchMealPlans).toHaveBeenCalledWith("workspace-a", 41));
 
     mocks.fetch.mockResolvedValueOnce(patient({ workspace_id: "workspace-b", name: "Bia" }));
@@ -313,6 +334,7 @@ describe("WorkspacePatientDetailPage", () => {
     mocks.fetchMealPlans.mockReturnValueOnce(stalePlans.promise);
     const view = renderPage();
     expect(await screen.findByRole("heading", { name: "Ana" })).toBeInTheDocument();
+    openTab("Planos");
     await waitFor(() => expect(mocks.fetchMealPlans).toHaveBeenCalledWith("workspace-a", 41));
 
     mocks.auth.mockReturnValue({
@@ -369,6 +391,7 @@ describe("WorkspacePatientDetailPage", () => {
     ]);
     const view = renderPage();
     expect(await screen.findByRole("heading", { name: "Ana" })).toBeInTheDocument();
+    openTab("Planos");
     await waitFor(() => expect(mocks.fetchMealPlans).toHaveBeenCalledWith("workspace-a", 41));
 
     mocks.auth.mockReturnValue({
@@ -423,6 +446,7 @@ describe("WorkspacePatientDetailPage", () => {
     mocks.fetch.mockResolvedValueOnce(patient()).mockReturnValueOnce(patientB.promise);
     const view = renderPage();
     expect(await screen.findByRole("heading", { name: "Ana" })).toBeInTheDocument();
+    openTab("Planos");
     await waitFor(() => expect(mocks.fetchMealPlans).toHaveBeenCalledWith("workspace-a", 41));
 
     fireEvent.click(screen.getByRole("link", { name: "Abrir outro paciente" }));
@@ -432,6 +456,7 @@ describe("WorkspacePatientDetailPage", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Carregando prontuário");
     await act(async () => { patientB.resolve(patient({ id: 42, name: "Bia" })); });
     expect(await screen.findByRole("heading", { name: "Bia" })).toBeInTheDocument();
+    openTab("Planos");
     await waitFor(() => expect(mocks.fetchMealPlans).toHaveBeenCalledWith("workspace-a", 42));
 
     await act(async () => {

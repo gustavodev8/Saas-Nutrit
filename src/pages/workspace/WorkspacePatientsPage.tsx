@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { BookOpen, ChevronLeft, ChevronRight, FolderOpen, Mail, Pencil, Plus, Save, Search, Users, X } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, FolderOpen, Pencil, Plus, Save, Search, Users, X } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import {
@@ -29,12 +28,18 @@ function getInitials(name: string) {
   return name.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase();
 }
 
-function calcAge(birthDate: string | null): string | null {
+function calcAge(birthDate: string | null, today = new Date()): string | null {
   if (!birthDate) return null;
   const bd = new Date(birthDate.length === 10 ? `${birthDate}T12:00:00` : birthDate);
   if (Number.isNaN(bd.getTime())) return null;
-  const age = Math.floor((Date.now() - bd.getTime()) / 31557600000);
+  let age = today.getFullYear() - bd.getFullYear();
+  if (today.getMonth() < bd.getMonth() || (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())) age--;
+  if (age < 0) return null;
   return `${age} anos`;
+}
+
+function localDateString(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function genderLabel(value: WorkspacePatient["gender"]): string {
@@ -121,11 +126,11 @@ export default function WorkspacePatientsPage() {
   };
 
   return (
-    <main className="bg-muted/30 px-4 py-5 sm:px-8 sm:py-7">
-      <div className="mx-auto max-w-7xl space-y-5">
+    <main className="min-h-full bg-muted/30 px-4 py-5 dark:bg-[#182620] sm:px-6 sm:py-7 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-4">
 
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border/70 pb-5">
+        <div className="flex items-center justify-between border-b border-border/70 pb-4 dark:border-white/15">
           <div>
             <p className="text-sm font-medium text-primary">Área clínica</p>
             <h1 className="text-2xl font-semibold leading-tight">Pacientes</h1>
@@ -136,27 +141,17 @@ export default function WorkspacePatientsPage() {
         </div>
 
         {/* Stats */}
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Indicadores">
-          <article className="flex min-h-[88px] items-center gap-4 rounded-xl border border-border/80 bg-background p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10"><Users size={20} className="text-primary" /></div>
-            <div><p className="text-xs text-muted-foreground">Total</p><p className="text-2xl font-bold tabular-nums">{patients.length}</p></div>
-          </article>
-          <article className="flex min-h-[88px] items-center gap-4 rounded-xl border border-border/80 bg-background p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-sky-500/10"><Mail size={20} className="text-sky-700" /></div>
-            <div><p className="text-xs text-muted-foreground">Com e-mail</p><p className="text-2xl font-bold tabular-nums">{patients.filter((p) => Boolean(p.email?.trim())).length}</p></div>
-          </article>
-          <article className="flex min-h-[88px] items-center gap-4 rounded-xl border border-border/80 bg-background p-4 sm:col-span-2 lg:col-span-1">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-amber-500/10"><Plus size={20} className="text-amber-700" /></div>
-            <div><p className="text-xs text-muted-foreground">Novos este mês</p><p className="text-2xl font-bold tabular-nums">{newThisMonth}</p></div>
-          </article>
+        <section className="flex flex-wrap gap-x-7 gap-y-2 border-b border-border/70 pb-4 text-sm dark:border-white/15" aria-label="Indicadores">
+          <p><strong className="mr-1.5 font-semibold tabular-nums text-foreground">{patients.filter((p) => Boolean(p.email?.trim())).length}</strong><span className="text-muted-foreground dark:text-zinc-300">com e-mail</span></p>
+          <p><strong className="mr-1.5 font-semibold tabular-nums text-foreground">{newThisMonth}</strong><span className="text-muted-foreground dark:text-zinc-300">novos este mês</span></p>
         </section>
 
         {/* Main grid */}
-        <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
 
           {/* Template selection banner */}
           {selectForTemplate && incomingTemplateId && (
-            <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 flex items-center gap-3 mb-2">
+            <div className="mb-2 flex flex-wrap items-center gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-3 xl:col-span-2">
               <BookOpen size={18} className="text-primary shrink-0" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-primary">Selecione um paciente para usar o modelo</p>
@@ -171,19 +166,19 @@ export default function WorkspacePatientsPage() {
           {/* Patient list */}
           <div className="space-y-3">
             {/* Filters */}
-            <div className="rounded-xl border border-border/80 bg-background p-3">
+            <div className="rounded-md border border-border/80 bg-background p-3 dark:border-white/15 dark:bg-[#20332b]">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/70 px-1 pb-3">
                 <div>
                   <h2 className="text-sm font-semibold">Diretório de pacientes</h2>
                   <p className="text-xs text-muted-foreground">{listLoading ? "Atualizando lista..." : `${filteredPatients.length} ${filteredPatients.length === 1 ? "resultado" : "resultados"}`}</p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-              <div className="relative flex-1 min-w-48">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_auto_auto_auto]">
+              <div className="relative min-w-0">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input className="pl-8 h-9" placeholder="Buscar nome, contato, cidade…" value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
-              <select aria-label="Filtrar por sexo" className="h-9 min-h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={gender} onChange={(e) => setGender(e.target.value as WorkspacePatientGenderFilter)}>
+              <select aria-label="Filtrar por sexo" className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={gender} onChange={(e) => setGender(e.target.value as WorkspacePatientGenderFilter)}>
                 <option value="all">Todos os sexos</option>
                 <option value="M">Masculino</option>
                 <option value="F">Feminino</option>
@@ -191,12 +186,12 @@ export default function WorkspacePatientsPage() {
                 <option value="unspecified">Não informado</option>
               </select>
               {cities.length > 0 && (
-                <select aria-label="Filtrar por cidade" className="h-9 min-h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={city} onChange={(e) => setCity(e.target.value)}>
+                <select aria-label="Filtrar por cidade" className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={city} onChange={(e) => setCity(e.target.value)}>
                   <option value="">Todas as cidades</option>
                   {cities.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               )}
-              <select aria-label="Ordenar pacientes" className="h-9 min-h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={sort} onChange={(e) => setSort(e.target.value as WorkspacePatientSort)}>
+              <select aria-label="Ordenar pacientes" className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={sort} onChange={(e) => setSort(e.target.value as WorkspacePatientSort)}>
                 <option value="name">Nome: A a Z</option>
                 <option value="recent">Mais recentes</option>
               </select>
@@ -206,7 +201,7 @@ export default function WorkspacePatientsPage() {
             {error && <p role="alert" className="rounded-xl border border-destructive/30 bg-background p-3 text-sm text-destructive">{error}</p>}
 
             {/* List */}
-            <div className="rounded-xl border border-border/80 bg-background overflow-hidden">
+            <div className="overflow-hidden rounded-md border border-border/80 bg-background dark:border-white/15 dark:bg-[#20332b]">
               {listLoading ? (
                 <div className="flex justify-center py-16"><LeafLoader label="Carregando pacientes…" /></div>
               ) : filteredPatients.length === 0 ? (
@@ -224,7 +219,7 @@ export default function WorkspacePatientsPage() {
                       const age = calcAge(patient.birth_date ?? null);
                       const sub = [genderLabel(patient.gender), age, patient.city].filter(Boolean).join(" · ");
                       return (
-                        <li key={patient.id} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30">
+                        <li key={patient.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/30 dark:hover:bg-white/5 sm:flex-nowrap sm:px-4">
                           {/* Avatar */}
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-semibold select-none">
                             {getInitials(patient.name)}
@@ -237,7 +232,7 @@ export default function WorkspacePatientsPage() {
                             </p>
                           </div>
                           {/* Actions */}
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="ml-auto flex shrink-0 items-center gap-1">
                             {selectForTemplate && incomingTemplateId ? (
                               <Button asChild size="sm" className="h-8 bg-primary text-xs text-primary-foreground hover:bg-primary/90" title="Usar modelo para este paciente">
                                 <Link to={`/workspace/patients/${patient.id}?tab=planos&templateId=${incomingTemplateId}`}>
@@ -245,18 +240,14 @@ export default function WorkspacePatientsPage() {
                                 </Link>
                               </Button>
                             ) : (
-                              <Button asChild size="icon" variant="ghost" className="h-8 w-8" title="Abrir prontuário" aria-label={`Abrir prontuário de ${patient.name}`}>
+                              <Button asChild size="icon" variant="ghost" className="h-10 w-10 text-primary hover:text-primary" title="Abrir prontuário" aria-label={`Abrir prontuário de ${patient.name}`}>
                                 <Link to={`/workspace/patients/${patient.id}`}><FolderOpen size={15} /></Link>
                               </Button>
                             )}
-                            <Button size="icon" variant="ghost" className="h-8 w-8" title="Editar cadastro" aria-label={`Editar ${patient.name}`} onClick={() => editPatient(patient)}>
+                            <Button size="icon" variant="ghost" className="h-10 w-10" title="Editar cadastro" aria-label={`Editar ${patient.name}`} onClick={() => editPatient(patient)}>
                               <Pencil size={15} />
                             </Button>
                           </div>
-                          {/* Always-visible link on mobile */}
-                          <Button asChild size="icon" variant="ghost" className={cn("h-8 w-8 group-hover:hidden")} aria-label={`Abrir prontuário de ${patient.name}`}>
-                            <Link to={`/workspace/patients/${patient.id}`}><ChevronRight size={15} className="text-muted-foreground" /></Link>
-                          </Button>
                         </li>
                       );
                     })}
@@ -276,7 +267,7 @@ export default function WorkspacePatientsPage() {
           </div>
 
           {/* Form */}
-          <form className="rounded-xl border border-border/80 bg-background overflow-hidden xl:sticky xl:top-5" onSubmit={handleSubmit}>
+          <form className="overflow-hidden rounded-md border border-border/80 bg-background dark:border-white/15 dark:bg-[#20332b] xl:sticky xl:top-5" onSubmit={handleSubmit}>
             <div className="flex items-center justify-between border-b bg-muted/20 px-5 py-4">
               <div><p className="text-xs font-medium text-primary">Cadastro</p><h2 className="font-semibold text-sm">{visibleEditingId == null ? "Novo paciente" : "Editar paciente"}</h2></div>
               {visibleEditingId != null && (
@@ -285,8 +276,8 @@ export default function WorkspacePatientsPage() {
             </div>
             <div className="p-5 space-y-3">
               <div className="space-y-1.5"><Label htmlFor="patient-name" className="text-xs">Nome *</Label><Input id="patient-name" value={visibleForm.name} onChange={(e) => setForm({ ...visibleForm, name: e.target.value })} required /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5"><Label htmlFor="patient-birth-date" className="text-xs">Nascimento</Label><Input id="patient-birth-date" type="date" value={visibleForm.birth_date} onChange={(e) => setForm({ ...visibleForm, birth_date: e.target.value })} /></div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                <div className="space-y-1.5"><Label htmlFor="patient-birth-date" className="text-xs">Nascimento</Label><Input id="patient-birth-date" type="date" max={localDateString(new Date())} value={visibleForm.birth_date} onChange={(e) => setForm({ ...visibleForm, birth_date: e.target.value })} /></div>
                 <div className="space-y-1.5">
                   <Label htmlFor="patient-gender" className="text-xs">Sexo</Label>
                   <select id="patient-gender" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={visibleForm.gender} onChange={(e) => setForm({ ...visibleForm, gender: e.target.value as WorkspacePatientInput["gender"] })}>

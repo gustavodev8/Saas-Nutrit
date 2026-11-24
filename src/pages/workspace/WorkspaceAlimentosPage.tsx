@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from "react";
-import { Apple, ChevronLeft, ChevronRight, Search, SlidersHorizontal, X } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { AlertCircle, Apple, ChevronLeft, ChevronRight, Search, SlidersHorizontal, X } from "lucide-react";
 import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -18,19 +18,19 @@ function MacroBadge({ label, value, color }: { label: string; value: number; col
 
 function FoodRow({ food }: { food: WorkspaceFood }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b last:border-0 hover:bg-muted/30 transition-colors">
+    <div className="flex min-h-16 items-center gap-3 border-b border-border px-4 py-3 transition-colors duration-150 last:border-0 hover:bg-muted/30 sm:px-5">
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{food.name}</p>
-        <p className="text-xs text-muted-foreground">{food.category}</p>
+        <p className="truncate text-sm font-medium text-foreground" title={food.name}>{food.name}</p>
+        <p className="truncate text-xs text-muted-foreground">{food.category}</p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <span className="text-sm font-semibold w-16 text-right">
           {Math.round(food.kcal_per_100g)} <span className="text-xs font-normal text-muted-foreground">kcal</span>
         </span>
-        <div className="hidden sm:flex items-center gap-1">
-          <MacroBadge label="P" value={food.protein_per_100g} color="bg-blue-50 text-blue-700" />
-          <MacroBadge label="C" value={food.carbs_per_100g} color="bg-yellow-50 text-yellow-700" />
-          <MacroBadge label="G" value={food.fat_per_100g} color="bg-orange-50 text-orange-700" />
+        <div className="hidden w-56 items-center gap-1 sm:flex">
+          <MacroBadge label="P" value={food.protein_per_100g} color="bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-200" />
+          <MacroBadge label="C" value={food.carbs_per_100g} color="bg-yellow-50 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-200" />
+          <MacroBadge label="G" value={food.fat_per_100g} color="bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-200" />
         </div>
       </div>
     </div>
@@ -42,6 +42,9 @@ export function WorkspaceAlimentosPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [foodError, setFoodError] = useState(false);
+  const [categoryError, setCategoryError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("Todos");
@@ -49,8 +52,13 @@ export function WorkspaceAlimentosPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    fetchWorkspaceFoodCategories().then((cats) => setCategories(cats));
-  }, []);
+    let active = true;
+    setCategoryError(false);
+    fetchWorkspaceFoodCategories()
+      .then((cats) => { if (active) setCategories(cats); })
+      .catch(() => { if (active) setCategoryError(true); });
+    return () => { active = false; };
+  }, [retryKey]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -61,15 +69,25 @@ export function WorkspaceAlimentosPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [search]);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    let active = true;
     setLoading(true);
-    const result = await fetchWorkspaceFoods(debouncedSearch, category, page);
-    setFoods(result.foods);
-    setTotal(result.total);
-    setLoading(false);
-  }, [debouncedSearch, category, page]);
-
-  useEffect(() => { void load(); }, [load]);
+    setFoodError(false);
+    fetchWorkspaceFoods(debouncedSearch, category, page)
+      .then((result) => {
+        if (!active) return;
+        setFoods(result.foods);
+        setTotal(result.total);
+      })
+      .catch(() => {
+        if (!active) return;
+        setFoodError(true);
+        setFoods([]);
+        setTotal(0);
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [debouncedSearch, category, page, retryKey]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const hasFilter = debouncedSearch !== "" || category !== "Todos";
@@ -82,20 +100,21 @@ export function WorkspaceAlimentosPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-5 border-b border-border pb-5">
         <h1 className="text-2xl font-semibold text-foreground">Banco de Alimentos</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          {total > 0 ? `${total.toLocaleString("pt-BR")} alimentos — valores por 100g` : "Catálogo nutricional — valores por 100g"}
+          {!foodError && total > 0 ? `${total.toLocaleString("pt-BR")} alimentos — valores por 100g` : "Catálogo nutricional — valores por 100g"}
         </p>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="mb-4 flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-48">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
+            aria-label="Buscar alimentos"
             className="pl-9"
             placeholder="Buscar alimento…"
             value={search}
@@ -105,7 +124,8 @@ export function WorkspaceAlimentosPage() {
         <div className="flex items-center gap-2">
           <SlidersHorizontal size={15} className="text-muted-foreground" />
           <select
-            className="border rounded-md px-3 py-2 text-sm bg-background"
+            aria-label="Filtrar por categoria"
+            className="min-h-10 max-w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             value={category}
             onChange={(e) => { setCategory(e.target.value); setPage(0); }}
           >
@@ -123,11 +143,11 @@ export function WorkspaceAlimentosPage() {
       </div>
 
       {/* Table header */}
-      <div className="border rounded-xl overflow-hidden bg-card">
-        <div className="flex items-center gap-3 px-4 py-2 bg-muted/40 border-b">
+      <div className="overflow-hidden rounded-md border border-border bg-card">
+        <div className="flex items-center gap-3 border-b border-border bg-muted/40 px-4 py-2.5 sm:px-5">
           <span className="flex-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">Alimento</span>
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide w-16 text-right">Kcal</span>
-          <span className="hidden sm:block text-xs font-medium text-muted-foreground uppercase tracking-wide">Macros / 100g</span>
+          <span className="hidden w-56 text-xs font-medium text-muted-foreground uppercase tracking-wide sm:block">Macros / 100g</span>
         </div>
 
         {loading && (
@@ -136,17 +156,33 @@ export function WorkspaceAlimentosPage() {
           </div>
         )}
 
-        {!loading && foods.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-            <Apple size={32} className="opacity-30" />
-            <p className="text-sm">Nenhum alimento encontrado</p>
+        {!loading && (foodError || categoryError) && (
+          <div role="alert" className="flex min-h-72 flex-col items-start justify-center gap-4 px-4 py-10 sm:px-5">
+            <span className="flex h-11 w-11 items-center justify-center rounded-md bg-destructive/10 text-destructive"><AlertCircle size={21} aria-hidden="true" /></span>
+            <div className="max-w-lg">
+              <h2 className="text-lg font-semibold text-foreground">Não foi possível carregar os alimentos</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">Verifique sua conexão e tente novamente.</p>
+            </div>
+            <Button variant="outline" onClick={() => setRetryKey((key) => key + 1)}>Tentar novamente</Button>
+          </div>
+        )}
+
+        {!loading && !foodError && !categoryError && foods.length === 0 && (
+          <div className="flex min-h-72 flex-col items-start justify-center gap-4 px-4 py-10 sm:px-5">
+            <span className="flex h-11 w-11 items-center justify-center rounded-md bg-primary/10 text-primary"><Apple size={21} aria-hidden="true" /></span>
+            <div className="max-w-lg min-w-0">
+              <h2 className="text-lg font-semibold text-foreground">{hasFilter ? "Nenhum alimento para estes filtros" : "Nenhum alimento disponível"}</h2>
+              <p className="mt-1 break-words text-sm leading-6 text-muted-foreground">
+                {hasFilter ? "Tente outro termo ou categoria para consultar os valores nutricionais." : "Os alimentos cadastrados aparecerão aqui quando estiverem disponíveis."}
+              </p>
+            </div>
             {hasFilter && (
-              <Button variant="outline" size="sm" onClick={clearFilters}>Limpar filtros</Button>
+              <Button variant="outline" onClick={clearFilters}>Limpar filtros</Button>
             )}
           </div>
         )}
 
-        {!loading && foods.length > 0 && (
+        {!loading && !foodError && !categoryError && foods.length > 0 && (
           <div>
             {foods.map((food) => <FoodRow key={food.id} food={food} />)}
           </div>
@@ -154,8 +190,8 @@ export function WorkspaceAlimentosPage() {
       </div>
 
       {/* Pagination */}
-      {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4">
+      {!loading && !foodError && !categoryError && totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
             Página {page + 1} de {totalPages}
           </p>
@@ -163,6 +199,7 @@ export function WorkspaceAlimentosPage() {
             <Button
               variant="outline"
               size="sm"
+              aria-label="Página anterior"
               disabled={page === 0}
               onClick={() => setPage((p) => p - 1)}
             >
@@ -171,6 +208,7 @@ export function WorkspaceAlimentosPage() {
             <Button
               variant="outline"
               size="sm"
+              aria-label="Próxima página"
               disabled={page >= totalPages - 1}
               onClick={() => setPage((p) => p + 1)}
             >

@@ -69,49 +69,49 @@ export function WorkspaceOnboarding({ workspaceId }: Props) {
   const doneCount = steps.filter((s) => s.done).length;
 
   return (
-    <div className="mb-6 overflow-hidden rounded-xl border border-[#c8ddd2] bg-white">
-      <div className="flex items-center justify-between gap-4 border-b border-[#edf1ed] bg-[#f7faf8] px-5 py-3">
+    <section aria-label="Primeiros passos" className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="flex items-center justify-between gap-4 border-b border-border bg-muted/40 px-4 py-3">
         <div>
-          <p className="text-sm font-semibold text-[#153f34]">Primeiros passos</p>
-          <p className="text-xs text-[#5c6e66]">{doneCount} de {steps.length} concluídos</p>
+          <p className="text-sm font-semibold text-foreground">Primeiros passos</p>
+          <p className="text-xs text-muted-foreground">{doneCount} de {steps.length} concluídos</p>
         </div>
         <button
           onClick={dismiss}
           aria-label="Dispensar"
-          className="rounded-md p-1 text-[#8aA09a] transition-colors hover:bg-[#edf1ed] hover:text-[#153f34]"
+          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X size={16} aria-hidden="true" />
         </button>
       </div>
 
       {/* progress bar */}
-      <div className="h-1 w-full bg-[#edf1ed]">
+      <div className="h-1 w-full bg-muted">
         <div
-          className="h-full bg-[#166b50] transition-all duration-500"
+          className="h-full bg-primary transition-all duration-500"
           style={{ width: `${(doneCount / steps.length) * 100}%` }}
         />
       </div>
 
-      <ul className="divide-y divide-[#f1f4f2]">
+      <ul className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {steps.map((step) => (
-          <li key={step.key} className="flex items-start gap-3 px-5 py-3.5">
-            <span className={`mt-0.5 shrink-0 ${step.done ? "text-[#166b50]" : "text-[#c0d0cc]"}`}>
+          <li key={step.key} className="flex min-w-0 items-start gap-3 px-4 py-3">
+            <span className={`mt-0.5 shrink-0 ${step.done ? "text-primary" : "text-muted-foreground"}`}>
               {step.done
                 ? <CheckCircle2 size={18} aria-hidden="true" />
                 : <Circle size={18} aria-hidden="true" />
               }
             </span>
-            <div>
-              <p className={`text-sm font-medium ${step.done ? "text-[#8aA09a] line-through" : "text-[#1a2f26]"}`}>
+            <div className="min-w-0">
+              <p className={`break-words text-sm font-medium ${step.done ? "text-muted-foreground line-through" : "text-foreground"}`}>
                 {step.label}
               </p>
               {!step.done && (
-                <p className="mt-0.5 text-xs text-[#7a918a]">{step.hint}</p>
+                <p className="mt-0.5 break-words text-xs text-muted-foreground">{step.hint}</p>
               )}
             </div>
           </li>
         ))}
       </ul>
-    </div>
+    </section>
   );
 }

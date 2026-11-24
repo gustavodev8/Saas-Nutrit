@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { KeyRound, Leaf, Loader2, Mail } from "lucide-react";
+import { KeyRound, Loader2, Mail } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
+import { WorkspaceAuthLayout } from "@/components/workspace/WorkspaceAuthLayout";
 
 type FormMode = "signup" | "login";
 const INVITATION_TOKEN_STORAGE_KEY = "workspace-invitation-token";
@@ -237,46 +238,35 @@ export default function WorkspaceAcceptInvitationPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-10">
-      <section className="w-full max-w-md rounded-lg border bg-background p-6 shadow-sm sm:p-8" aria-labelledby="invitation-title">
-        <div className="mb-7 flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary"><Leaf size={20} aria-hidden="true" /></span>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Acesso profissional</p>
-            <h1 id="invitation-title" className="text-xl font-semibold">Aceitar convite</h1>
-          </div>
-        </div>
-
+    <WorkspaceAuthLayout title="Aceitar convite" eyebrow="Acesso profissional" description={tokenReady && !storageUnavailable && tokenIsValid ? "Use o e-mail associado ao convite para criar sua conta ou entrar." : undefined}>
         {!tokenReady ? (
-          <p role="status" className="text-sm text-muted-foreground">Preparando o convite...</p>
+          <p role="status" className="text-sm text-muted-foreground dark:text-zinc-300">Preparando o convite...</p>
         ) : storageUnavailable ? (
-          <p role="alert" className="text-sm text-destructive">Não foi possível guardar o convite nesta sessão. Abra novamente o link recebido.</p>
+          <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive dark:border-red-400/40 dark:bg-red-400/10 dark:text-red-200">Não foi possível guardar o convite nesta sessão. Abra novamente o link recebido.</p>
         ) : !tokenIsValid ? (
-          <p role="alert" className="text-sm text-destructive">{INVALID_INVITATION_MESSAGE}</p>
+          <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive dark:border-red-400/40 dark:bg-red-400/10 dark:text-red-200">{INVALID_INVITATION_MESSAGE}</p>
         ) : (
           <>
-            <p className="mb-6 text-sm text-muted-foreground">Use o e-mail associado ao convite para criar sua conta ou entrar.</p>
-            <form className="space-y-5" onSubmit={handleSubmit}>
+            <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-2">
                 <Label htmlFor="invitation-email">E-mail</Label>
-                <div className="relative"><Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" /><Input id="invitation-email" className="pl-9" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></div>
+                <div className="relative"><Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input id="invitation-email" className="h-11 pl-10" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="invitation-password">Senha</Label>
-                <div className="relative"><KeyRound className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" /><Input id="invitation-password" className="pl-9" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} required /></div>
+                <div className="relative"><KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input id="invitation-password" className="h-11 pl-10" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} required /></div>
               </div>
-              {message && <p role={messageKind === "error" ? "alert" : "status"} className={`text-sm ${messageKind === "error" ? "text-destructive" : "text-muted-foreground"}`}>{message}</p>}
-              <Button className="w-full" type="submit" disabled={busy}>
-                {busy && <Loader2 className="animate-spin" aria-hidden="true" />}
+              {message && <p role={messageKind === "error" ? "alert" : "status"} className={`rounded-md border px-4 py-3 text-sm leading-6 ${messageKind === "error" ? "border-destructive/30 bg-destructive/5 text-destructive dark:border-red-400/40 dark:bg-red-400/10 dark:text-red-200" : "border-primary/25 bg-primary/5 text-foreground"}`}>{message}</p>}
+              <Button className="h-11 w-full" type="submit" disabled={busy}>
+                {busy && <Loader2 className="motion-safe:animate-spin" aria-hidden="true" />}
                 {mode === "signup" ? "Criar conta e aceitar" : "Entrar e aceitar convite"}
               </Button>
             </form>
-            <button type="button" className="mt-5 w-full text-center text-sm text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setMessage(""); }}>
+            <button type="button" className="mt-5 min-h-10 w-full text-center text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setMessage(""); }}>
               {mode === "signup" ? "Já tem uma conta? Entrar" : "Ainda não tem uma conta? Criar conta"}
             </button>
           </>
         )}
-      </section>
-    </main>
+    </WorkspaceAuthLayout>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ChevronDown, ChevronUp, Loader2, Plus, Trash2, Utensils } from "lucide-react";
+import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { toast } from "sonner";
 import {
   fetchPatientRecalls,
@@ -212,10 +213,7 @@ export function WorkspaceRecordatorioTab({ workspaceId, patient }: Props) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 gap-2 text-muted-foreground">
-        <Loader2 size={18} className="animate-spin" />
-        <span className="text-sm">Carregando…</span>
-      </div>
+      <div className="flex justify-center py-16"><LeafLoader label="Carregando recordatório…" /></div>
     );
   }
 

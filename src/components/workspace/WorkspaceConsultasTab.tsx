@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { CalendarDays, ChevronDown, ChevronUp, Clock, Edit2, Loader2, Lock, Plus, Trash2 } from "lucide-react";
+import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -107,10 +108,7 @@ export function WorkspaceConsultasTab({ workspaceId, patient }: Props) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 gap-2 text-muted-foreground">
-        <Loader2 size={18} className="animate-spin" />
-        <span className="text-sm">Carregando consultas…</span>
-      </div>
+      <div className="flex justify-center py-16"><LeafLoader label="Carregando consultas…" /></div>
     );
   }
 

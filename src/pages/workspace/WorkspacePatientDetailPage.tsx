@@ -12,6 +12,7 @@ import { WorkspaceAnamnesisForm } from "@/components/workspace/WorkspaceAnamnesi
 import { WorkspaceConsultasTab } from "@/components/workspace/WorkspaceConsultasTab";
 import { WorkspaceMeasurementCharts } from "@/components/workspace/WorkspaceMeasurementCharts";
 import { WorkspaceRecordatorioTab } from "@/components/workspace/WorkspaceRecordatorioTab";
+import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { WorkspaceTrainingTab } from "@/components/workspace/WorkspaceTrainingTab";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
@@ -311,9 +312,9 @@ export default function WorkspacePatientDetailPage() {
 
         {/* Loading / Error states */}
         {(accessResolving || loading) && (
-          <p role="status" aria-live="polite" className="rounded-md border bg-background p-6 text-sm text-muted-foreground">
-            {accessResolving ? "Validando acesso ao workspace..." : "Carregando prontuário..."}
-          </p>
+          <div className="rounded-md border bg-background p-8">
+            <LeafLoader label={accessResolving ? "Validando acesso ao workspace..." : "Carregando prontuário..."} />
+          </div>
         )}
         {!accessResolving && !loading && error && (
           <p role="alert" className="rounded-md border border-destructive/30 bg-background p-4 text-sm text-destructive">{error}</p>

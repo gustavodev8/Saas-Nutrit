@@ -1,5 +1,43 @@
 # Continuidade Codex
 
+## Landing e acesso Nutrit — 2026-11-24
+
+- Redesign local da landing SaaS e telas de login, cadastro, recuperacao e convite. Hero mostra previa ilustrativa com dados ficticios, sem expor dados clinicos; oferta existente de 30 dias/R$79,90 permanece consistente.
+- Capturas locais da landing em 320x568 e 1440x900 verificaram ausencia de overflow horizontal, previa sem corte e proxima secao visivel. Build passou; testes direcionados de landing/auth/workspace passaram 68/68 segundo QA independente.
+- Suite geral permanece vermelha: execucao local 430/437, falhas em AuthContext, workspaceMeasurements e componentes admin fora do diff; QA reexecutou e encontrou 5 falhas em 3 arquivos. Nao atribuir falhas ao redesign sem evidencia, mas nao declarar QA_PASS.
+- QA_FAIL para deploy integral: faltam investigar falhas da suite, homologacao autenticada em mobile/light/dark e cobertura visual de outras telas publicas/portal/admin. Nenhum commit, push, deploy, migration ou alteracao Supabase nesta rodada.
+
+## Reconciliacao de testes clinicos — 2026-11-24
+
+- Pacote visual permanece local, sem commit, push, flags ou Supabase remoto.
+- Testes do diretorio e detalhe do paciente foram alinhados ao fluxo atual por abas, preservando verificacoes de navegacao e isolamento entre workspaces. Cinco suites focadas passaram: 36/36; TypeScript e `git diff --check` passaram.
+- QA independente: `QA_CONDITIONAL` para manter local. Falta cobertura da jornada completa de criacao/edicao de avaliacao e relatorio na aba Medidas, alem de homologacao visual autenticada desktop/mobile/dark/light/reduced-motion antes de publicar.
+
+## Expansao visual e loader do piloto — 2026-11-24
+
+- Pacote local ainda sem commit/push/deploy: refinamento de Agenda, Inicio, Pacientes, Modelos, Alimentos, detalhe de modelo e Configuracoes; menu movel e estados vazios/erro mais claros.
+- `LeafLoader` agora usa tres folhas em queda com alternativa estatica para `prefers-reduced-motion`; aplicado a esperas de paginas/consultas, mantendo spinners de acoes curtas.
+- Falhas de carregamento de Modelos/Alimentos deixam de parecer lista vazia ou loading infinito; oferecem retry e ignoram respostas obsoletas.
+- Build, tipagem, lint direcionado e `git diff --check` passaram nas implementacoes. QA independente: 4 testes de catalogo, 2 do loader e 2 da Agenda passaram; suite focada clinica teve 23 falhas em 39 testes (13 Pacientes, 10 Detalhe), aparentemente expectativas antigas, ainda nao reconciliadas.
+- QA_FAIL para publicar: falta reconciliar esses testes e homologar desktop/mobile, dark/light e movimento reduzido em navegador autenticado. Nenhuma alteracao remota, de Supabase ou dados clinicos nesta rodada.
+
+## Revisao visual do piloto — 2026-11-23
+
+- Base publicada antes deste pacote: `95d1383a` na `main`. Este novo pacote permanece local, sem commit, push, deploy ou alteracao remota.
+- Capturas do usuario motivaram melhorias em Agenda, Inicio, onboarding e Pacientes: estado vazio com CTA, indicadores mais densos, superficies dark/light, acoes de paciente visiveis, idade futura sem valor negativo e menu movel em telas estreitas.
+- QA de design identificou e confirmou correcoes de acao por toque, agenda vazia, idade negativa, contraste e hierarquia. Filtros da Agenda receberam `aria-pressed`.
+- Build, tipagem, lint direcionado, `git diff --check`, 2 testes da Agenda e novo teste de idade passaram. A suite de Pacientes permanece com 13 testes legados falhando por expectativas de UI/fluxos antigos (incluindo wizard de antropometria na lista); nao foram ignorados nem reescritos em massa.
+- QA final condicional: falta homologacao visual autenticada em desktop/mobile e revisao separada da suite legada. Preservar demais alteracoes locais.
+
+## Integração visual do workspace — 2026-11-23
+
+- Integração local, sem commit, push, deploy, Supabase remoto, migration, flag ou alteração de ambiente.
+- Destino confirmado em `8412262d`; apenas `src/components/workspace/WorkspaceShell.tsx` e `src/pages/workspace/WorkspacePatientsPage.tsx` ficaram modificados.
+- Portados seletivamente tokens visuais, foco, áreas de toque, hierarquia do diretório, indicadores, filtros, estados de painel e sticky do formulário. A lista em cartões e todos os fluxos do destino foram preservados: sidebar, tema, seleção de modelo, CPF/notas, prontuário, rotas, paginação, handlers, mutations e escopo por workspace.
+- Validações locais: `npx tsc --noEmit`, ESLint direcionado, `npm run build` e `git diff --check` passaram.
+- Testes focados falham por condições preexistentes no checkout: `WorkspacePatientsPage.test.tsx` monta sem Router apesar de `useSearchParams()` já existir no HEAD; `WorkspacePatientDetailPage.test.tsx` falha em expectativas de dados/contrato fora dos dois arquivos alterados. Nenhum teste foi alterado para mascarar isso.
+- QA independente read-only: sem regressão funcional identificada no diff; status condicional por falhas preexistentes e ausência de screenshot/browser autenticado. Próximo passo seguro: revisão visual manual local antes de commit ou publicação.
+
 ## Redesign da listagem de pacientes — 2026-11-15
 
 - **Estado local:** redesign visual publicado no commit `34faf2b`; a correção que preserva a navegação lateral e móvel em `/admin/pacientes` está local, ainda não commitada, em `src/components/admin/AdminLayout.tsx`. Nenhuma migration, segredo ou deploy foi executado.

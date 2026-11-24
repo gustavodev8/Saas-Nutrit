@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { KeyRound, Leaf, Loader2, Mail } from "lucide-react";
+import { KeyRound, Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
+import { WorkspaceAuthLayout } from "@/components/workspace/WorkspaceAuthLayout";
 
 export default function WorkspaceLogin() {
   const { login, isAuthenticated, authReady } = useWorkspaceAuth();
@@ -40,37 +41,25 @@ export default function WorkspaceLogin() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-10">
-      <section className="w-full max-w-md rounded-lg border bg-background p-8 shadow-sm">
-        <div className="mb-8 flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary"><Leaf size={20} /></span>
-          <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Acesso profissional</p><h1 className="text-2xl font-semibold">Workspace</h1></div>
-        </div>
-        <form className="space-y-5" onSubmit={handleSubmit}>
-          <div className="space-y-2"><Label htmlFor="workspace-email">E-mail</Label><div className="relative"><Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input id="workspace-email" className="pl-9" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></div>
-          <div className="space-y-2"><Label htmlFor="workspace-password">Senha</Label><div className="relative"><KeyRound className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input id="workspace-password" className="pl-9" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></div></div>
+    <WorkspaceAuthLayout title="Entrar no workspace" eyebrow="Acesso profissional" footer={<>Não tem conta? <Link className="font-semibold text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" to="/workspace/signup">Criar meu workspace</Link></>}>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="space-y-2"><Label htmlFor="workspace-email">E-mail</Label><div className="relative"><Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input id="workspace-email" className="h-11 pl-10" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></div>
+          <div className="space-y-2"><Label htmlFor="workspace-password">Senha</Label><div className="relative"><KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input id="workspace-password" className="h-11 pl-10" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></div></div>
+          <div className="text-right"><Link className="text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" to="/workspace/forgot-password">Esqueci minha senha</Link></div>
           {error && (
-            <div role="alert" className="space-y-2 text-sm text-destructive">
+            <div role="alert" className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-3 text-sm text-destructive dark:border-red-400/40 dark:bg-red-400/10 dark:text-red-200">
               <p>{error}</p>
               {platformAdminGuidance && (
                 <p>
-                  <Link className="font-medium underline underline-offset-2" to="/platform/invitations">
+                  <Link className="font-medium underline underline-offset-2 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" to="/platform/invitations">
                     Abrir convites da plataforma
                   </Link>
                 </p>
               )}
             </div>
           )}
-          <Button className="w-full" type="submit" disabled={loading}>{loading && <Loader2 className="animate-spin" />}Entrar no workspace</Button>
+          <Button className="h-11 w-full" type="submit" disabled={loading}>{loading && <Loader2 className="motion-safe:animate-spin" aria-hidden="true" />}Entrar no workspace</Button>
         </form>
-        <Link className="mt-4 block text-center text-sm font-medium text-primary underline-offset-2 hover:underline" to="/workspace/forgot-password">Esqueci minha senha</Link>
-        <p className="mt-3 text-center text-sm text-muted-foreground">
-          Não tem conta?{" "}
-          <Link className="font-medium text-[#166b50] underline-offset-2 hover:underline" to="/workspace/signup">
-            Criar workspace grátis
-          </Link>
-        </p>
-      </section>
-    </main>
+    </WorkspaceAuthLayout>
   );
 }

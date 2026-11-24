@@ -65,6 +65,7 @@ describe("WorkspaceLogin", () => {
     );
 
     expect(screen.queryByRole("link", { name: "Voltar ao site" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Criar meu workspace" })).toHaveAttribute("href", "/workspace/signup");
   });
 
   it("guides a platform administrator to invitations when workspace membership is missing", async () => {

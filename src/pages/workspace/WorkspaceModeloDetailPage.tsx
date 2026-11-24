@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  ArrowLeft, ChevronDown, ChevronRight, Clock, Flame, Utensils,
+  ArrowLeft, BookOpen, ChevronDown, ChevronRight, Clock, Flame, Utensils,
 } from "lucide-react";
 import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { Button } from "@/components/ui/button";
@@ -31,24 +31,25 @@ function MealCard({ meal, defaultOpen }: { meal: WorkspaceDietTemplateMeal; defa
   const isSubstitution = meal.is_substitution_of != null;
 
   return (
-    <div className={cn("border rounded-xl overflow-hidden", isSubstitution && "border-dashed border-muted-foreground/40")}>
+    <div className={cn("overflow-hidden rounded-md border border-border", isSubstitution && "border-dashed border-muted-foreground/40")}>
       <button
         type="button"
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-card hover:bg-muted/40 transition-colors text-left"
+        className="flex min-h-16 w-full items-center justify-between gap-3 bg-card px-4 py-3 text-left transition-colors duration-150 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <div className="flex items-center gap-3">
-          <div className={cn("rounded-lg p-1.5", isSubstitution ? "bg-muted" : "bg-[#166b50]/10")}>
-            <Utensils size={14} className={isSubstitution ? "text-muted-foreground" : "text-[#166b50]"} />
+        <div className="flex min-w-0 items-center gap-3">
+          <div className={cn("shrink-0 rounded-md p-1.5", isSubstitution ? "bg-muted" : "bg-primary/10")}>
+            <Utensils size={14} className={isSubstitution ? "text-muted-foreground" : "text-primary"} />
           </div>
-          <div>
-            <p className="text-sm font-medium">
+          <div className="min-w-0">
+            <p className="break-words text-sm font-medium text-foreground">
               {isSubstitution ? (
                 <span className="text-muted-foreground">↳ Substituição: </span>
               ) : null}
               {meal.meal_name}
             </p>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               {meal.time_suggestion && (
                 <span className="flex items-center gap-1">
                   <Clock size={11} /> {meal.time_suggestion}
@@ -63,12 +64,12 @@ function MealCard({ meal, defaultOpen }: { meal: WorkspaceDietTemplateMeal; defa
             </div>
           </div>
         </div>
-        {open ? <ChevronDown size={16} className="text-muted-foreground" /> : <ChevronRight size={16} className="text-muted-foreground" />}
+        {open ? <ChevronDown size={16} className="shrink-0 text-muted-foreground" /> : <ChevronRight size={16} className="shrink-0 text-muted-foreground" />}
       </button>
 
       {open && (
-        <div className="border-t">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto border-t border-border">
+          <table className="w-full min-w-[360px] text-sm">
             <thead>
               <tr className="bg-muted/40">
                 <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Alimento</th>
@@ -86,8 +87,8 @@ function MealCard({ meal, defaultOpen }: { meal: WorkspaceDietTemplateMeal; defa
                 const cFood = ((food.carbs_per_100g ?? 0) * (food.quantity ?? 0)) / 100;
                 const fFood = ((food.fat_per_100g ?? 0) * (food.quantity ?? 0)) / 100;
                 return (
-                  <tr key={food.id} className="border-t hover:bg-muted/20">
-                    <td className="px-4 py-2.5">{food.food_name}</td>
+                  <tr key={food.id} className="border-t border-border hover:bg-muted/20">
+                    <td className="max-w-48 break-words px-4 py-2.5 text-foreground">{food.food_name}</td>
                     <td className="px-4 py-2.5 text-right text-muted-foreground whitespace-nowrap">
                       {food.quantity} {food.unit}
                     </td>
@@ -153,11 +154,13 @@ export function WorkspaceModeloDetailPage() {
 
   if (!template) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 gap-4">
-        <p className="text-muted-foreground">Modelo não encontrado</p>
-        <Link to="/workspace/modelos">
-          <Button variant="outline">Voltar aos modelos</Button>
-        </Link>
+      <div className="mx-auto flex min-h-[50vh] w-full max-w-7xl flex-col items-start justify-center gap-4 px-4 py-10 sm:px-6 lg:px-8">
+        <span className="flex h-11 w-11 items-center justify-center rounded-md bg-primary/10 text-primary"><BookOpen size={21} aria-hidden="true" /></span>
+        <div className="max-w-lg">
+          <h1 className="text-lg font-semibold text-foreground">Modelo não encontrado</h1>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">Este modelo não está disponível. Consulte a lista para escolher outro protocolo.</p>
+        </div>
+        <Button asChild variant="outline"><Link to="/workspace/modelos">Voltar aos modelos</Link></Button>
       </div>
     );
   }
@@ -166,27 +169,27 @@ export function WorkspaceModeloDetailPage() {
   const substitutions = (template.meals ?? []).filter((m) => m.is_substitution_of != null);
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+      <div className="mb-5 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
         <Link to="/workspace/modelos" className="hover:text-foreground flex items-center gap-1">
           <ArrowLeft size={14} /> Modelos
         </Link>
         <span>/</span>
-        <span className="text-foreground font-medium">{template.name}</span>
+        <span className="min-w-0 truncate font-medium text-foreground" title={template.name}>{template.name}</span>
       </div>
 
-      {/* Header card */}
-      <div className="border rounded-xl p-5 mb-6 bg-card">
+      {/* Header */}
+      <div className="mb-6 border-y border-border py-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-semibold">{template.name}</h1>
+            <h1 className="break-words text-2xl font-semibold text-foreground">{template.name}</h1>
             {template.description && (
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{template.description}</p>
             )}
             <div className="flex flex-wrap items-center gap-3 mt-3">
               {template.strategy && (
-                <span className="text-xs px-2.5 py-1 rounded-full bg-[#166b50]/10 text-[#166b50] font-medium">
+                <span className="rounded bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                   {STRATEGY_LABELS[template.strategy] ?? template.strategy}
                 </span>
               )}
@@ -194,7 +197,7 @@ export function WorkspaceModeloDetailPage() {
           </div>
           <Button
             onClick={handleUsarModelo}
-            className="bg-[#166b50] hover:bg-[#145e45] text-white shrink-0"
+            className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
           >
             Usar modelo
           </Button>
@@ -202,14 +205,14 @@ export function WorkspaceModeloDetailPage() {
 
         {/* Totais */}
         {(template.total_kcal || template.protein_g || template.carbs_g || template.fat_g) && (
-          <div className="grid grid-cols-4 gap-3 mt-5 pt-4 border-t">
+          <div className="mt-5 grid grid-cols-2 gap-4 border-t border-border pt-4 sm:grid-cols-4">
             {[
               { label: "Kcal", value: Math.round(template.total_kcal ?? 0), unit: "" },
               { label: "Proteína", value: Math.round(template.protein_g ?? 0), unit: "g" },
               { label: "Carboidratos", value: Math.round(template.carbs_g ?? 0), unit: "g" },
               { label: "Gorduras", value: Math.round(template.fat_g ?? 0), unit: "g" },
             ].map(({ label, value, unit }) => (
-              <div key={label} className="text-center">
+              <div key={label} className="min-w-0">
                 <p className="text-xs text-muted-foreground">{label}</p>
                 <p className="text-lg font-semibold">
                   {value}
@@ -222,7 +225,7 @@ export function WorkspaceModeloDetailPage() {
       </div>
 
       {/* Refeições */}
-      <div className="mb-2">
+      <div className="mb-2 max-w-5xl">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           Refeições — {mainMeals.length} cadastradas
         </h2>
@@ -230,11 +233,14 @@ export function WorkspaceModeloDetailPage() {
           {mainMeals.map((meal, i) => (
             <MealCard key={meal.id} meal={meal} defaultOpen={i === 0} />
           ))}
+          {mainMeals.length === 0 && (
+            <p className="border-y border-border py-8 text-sm text-muted-foreground">Este modelo ainda não tem refeições cadastradas.</p>
+          )}
         </div>
       </div>
 
       {substitutions.length > 0 && (
-        <div className="mt-6">
+        <div className="mt-6 max-w-5xl">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Substituições — {substitutions.length}
           </h2>

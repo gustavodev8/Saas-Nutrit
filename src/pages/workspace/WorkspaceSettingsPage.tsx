@@ -39,9 +39,9 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
 
 function tabClass(active: boolean) {
   return cn(
-    "inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors",
+    "inline-flex min-h-11 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     active
-      ? "border-[#166b50] text-[#166b50]"
+      ? "border-primary text-primary"
       : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground",
   );
 }
@@ -53,7 +53,7 @@ function roleBadge(role: string) {
     <span className={cn(
       "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
       isOwner
-        ? "bg-[#166b50]/10 text-[#166b50]"
+        ? "bg-primary/10 text-primary"
         : "bg-muted text-muted-foreground",
     )}>
       {isOwner && <Shield size={10} />}
@@ -65,10 +65,10 @@ function roleBadge(role: string) {
 function statusBadge(status: string) {
   const label = STATUS_LABELS[status] ?? status;
   if (status === "active") {
-    return <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check size={10} />{label}</span>;
+    return <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-300"><Check size={10} />{label}</span>;
   }
   if (status === "invited") {
-    return <span className="text-xs text-amber-600">{label}</span>;
+    return <span className="text-xs text-amber-700 dark:text-amber-300">{label}</span>;
   }
   return <span className="text-xs text-destructive">{label}</span>;
 }
@@ -459,9 +459,9 @@ function EquipeTab({ workspaceId, currentUserEmail }: { workspaceId: string; cur
   if (rpcMissing) {
     return (
       <div className="max-w-lg space-y-4">
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-medium text-amber-800">Migration pendente</p>
-          <p className="mt-1 text-xs text-amber-700">
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/40">
+          <p className="text-sm font-medium text-amber-900 dark:text-amber-100">Migration pendente</p>
+          <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
             Para listar membros com e-mail, aplique o SQL de settings no Supabase SQL Editor.
           </p>
         </div>
@@ -485,9 +485,13 @@ function EquipeTab({ workspaceId, currentUserEmail }: { workspaceId: string; cur
         </p>
       </div>
 
-      <div className="divide-y rounded-lg border bg-background">
+      <div className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
         {members.length === 0 && (
-          <p className="px-4 py-6 text-sm text-muted-foreground text-center">Nenhum membro encontrado.</p>
+          <div className="px-4 py-8">
+            <Users size={20} className="mb-3 text-primary" aria-hidden="true" />
+            <p className="text-sm font-medium text-foreground">Nenhum membro encontrado</p>
+            <p className="mt-1 text-xs text-muted-foreground">Os membros com acesso aparecerão aqui quando estiverem disponíveis.</p>
+          </div>
         )}
         {members.map((member) => {
           const isSelf = member.email.toLowerCase() === (currentUserEmail ?? "").toLowerCase();
@@ -712,24 +716,25 @@ export default function WorkspaceSettingsPage() {
 
   if (!workspaceId) {
     return (
-      <main className="px-4 py-6 sm:px-8">
-        <p className="text-sm text-muted-foreground">Sem workspace ativo.</p>
+      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="flex min-h-[40vh] flex-col items-start justify-center border-y border-border">
+          <Building2 size={24} className="mb-3 text-primary" aria-hidden="true" />
+          <h1 className="text-lg font-semibold text-foreground">Sem workspace ativo</h1>
+          <p className="mt-1 text-sm text-muted-foreground">As configurações estarão disponíveis quando um workspace estiver ativo.</p>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="px-4 py-6 sm:px-8">
-      <div className="mx-auto max-w-3xl space-y-6">
-        <header>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            <Settings size={13} aria-hidden="true" />Configurações
-          </div>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Workspace</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Gerencie as informações e a equipe do seu workspace.</p>
+    <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="space-y-6">
+        <header className="border-b border-border pb-5">
+          <h1 className="text-2xl font-semibold text-foreground">Configurações</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Informações, acesso e plano do workspace.</p>
         </header>
 
-        <div className="border-b overflow-x-auto">
+        <div className="overflow-x-auto border-b border-border">
           <nav className="flex gap-1 -mb-px min-w-max" aria-label="Seções">
             {TABS.map((tab) => (
               <button
@@ -746,7 +751,7 @@ export default function WorkspaceSettingsPage() {
           </nav>
         </div>
 
-        <div className="pt-2">
+        <div className="max-w-5xl pt-2">
           {activeTab === "perfil"       && <PerfilTab  workspaceId={workspaceId} isOwner={isOwner} />}
           {activeTab === "portal"       && <PortalTab  workspaceId={workspaceId} isOwner={isOwner} />}
           {activeTab === "clinica"      && <ClinicaTab workspaceId={workspaceId} isOwner={isOwner} />}

@@ -1,13 +1,14 @@
 import { useState } from "react";
 import {
   Apple, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Home,
-  LayoutDashboard, LogOut, Moon, Settings, Sun, UsersRound,
+  LayoutDashboard, LogOut, Menu, Moon, Settings, Sun, UsersRound,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { WorkspacePaywall } from "@/components/workspace/WorkspacePaywall";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   initiateWorkspaceSubscription,
   isSubscriptionAccessible,
@@ -27,6 +28,7 @@ export default function WorkspaceShell() {
   const { membership, userEmail, logout, subscription } = useWorkspaceAuth();
   const { theme, toggle: toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   if (subscription && !isSubscriptionAccessible(subscription.status)) {
     return (
@@ -81,11 +83,45 @@ export default function WorkspaceShell() {
     : "?";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-muted dark:bg-background">
+    <div className="flex h-screen flex-col overflow-hidden bg-muted dark:bg-background md:flex-row">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4 md:hidden">
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetTrigger asChild>
+            <button type="button" aria-label="Abrir menu" className="flex h-10 w-10 items-center justify-center rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Menu size={20} aria-hidden="true" />
+            </button>
+          </SheetTrigger>
+          <SheetContent side="left" className="flex w-[min(85vw,20rem)] flex-col gap-0 overflow-y-auto p-0 md:hidden">
+            <div className="border-b px-5 py-5">
+              <SheetTitle className="text-left text-base text-primary">Nutrit</SheetTitle>
+              <p className="text-xs text-muted-foreground">Área clínica</p>
+            </div>
+            <nav className="flex flex-1 flex-col gap-1 px-3 py-4" aria-label="Navegação móvel">
+              <NavLink to="/workspace" end onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => navCls(isActive, false)}><Home size={18} aria-hidden="true" />Início</NavLink>
+              <NavLink to="/workspace/patients" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => navCls(isActive, false)}><UsersRound size={18} aria-hidden="true" />Pacientes</NavLink>
+              <NavLink to="/workspace/agenda" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => navCls(isActive, false)}><CalendarDays size={18} aria-hidden="true" />Agenda</NavLink>
+              <NavLink to="/workspace/modelos" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => navCls(isActive, false)}><BookOpen size={18} aria-hidden="true" />Modelos</NavLink>
+              <NavLink to="/workspace/alimentos" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => navCls(isActive, false)}><Apple size={18} aria-hidden="true" />Alimentos</NavLink>
+              <NavLink to="/workspace/configuracoes" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => navCls(isActive, false)}><Settings size={18} aria-hidden="true" />Configurações</NavLink>
+            </nav>
+            <div className="space-y-1 border-t px-3 py-3">
+              <p className="truncate px-2.5 py-2 text-xs text-muted-foreground">{userEmail}</p>
+              <button type="button" onClick={toggleTheme} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {theme === "dark" ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
+                {theme === "dark" ? "Modo claro" : "Modo escuro"}
+              </button>
+              <button type="button" onClick={() => void logout()} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <LogOut size={17} aria-hidden="true" />Sair
+              </button>
+            </div>
+          </SheetContent>
+        </Sheet>
+        <span className="text-sm font-semibold text-primary">Nutrit</span>
+      </header>
       {/* ── Sidebar ── */}
       <aside
         className={cn(
-          "relative flex flex-col border-r bg-background transition-all duration-200 shrink-0 h-full overflow-y-auto overflow-x-hidden",
+          "relative hidden flex-col border-r bg-background transition-all duration-200 shrink-0 h-full overflow-y-auto overflow-x-hidden md:flex",
           collapsed ? "w-[60px]" : "w-[220px]",
         )}
       >
@@ -204,7 +240,7 @@ export default function WorkspaceShell() {
       </aside>
 
       {/* ── Main content ── */}
-      <div className="flex flex-1 flex-col min-w-0 h-screen overflow-y-auto overflow-x-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden md:h-screen">
         {trialBanner}
         <Outlet />
       </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft, Loader2, Activity, FileDown, CalendarDays, CheckSquare, Square } from "lucide-react";
+import { ArrowLeft, Activity, FileDown, CalendarDays, CheckSquare, Square } from "lucide-react";
+import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
@@ -523,10 +524,7 @@ export default function WorkspaceRelatorioAntropometrico() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
-        <Loader2 className="w-6 h-6 animate-spin" />
-        <p className="text-sm">Carregando relatório...</p>
-      </div>
+      <div className="flex justify-center py-20"><LeafLoader label="Carregando relatório..." /></div>
     );
   }
 

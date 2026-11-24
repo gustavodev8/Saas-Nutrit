@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Building2, KeyRound, Leaf, Loader2, Mail } from "lucide-react";
+import { Building2, KeyRound, Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
+import { WorkspaceAuthLayout } from "@/components/workspace/WorkspaceAuthLayout";
 
 type Step = "form" | "verify";
 
@@ -36,7 +37,9 @@ export default function WorkspaceSignupPage() {
     setLoading(true);
     try {
       // Store clinic name so the callback can create the workspace
-      try { sessionStorage.setItem(WORKSPACE_NAME_KEY, clinicName.trim()); } catch {}
+      try { sessionStorage.setItem(WORKSPACE_NAME_KEY, clinicName.trim()); } catch {
+        // Signup metadata still carries the workspace name when storage is unavailable.
+      }
 
       const { error: signUpError } = await workspaceSupabase.auth.signUp({
         email: email.trim().toLowerCase(),
@@ -64,54 +67,40 @@ export default function WorkspaceSignupPage() {
 
   if (step === "verify") {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-10">
-        <section className="w-full max-w-md rounded-lg border bg-background p-8 shadow-sm text-center">
-          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#e6f1eb]">
-            <Mail size={26} className="text-[#166b50]" />
+      <WorkspaceAuthLayout title="Verifique seu e-mail" eyebrow="Confirmação de conta" centered>
+        <div className="text-center">
+          <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Mail size={23} aria-hidden="true" />
           </span>
-          <h1 className="text-2xl font-semibold">Verifique seu e-mail</h1>
-          <p className="mt-3 text-sm text-muted-foreground">
+          <p className="text-sm leading-6 text-muted-foreground dark:text-zinc-300">
             Enviamos um link de confirmação para <strong>{email}</strong>.
             Clique no link para ativar sua conta e acessar o workspace.
           </p>
-          <p className="mt-5 text-xs text-muted-foreground">
+          <p className="mt-6 text-sm text-muted-foreground dark:text-zinc-300">
             Já confirmou?{" "}
             <button
               type="button"
-              className="font-medium text-[#166b50] hover:underline"
+              className="font-semibold text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => navigate("/workspace/login")}
             >
               Ir para o login
             </button>
           </p>
-        </section>
-      </main>
+        </div>
+      </WorkspaceAuthLayout>
     );
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-10">
-      <section className="w-full max-w-md rounded-lg border bg-background p-8 shadow-sm">
-        <div className="mb-8 flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-[#e6f1eb]">
-            <Leaf size={20} className="text-[#166b50]" />
-          </span>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              30 dias grátis · R$79,90/mês
-            </p>
-            <h1 className="text-2xl font-semibold">Criar workspace</h1>
-          </div>
-        </div>
-
-        <form className="space-y-5" onSubmit={handleSubmit}>
+    <WorkspaceAuthLayout title="Criar workspace" eyebrow="30 dias grátis · R$79,90/mês" description="Crie seu workspace. O período gratuito começa após a confirmação do e-mail." footer={<>Já tem uma conta? <Link className="font-semibold text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" to="/workspace/login">Entrar</Link></>}>
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <Label htmlFor="clinic-name">Nome da clínica ou consultório</Label>
             <div className="relative">
-              <Building2 className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input
                 id="clinic-name"
-                className="pl-9"
+                className="h-11 pl-10"
                 placeholder="Ex: Clínica Nutrição Bem Estar"
                 value={clinicName}
                 onChange={(e) => setClinicName(e.target.value)}
@@ -124,10 +113,10 @@ export default function WorkspaceSignupPage() {
           <div className="space-y-2">
             <Label htmlFor="signup-email">E-mail profissional</Label>
             <div className="relative">
-              <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input
                 id="signup-email"
-                className="pl-9"
+                className="h-11 pl-10"
                 type="email"
                 autoComplete="email"
                 value={email}
@@ -140,10 +129,10 @@ export default function WorkspaceSignupPage() {
           <div className="space-y-2">
             <Label htmlFor="signup-password">Senha</Label>
             <div className="relative">
-              <KeyRound className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input
                 id="signup-password"
-                className="pl-9"
+                className="h-11 pl-10"
                 type="password"
                 autoComplete="new-password"
                 placeholder="Mínimo 8 caracteres"
@@ -157,10 +146,10 @@ export default function WorkspaceSignupPage() {
           <div className="space-y-2">
             <Label htmlFor="signup-confirm">Confirmar senha</Label>
             <div className="relative">
-              <KeyRound className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input
                 id="signup-confirm"
-                className="pl-9"
+                className="h-11 pl-10"
                 type="password"
                 autoComplete="new-password"
                 value={confirmPassword}
@@ -170,29 +159,22 @@ export default function WorkspaceSignupPage() {
             </div>
           </div>
 
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-3 text-sm text-destructive dark:border-red-400/40 dark:bg-red-400/10 dark:text-red-200">{error}</p>}
 
           <Button
             type="submit"
-            className="w-full bg-[#166b50] hover:bg-[#145e45] text-white"
+            className="h-11 w-full"
             disabled={loading}
           >
-            {loading && <Loader2 className="animate-spin" />}
+            {loading && <Loader2 className="motion-safe:animate-spin" aria-hidden="true" />}
             Criar conta grátis
           </Button>
         </form>
 
-        <p className="mt-5 text-center text-sm text-muted-foreground">
-          Já tem uma conta?{" "}
-          <Link className="font-medium text-[#166b50] hover:underline" to="/workspace/login">
-            Entrar
-          </Link>
-        </p>
-        <p className="mt-3 text-center text-xs text-muted-foreground">
+        <p className="mt-5 border-t border-border/70 pt-4 text-center text-xs leading-5 text-muted-foreground dark:text-zinc-300">
           Ao criar sua conta você concorda com os nossos termos de uso.
           O período gratuito de 30 dias começa após a confirmação do e-mail.
         </p>
-      </section>
-    </main>
+    </WorkspaceAuthLayout>
   );
 }
