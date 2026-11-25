@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   workspaceAuthListener: vi.fn(),
   workspaceAuthCallback: vi.fn(),
   workspaceMembersSelect: vi.fn(),
+  workspaceSubscriptionSelect: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -35,7 +36,11 @@ vi.mock("@/lib/workspaceSupabase", () => ({
       signInWithPassword: mocks.workspaceSignIn,
       signOut: mocks.workspaceSignOut,
     },
-    from: vi.fn(() => ({ select: mocks.workspaceMembersSelect })),
+    from: vi.fn((table: string) => {
+      if (table === "workspace_members") return { select: mocks.workspaceMembersSelect };
+      if (table === "workspace_subscriptions") return { select: mocks.workspaceSubscriptionSelect };
+      throw new Error(`Unexpected workspace table: ${table}`);
+    }),
   },
 }));
 
@@ -75,6 +80,9 @@ describe("workspace and legacy admin auth coexistence", () => {
     vi.clearAllMocks();
     mocks.workspaceGetSession.mockResolvedValue({ data: { session: null } });
     mocks.workspaceMembersSelect.mockResolvedValue({ data: [], error: null });
+    mocks.workspaceSubscriptionSelect.mockImplementation(() => ({
+      eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) })),
+    }));
     mocks.workspaceAuthListener.mockImplementation((callback) => {
       mocks.workspaceAuthCallback.mockImplementation(callback);
       return { data: { subscription: { unsubscribe: vi.fn() } } };

@@ -87,11 +87,13 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
   const blockedAuthUserIdRef = useRef<string | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
 
-  const loadSubscription = useCallback(async (workspaceId: string) => {
+  const loadSubscription = useCallback(async (workspaceId: string, operationId: number) => {
     try {
       const sub = await fetchWorkspaceSubscription(workspaceId);
+      if (operationId !== authOperationRef.current) return;
       setSubscription(sub);
     } catch {
+      if (operationId !== authOperationRef.current) return;
       setSubscription(null);
     }
   }, []);
@@ -141,7 +143,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
       }
 
       setMembership(nextMembership);
-      if (nextMembership) void loadSubscription(nextMembership.workspaceId);
+      if (nextMembership) void loadSubscription(nextMembership.workspaceId, operationId);
     } catch (error) {
       if (operationId !== authOperationRef.current) return;
       console.error("[WorkspaceAuth] membership lookup failed:", error);
@@ -187,7 +189,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
       const nextMembership = await resolveCurrentMembership();
       if (operationId !== authOperationRef.current) return false;
       setMembership(nextMembership);
-      if (nextMembership) void loadSubscription(nextMembership.workspaceId);
+      if (nextMembership) void loadSubscription(nextMembership.workspaceId, operationId);
       return Boolean(nextMembership);
     } catch (error) {
       if (operationId !== authOperationRef.current) return false;
@@ -211,7 +213,8 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
       // still valid and the membership hasn't changed, so there is no need to re-sync.
       // Re-syncing on these events zeros out membershipReady and causes a visible flash
       // ("reload") whenever Chrome resumes a suspended/minimized tab.
-      if (event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") return;
+      if (event === "INITIAL_SESSION") return;
+      if (event === "TOKEN_REFRESHED" && session?.user?.id !== blockedAuthUserIdRef.current) return;
 
       // SIGNED_IN / USER_UPDATED for the same user (tab regain focus, background refresh)
       // should not trigger a full re-sync — it would reset membershipReady and show the
@@ -306,7 +309,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
       setAuthUserId(userId);
       setUserEmail(authenticatedEmail);
       setMembership(nextMembership);
-      void loadSubscription(nextMembership.workspaceId);
+      void loadSubscription(nextMembership.workspaceId, operationId);
       setAuthReady(true);
       setMembershipReady(true);
       return { ok: true };
