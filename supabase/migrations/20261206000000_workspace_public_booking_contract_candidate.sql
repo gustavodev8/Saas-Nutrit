@@ -6,6 +6,9 @@
 --   * The RPC-based public UI is deployed and smoke-tested for a legacy
 --     { workspace_id } client and a new { workspace_slug } client.
 --   * No public client directly reads or inserts the workspace booking tables.
+--   * A documented cache coexistence period has elapsed: force refresh or
+--     equivalent cache invalidation is in place, and browser/CDN checks verify
+--     that no old bundles still issue direct anon table reads.
 --
 -- This migration intentionally performs the destructive ACL contraction separately.
 

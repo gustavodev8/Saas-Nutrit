@@ -39,6 +39,8 @@ describe("workspace public booking hardening contract", () => {
     expect(contractionMigration).toContain('DROP POLICY IF EXISTS "bookings_anon_insert"');
     expect(contractionMigration).toContain("REVOKE ALL ON TABLE public.workspace_bookings FROM anon;");
     expect(contractionMigration).toContain("smoke-tested");
+    expect(contractionMigration).toContain("cache coexistence");
+    expect(contractionMigration).toContain("force refresh");
   });
 
   it("enforces scheduling eligibility inside the advisory-locked atomic insert", () => {
@@ -53,6 +55,8 @@ describe("workspace public booking hardening contract", () => {
     expect(atomicInsert).toContain("workspace_booking_blocked_dates");
     expect(atomicInsert).toContain("workspace_booking_availability");
     expect(atomicInsert).toContain("mod(");
+    expect(atomicInsert).toContain("v_new_end + v_buffer_minutes >");
+    expect(additiveMigration).toContain("+ v_duration_min\n          + v_buffer_minutes");
     expect(atomicInsert).toContain("BOOKING_CONFLICT");
     expect(atomicInsert).toContain("BOOKING_UNAVAILABLE");
   });

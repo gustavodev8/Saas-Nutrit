@@ -200,6 +200,7 @@ BEGIN
           extract(hour FROM candidate_slots.start_time)::integer * 60
           + extract(minute FROM candidate_slots.start_time)::integer
           + v_duration_min
+          + v_buffer_minutes
         ) > (
           extract(hour FROM booking.booking_time)::integer * 60
           + extract(minute FROM booking.booking_time)::integer
@@ -355,7 +356,7 @@ BEGIN
         + COALESCE(booking.service_duration_min, 60)
         + v_buffer_minutes
       )
-      AND v_new_end > (
+      AND v_new_end + v_buffer_minutes > (
         extract(hour FROM booking.booking_time)::integer * 60
         + extract(minute FROM booking.booking_time)::integer
       )

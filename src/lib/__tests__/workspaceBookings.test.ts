@@ -110,6 +110,15 @@ describe("generateTimeSlots", () => {
   });
 
   describe("buffer time", () => {
+    it("blocks a booking that ends before the next one but whose own buffer crosses it", () => {
+      // Candidate 10:00-11:00 with a 15 min buffer cannot precede an 11:00 booking.
+      const slots = generateTimeSlots(FUTURE, "09:00", "13:00", 60, [
+        { time: "11:00", durationMin: 60 },
+      ], { bufferMin: 15, slotIntervalMin: 15 });
+      expect(slots.find((s) => s.time === "10:00")?.available).toBe(false);
+      expect(slots.find((s) => s.time === "09:45")?.available).toBe(true);
+    });
+
     it("blocks a slot within the buffer window after a booking", () => {
       // Existing: 09:00 for 60 min + 15 min buffer → protected until 10:15
       // New 60-min slot at 10:00 → 10:00 < 10:15 → conflict

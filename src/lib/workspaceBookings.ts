@@ -195,10 +195,10 @@ export function generateTimeSlots(
   for (let t = startTotal; t + serviceDurationMin <= endTotal; t += interval) {
     if (t < minStart) continue;
 
-    // Overlap: new slot [t, t+serviceDurationMin) intersects existing [B.start, B.start+duration+buffer)?
-    // i.e. t < B.endMin AND t + serviceDurationMin > B.startMin
+    // Each appointment reserves its own post-consultation buffer. The candidate
+    // therefore conflicts before an existing booking when its buffered end crosses it.
     const hasConflict = bookings.some(
-      (b) => t < b.endMin && t + serviceDurationMin > b.startMin,
+      (b) => t < b.endMin && t + serviceDurationMin + bufferMin > b.startMin,
     );
 
     slots.push({
