@@ -44,6 +44,9 @@ describe("workspace public booking hardening contract", () => {
   });
 
   it("enforces scheduling eligibility inside the advisory-locked atomic insert", () => {
+    const slotsStart = additiveMigration.indexOf("CREATE OR REPLACE FUNCTION public.get_public_workspace_booking_slots");
+    const slotsEnd = additiveMigration.indexOf("CREATE OR REPLACE FUNCTION public.get_public_workspace_booking_payment_status");
+    const publicSlots = additiveMigration.slice(slotsStart, slotsEnd);
     const start = additiveMigration.indexOf("CREATE OR REPLACE FUNCTION public.create_workspace_booking_atomic");
     const atomicInsert = additiveMigration.slice(start);
 
@@ -56,7 +59,7 @@ describe("workspace public booking hardening contract", () => {
     expect(atomicInsert).toContain("workspace_booking_availability");
     expect(atomicInsert).toContain("mod(");
     expect(atomicInsert).toContain("v_new_end + v_buffer_minutes >");
-    expect(additiveMigration).toContain("+ v_duration_min\n          + v_buffer_minutes");
+    expect(publicSlots).toMatch(/\+\s*v_duration_min\s*\+\s*v_buffer_minutes/);
     expect(atomicInsert).toContain("BOOKING_CONFLICT");
     expect(atomicInsert).toContain("BOOKING_UNAVAILABLE");
   });
