@@ -37,6 +37,13 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: "plano",        label: "Plano",         icon: <CreditCard   size={15} aria-hidden="true" /> },
 ];
 
+export function getInitialWorkspaceSettingsTab(searchParams: URLSearchParams): TabKey {
+  const requestedTab = searchParams.get("tab");
+  const matchedTab = TABS.find((tab) => tab.key === requestedTab);
+  if (matchedTab) return matchedTab.key;
+  return searchParams.get("subscribed") === "1" ? "plano" : "perfil";
+}
+
 function tabClass(active: boolean) {
   return cn(
     "inline-flex min-h-11 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
@@ -710,9 +717,7 @@ export default function WorkspaceSettingsPage() {
   const workspaceId = membership?.workspaceId ?? null;
   const isOwner = membership?.role === "owner";
   const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<TabKey>(() =>
-    searchParams.get("subscribed") === "1" ? "plano" : "perfil"
-  );
+  const [activeTab, setActiveTab] = useState<TabKey>(() => getInitialWorkspaceSettingsTab(searchParams));
 
   if (!workspaceId) {
     return (

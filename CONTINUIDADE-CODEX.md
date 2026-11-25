@@ -1,6 +1,12 @@
 # Continuidade Codex
 
-## Piloto — resumo nutricional e exclusão de planos — 2026-11-24
+## Tarefa 3 — aba inicial das configuracoes — 2026-11-24
+
+- **Escopo local:** a selecao inicial em Configuracoes prioriza `?tab=` quando corresponder a uma aba valida; `?subscribed=1` continua levando a Plano quando nao houver aba valida; Perfil permanece o fallback final.
+- **Validacoes:** 3 testes focados passaram; `npm run build` e `git diff --check` passaram.
+- **Publicacao:** commit somente local; nenhum push, deploy, migration ou operacao remota.
+
+## Piloto — resumo nutricional e exclusao de planos — 2026-11-24
 
 - **Tarefa 0 verificada em producao:** o detalhe de `Biblioteca Dieta - Emagrecimento 1307 kcal - M001` abriu em `/workspace/modelos/124` com 5 refeicoes e alimentos visiveis; o RLS dos filhos do modelo esta operacional para o workspace Gustavo.
 - **Tarefa 1 concluida:** o resumo do plano passa a preferir macros absolutos ja salvos no alimento. O editor continua recalculando alimentos catalogados por `*_per_100g` ao mudar quantidade. Testes focados: 11/11; build e QA independente: `QA_PASS`.
