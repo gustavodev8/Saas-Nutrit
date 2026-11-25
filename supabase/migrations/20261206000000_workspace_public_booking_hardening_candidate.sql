@@ -1,10 +1,10 @@
 -- Phase A: additive public workspace booking hardening.
 --
 -- Safe rollout order:
---   1. Apply this additive migration. Existing anon policies remain untouched.
+--   1. Apply this additive migration. Existing anon table access remains untouched.
 --   2. Deploy the backwards-compatible create-workspace-booking-payment Edge Function.
---   3. Deploy the RPC-based public booking UI and smoke test both legacy and slug clients.
---   4. Only then apply 20261206000000_workspace_public_booking_contract_candidate.sql.
+--   3. Deploy the RPC-based public booking UI, smoke test both legacy and slug clients, and complete the cache gate.
+--   4. Apply 20261207000000_workspace_public_booking_contract_candidate.sql immediately after the gate.
 --
 -- Required Edge Function secrets before step 2:
 --   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MP_ACCESS_TOKEN,

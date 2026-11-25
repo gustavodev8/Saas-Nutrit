@@ -1,7 +1,7 @@
 -- Phase B: contract public workspace booking access only after Phase A is live.
 --
 -- Preconditions:
---   * 20261205000000 has been applied.
+--   * The Phase A booking functions are present.
 --   * The backwards-compatible Edge Function is deployed.
 --   * The RPC-based public UI is deployed and smoke-tested for a legacy
 --     { workspace_id } client and a new { workspace_slug } client.
@@ -11,6 +11,19 @@
 --     that no old bundles still issue direct anon table reads.
 --
 -- This migration intentionally performs the destructive ACL contraction separately.
+
+DO $preflight$
+BEGIN
+  IF to_regprocedure('public.get_public_workspace_booking_profile(text)') IS NULL
+    OR to_regprocedure('public.get_public_workspace_booking_services(text)') IS NULL
+    OR to_regprocedure('public.get_public_workspace_booking_slots(text,uuid,date)') IS NULL
+    OR to_regprocedure('public.get_public_workspace_booking_payment_status(uuid,text)') IS NULL
+    OR to_regprocedure('public.create_workspace_booking_atomic(uuid,uuid,text,text,text,date,time,integer,integer,integer,integer,integer)') IS NULL THEN
+    RAISE EXCEPTION
+      'workspace public booking contract preflight failed: Phase A functions are missing';
+  END IF;
+END;
+$preflight$;
 
 DROP POLICY IF EXISTS "booking_settings_anon_read" ON public.workspace_booking_settings;
 DROP POLICY IF EXISTS "booking_services_anon_read" ON public.workspace_booking_services;

@@ -2,13 +2,16 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+const additiveMigrationPath = "supabase/migrations/20261206000000_workspace_public_booking_hardening_candidate.sql";
+const contractionMigrationPath = "supabase/migrations/20261207000000_workspace_public_booking_contract_candidate.sql";
+
 const additiveMigration = readFileSync(resolve(
   process.cwd(),
-  "supabase/migrations/20261205000000_workspace_public_booking_hardening_candidate.sql",
+  additiveMigrationPath,
 ), "utf8");
 const contractionMigration = readFileSync(resolve(
   process.cwd(),
-  "supabase/migrations/20261206000000_workspace_public_booking_contract_candidate.sql",
+  contractionMigrationPath,
 ), "utf8");
 const publicPage = readFileSync(resolve(process.cwd(), "src/pages/WorkspacePublicBookingPage.tsx"), "utf8");
 const edgeFunction = readFileSync(resolve(
@@ -17,7 +20,7 @@ const edgeFunction = readFileSync(resolve(
 ), "utf8");
 
 describe("workspace public booking hardening contract", () => {
-  it("keeps Phase A additive: it creates public RPCs without revoking legacy table access", () => {
+  it("keeps Phase A additive while creating minimal public RPCs", () => {
     for (const rpc of [
       "get_public_workspace_booking_profile",
       "get_public_workspace_booking_services",
@@ -28,19 +31,38 @@ describe("workspace public booking hardening contract", () => {
       expect(additiveMigration).toContain(`GRANT EXECUTE ON FUNCTION public.${rpc}`);
     }
 
-    expect(additiveMigration).not.toMatch(/DROP\s+POLICY/i);
-    expect(additiveMigration).not.toMatch(/REVOKE\s+ALL\s+ON\s+TABLE/i);
+    expect(additiveMigration).not.toContain('DROP POLICY IF EXISTS "bookings_anon_slots_read" ON public.workspace_bookings;');
+    expect(additiveMigration).not.toContain('DROP POLICY IF EXISTS "bookings_anon_insert" ON public.workspace_bookings;');
+    expect(additiveMigration).not.toContain("REVOKE ALL ON TABLE public.workspace_bookings FROM anon;");
     expect(additiveMigration).toContain("all patient data");
     expect(additiveMigration).toContain("SAAS_RATE_LIMIT_HMAC_SECRET");
   });
 
-  it("moves anon policy and table privilege removal to the post-smoke contraction migration", () => {
+  it("moves all anonymous booking-table ACL contraction to the immediate post-smoke Phase B", () => {
+    const phaseAVersion = additiveMigrationPath.match(/(\d{14})_/u)?.[1];
+    const phaseBVersion = contractionMigrationPath.match(/(\d{14})_/u)?.[1];
+
+    expect(phaseAVersion).toBe("20261206000000");
+    expect(phaseBVersion).toBe("20261207000000");
+    expect(phaseAVersion! < phaseBVersion!).toBe(true);
+    for (const signature of [
+      "public.get_public_workspace_booking_profile(text)",
+      "public.get_public_workspace_booking_services(text)",
+      "public.get_public_workspace_booking_slots(text,uuid,date)",
+      "public.get_public_workspace_booking_payment_status(uuid,text)",
+      "public.create_workspace_booking_atomic(uuid,uuid,text,text,text,date,time,integer,integer,integer,integer,integer)",
+    ]) {
+      expect(contractionMigration).toContain(`to_regprocedure('${signature}') IS NULL`);
+    }
+    expect(contractionMigration).toContain("Phase A functions are missing");
+    expect(contractionMigration).not.toContain("supabase_migrations.schema_migrations");
     expect(contractionMigration).toContain('DROP POLICY IF EXISTS "bookings_anon_slots_read"');
     expect(contractionMigration).toContain('DROP POLICY IF EXISTS "bookings_anon_insert"');
     expect(contractionMigration).toContain("REVOKE ALL ON TABLE public.workspace_bookings FROM anon;");
     expect(contractionMigration).toContain("smoke-tested");
     expect(contractionMigration).toContain("cache coexistence");
     expect(contractionMigration).toContain("force refresh");
+    expect(contractionMigration).toContain("smoke-tested");
   });
 
   it("enforces scheduling eligibility inside the advisory-locked atomic insert", () => {
@@ -72,10 +94,18 @@ describe("workspace public booking hardening contract", () => {
     expect(publicPage).not.toContain("workspace_id: settings!.workspace_id");
   });
 
-  it("keeps the payment function rate-limited and compatible with legacy and slug clients", () => {
-    expect(edgeFunction).toContain('endpoint: "workspace-booking-payment"');
+  it("uses a preliminary lookup limit, then canonical workspace limits for slug and UUID clients", () => {
     expect(edgeFunction).toContain("SAAS_RATE_LIMIT_HMAC_SECRET");
-    expect(edgeFunction).toContain("identityKey:");
+    expect(edgeFunction).toContain("getWorkspaceBookingRateLimits");
+    expect(edgeFunction).toContain("getWorkspaceBookingLookupRateLimit");
+    expect(edgeFunction).toContain("const clientIp = getTrustedSupabaseClientIp(req);");
+    expect(edgeFunction).toContain("if (!clientIp) return responseJson({ error: \"Serviço temporariamente indisponível.\" }, 503);");
+    expect(edgeFunction).not.toContain("getClientIp(req)");
+    expect(edgeFunction).toContain("...getWorkspaceBookingLookupRateLimit(clientIp)");
+    expect(edgeFunction).toContain("for (const rateLimit of getWorkspaceBookingRateLimits(");
+    expect(edgeFunction).toContain("settings.workspace_id,");
+    expect(edgeFunction).not.toContain("workspaceSlug ?? requestedWorkspaceId,\n      patientEmail");
+    expect(edgeFunction).toContain("if (rateLimitError) return rateLimitError;");
     expect(edgeFunction).toContain("workspace_slug?: unknown");
     expect(edgeFunction).toContain("workspace_id?: unknown");
     expect(edgeFunction).toContain('settingsQuery.set("slug"');

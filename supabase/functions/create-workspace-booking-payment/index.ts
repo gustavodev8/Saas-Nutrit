@@ -3,10 +3,14 @@ import {
   assertMethod,
   buildCorsHeaders,
   enforceRateLimit,
-  getClientIp,
   handlePublicOptions,
   jsonResponse,
 } from "../_shared/publicEndpoint.ts";
+import {
+  getTrustedSupabaseClientIp,
+  getWorkspaceBookingLookupRateLimit,
+  getWorkspaceBookingRateLimits,
+} from "./rateLimits.ts";
 
 const corsHeaders = buildCorsHeaders();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -123,15 +127,19 @@ serve(async (req) => {
       return responseJson({ error: "Token do cartão não informado." }, 400);
     }
 
-    const rateLimitError = await enforceRateLimit({
+    // Supabase Hosted sets cf-connecting-ip. Do not fall back to client-controlled
+    // forwarding headers for a security boundary.
+    const clientIp = getTrustedSupabaseClientIp(req);
+    if (!clientIp) return responseJson({ error: "Serviço temporariamente indisponível." }, 503);
+
+    // The preliminary bucket protects the settings lookup, while canonical
+    // workspace buckets follow it after settings resolution.
+    const lookupRateLimitError = await enforceRateLimit({
       req,
       corsHeaders,
-      endpoint: "workspace-booking-payment",
-      limit: 5,
-      windowSeconds: 600,
-      identityKey: `${workspaceSlug ?? requestedWorkspaceId}|${patientEmail}|${getClientIp(req)}`,
+      ...getWorkspaceBookingLookupRateLimit(clientIp),
     });
-    if (rateLimitError) return rateLimitError;
+    if (lookupRateLimitError) return lookupRateLimitError;
 
     const headers = {
       apikey: serviceKey,
@@ -154,6 +162,17 @@ serve(async (req) => {
     const settingsRows = await settingsRes.json() as BookingSettingsRow[];
     const settings = settingsRows[0];
     if (!settings) return responseJson({ error: "Agendamento indisponível." }, 404);
+
+    // Use the resolved workspace UUID so slug and UUID clients share the same
+    // identity and IP buckets for one workspace.
+    for (const rateLimit of getWorkspaceBookingRateLimits(
+      settings.workspace_id,
+      patientEmail,
+      clientIp,
+    )) {
+      const rateLimitError = await enforceRateLimit({ req, corsHeaders, ...rateLimit });
+      if (rateLimitError) return rateLimitError;
+    }
 
     const serviceQuery = new URLSearchParams({
       id: `eq.${serviceId}`,
