@@ -69,6 +69,26 @@ export interface BookingSlot {
   available: boolean;
 }
 
+/** Public booking data deliberately excludes workspace IDs and payment credentials. */
+export interface PublicBookingSettings {
+  slug: string;
+  presentation_name: string | null;
+  bio: string | null;
+  min_notice_hours: number;
+  max_advance_days: number;
+  active_days: number[];
+  blocked_dates: string[];
+}
+
+export interface PublicBookingService {
+  id: string;
+  name: string;
+  description: string | null;
+  price_cents: number;
+  duration_min: number;
+  sort_order: number;
+}
+
 export interface SlotOptions {
   /** Minutes of break after each appointment. Default 0. */
   bufferMin?: number;
@@ -432,43 +452,63 @@ export async function toggleBlockedDate(
   }
 }
 
-// ── Public (anon) operations — used by the public booking page ───────────────────
+// ── Public (anon) operations — RPC-only, no direct table access ─────────────────
 
-export async function fetchPublicBookingSettings(slug: string): Promise<BookingSettings | null> {
-  const { data } = await supabase
-    .from("workspace_booking_settings")
-    .select("*")
-    .eq("slug", slug)
-    .eq("active", true)
-    .maybeSingle();
-  return data as BookingSettings | null;
+function publicRpcError(error: { message: string } | null): void {
+  if (error) throw new Error(error.message);
 }
 
-export async function fetchPublicServices(workspaceId: string): Promise<BookingService[]> {
-  const { data } = await supabase
-    .from("workspace_booking_services")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .eq("active", true)
-    .order("sort_order", { ascending: true });
-  return (data ?? []) as BookingService[];
+export async function fetchPublicBookingSettings(slug: string): Promise<PublicBookingSettings | null> {
+  const { data, error } = await supabase.rpc("get_public_workspace_booking_profile", {
+    p_slug: slug,
+  });
+  publicRpcError(error);
+  const rows = (data ?? []) as PublicBookingSettings[];
+  return rows[0] ?? null;
 }
 
-export async function fetchPublicAvailability(workspaceId: string): Promise<BookingAvailability[]> {
-  const { data } = await supabase
-    .from("workspace_booking_availability")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .eq("active", true);
-  return (data ?? []) as BookingAvailability[];
+export async function fetchPublicServices(slug: string): Promise<PublicBookingService[]> {
+  const { data, error } = await supabase.rpc("get_public_workspace_booking_services", {
+    p_slug: slug,
+  });
+  publicRpcError(error);
+  return (data ?? []) as PublicBookingService[];
 }
 
-export async function fetchPublicBlockedDates(workspaceId: string): Promise<string[]> {
-  const { data } = await supabase
-    .from("workspace_booking_blocked_dates")
-    .select("blocked_date")
-    .eq("workspace_id", workspaceId);
-  return (data ?? []).map((r: { blocked_date: string }) => r.blocked_date);
+interface PublicBookingSlotRow {
+  slot_time: string;
+}
+
+/** Returns only times that can still be selected; the database never returns booking rows. */
+export async function fetchPublicAvailableSlots(
+  slug: string,
+  serviceId: string,
+  date: string,
+): Promise<BookingSlot[]> {
+  const { data, error } = await supabase.rpc("get_public_workspace_booking_slots", {
+    p_slug: slug,
+    p_service_id: serviceId,
+    p_booking_date: date,
+  });
+  publicRpcError(error);
+
+  return ((data ?? []) as PublicBookingSlotRow[]).map((slot) => ({
+    time: slot.slot_time.slice(0, 5),
+    available: true,
+  }));
+}
+
+export async function fetchPublicBookingPaymentStatus(
+  bookingId: string,
+  paymentId: string,
+): Promise<WorkspaceBooking["status"] | null> {
+  const { data, error } = await supabase.rpc("get_public_workspace_booking_payment_status", {
+    p_booking_id: bookingId,
+    p_payment_id: paymentId,
+  });
+  publicRpcError(error);
+  const rows = (data ?? []) as Array<{ status: WorkspaceBooking["status"] }>;
+  return rows[0]?.status ?? null;
 }
 
 /** TTL (minutes) after which an unpaid pending_payment booking stops blocking its slot. */
@@ -497,33 +537,4 @@ export function pruneExpiredPending(
   return rows
     .filter((r) => r.status !== "pending_payment" || nowMs - r.createdAtMs <= ttlMs)
     .map((r) => ({ time: r.time, durationMin: r.durationMin }));
-}
-
-/** Row shape returned by the workspace_bookings select in fetchBookedSlots. */
-interface BookedSlotDbRow {
-  booking_time: string;
-  service_duration_min: number | null;
-  status: string;
-  created_at: string;
-}
-
-/**
- * Returns existing bookings for a workspace+date with time and service duration.
- * Includes pending_payment to prevent race-condition double-bookings, but abandoned
- * pending_payment rows older than PENDING_TTL_MIN are ignored (slot becomes free again).
- */
-export async function fetchBookedSlots(workspaceId: string, date: string): Promise<BookedSlot[]> {
-  const { data } = await supabase
-    .from("workspace_bookings")
-    .select("booking_time, service_duration_min, status, created_at")
-    .eq("workspace_id", workspaceId)
-    .eq("booking_date", date)
-    .in("status", ["pending_payment", "paid", "confirmed", "completed"]);
-  const rows: BookedRow[] = ((data ?? []) as BookedSlotDbRow[]).map((r) => ({
-    time: r.booking_time.slice(0, 5),
-    durationMin: r.service_duration_min ?? 60,
-    status: r.status,
-    createdAtMs: Date.parse(r.created_at),
-  }));
-  return pruneExpiredPending(rows, Date.now());
 }

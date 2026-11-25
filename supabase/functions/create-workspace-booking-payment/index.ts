@@ -1,57 +1,123 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  assertMethod,
+  buildCorsHeaders,
+  enforceRateLimit,
+  handlePublicOptions,
+  jsonResponse,
+} from "../_shared/publicEndpoint.ts";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+const corsHeaders = buildCorsHeaders();
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...CORS, "Content-Type": "application/json" },
-  });
+type PaymentMethod = "pix" | "credit_card";
+
+interface BookingRequest {
+  workspace_slug?: unknown;
+  service_id?: unknown;
+  booking_date?: unknown;
+  booking_time?: unknown;
+  patient_name?: unknown;
+  patient_email?: unknown;
+  patient_phone?: unknown;
+  payment_method_type?: unknown;
+  card_token?: unknown;
+  installments?: unknown;
+  card_payment_method_id?: unknown;
+  issuer_id?: unknown;
+}
+
+interface BookingSettingsRow {
+  workspace_id: string;
+}
+
+interface BookingServiceRow {
+  id: string;
+  name: string;
+  price_cents: number;
+  duration_min: number | null;
+}
+
+interface AvailableSlotRow {
+  slot_time: string;
+}
+
+function stringField(value: unknown, maxLength: number): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= maxLength ? trimmed : null;
+}
+
+function validDate(value: string): boolean {
+  if (!DATE_RE.test(value)) return false;
+  const parsed = new Date(`${value}T12:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function responseJson(data: Record<string, unknown>, status = 200) {
+  return jsonResponse(data, status, corsHeaders);
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  const optionsResponse = handlePublicOptions(req, corsHeaders);
+  if (optionsResponse) return optionsResponse;
+
+  const methodError = assertMethod(req, "POST", corsHeaders);
+  if (methodError) return methodError;
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const mpToken = Deno.env.get("MP_ACCESS_TOKEN")!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim();
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+    const mpToken = Deno.env.get("MP_ACCESS_TOKEN")?.trim();
 
     if (!supabaseUrl || !serviceKey || !mpToken) {
-      return json({ error: "Serviço indisponível." }, 503);
+      return responseJson({ error: "Serviço indisponível." }, 503);
     }
 
-    const body = await req.json();
-    const {
-      workspace_id,
-      service_id,
-      booking_date,
-      booking_time,
-      patient_name,
-      patient_email,
-      patient_phone,
-      // payment type (default pix for backwards compat)
-      payment_method_type = "pix",
-      card_token,
-      installments,
-      card_payment_method_id,
-      issuer_id,
-    } = body;
-
-    if (!workspace_id || !service_id || !booking_date || !booking_time || !patient_name || !patient_email) {
-      return json({ error: "Dados incompletos." }, 400);
+    let body: BookingRequest;
+    try {
+      body = await req.json() as BookingRequest;
+    } catch {
+      return responseJson({ error: "Dados inválidos." }, 400);
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patient_email)) {
-      return json({ error: "E-mail inválido." }, 400);
+    const workspaceSlug = stringField(body.workspace_slug, 80);
+    const serviceId = stringField(body.service_id, 36);
+    const bookingDate = stringField(body.booking_date, 10);
+    const bookingTime = stringField(body.booking_time, 5);
+    const patientName = stringField(body.patient_name, 160);
+    const patientEmail = stringField(body.patient_email, 254)?.toLowerCase() ?? null;
+    const patientPhone = body.patient_phone === null || body.patient_phone === undefined
+      ? null
+      : stringField(body.patient_phone, 40);
+    const paymentMethod: PaymentMethod = body.payment_method_type === "credit_card" ? "credit_card" : "pix";
+
+    if (
+      !workspaceSlug || !SLUG_RE.test(workspaceSlug) || !serviceId || !UUID_RE.test(serviceId)
+      || !bookingDate || !validDate(bookingDate) || !bookingTime || !TIME_RE.test(bookingTime)
+      || !patientName || !patientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)
+      || (body.patient_phone !== null && body.patient_phone !== undefined && !patientPhone)
+    ) {
+      return responseJson({ error: "Dados inválidos." }, 400);
     }
 
-    if (payment_method_type === "credit_card" && !card_token) {
-      return json({ error: "Token do cartão não informado." }, 400);
+    const cardToken = paymentMethod === "credit_card" ? stringField(body.card_token, 2048) : null;
+    if (paymentMethod === "credit_card" && !cardToken) {
+      return responseJson({ error: "Token do cartão não informado." }, 400);
     }
+
+    const rateLimitError = await enforceRateLimit({
+      req,
+      corsHeaders,
+      endpoint: "workspace-booking-payment",
+      limit: 5,
+      windowSeconds: 600,
+      extraKey: workspaceSlug,
+    });
+    if (rateLimitError) return rateLimitError;
 
     const headers = {
       apikey: serviceKey,
@@ -59,35 +125,71 @@ serve(async (req) => {
       "Content-Type": "application/json",
     };
 
-    // 1. Fetch service to get price and duration
-    const svcRes = await fetch(
-      `${supabaseUrl}/rest/v1/workspace_booking_services?id=eq.${service_id}&workspace_id=eq.${workspace_id}&active=eq.true&limit=1`,
+    const settingsQuery = new URLSearchParams({
+      slug: `eq.${workspaceSlug}`,
+      active: "eq.true",
+      select: "workspace_id",
+      limit: "1",
+    });
+    const settingsRes = await fetch(
+      `${supabaseUrl}/rest/v1/workspace_booking_settings?${settingsQuery.toString()}`,
       { headers },
     );
-    if (!svcRes.ok) return json({ error: "Serviço não encontrado." }, 404);
-    const svcs = await svcRes.json();
-    const service = svcs[0];
-    if (!service) return json({ error: "Serviço não encontrado." }, 404);
+    if (!settingsRes.ok) return responseJson({ error: "Agendamento indisponível." }, 404);
+    const settingsRows = await settingsRes.json() as BookingSettingsRow[];
+    const settings = settingsRows[0];
+    if (!settings) return responseJson({ error: "Agendamento indisponível." }, 404);
 
-    // 3. Calculate amounts (5% platform fee)
+    const serviceQuery = new URLSearchParams({
+      id: `eq.${serviceId}`,
+      workspace_id: `eq.${settings.workspace_id}`,
+      active: "eq.true",
+      select: "id,name,price_cents,duration_min",
+      limit: "1",
+    });
+    const serviceRes = await fetch(
+      `${supabaseUrl}/rest/v1/workspace_booking_services?${serviceQuery.toString()}`,
+      { headers },
+    );
+    if (!serviceRes.ok) return responseJson({ error: "Serviço não encontrado." }, 404);
+    const serviceRows = await serviceRes.json() as BookingServiceRow[];
+    const service = serviceRows[0];
+    if (!service) return responseJson({ error: "Serviço não encontrado." }, 404);
+
+    // The database RPC validates settings, advance notice, active availability windows,
+    // blocked dates and current slot occupancy with the same contract used by the public UI.
+    const slotRes = await fetch(`${supabaseUrl}/rest/v1/rpc/get_public_workspace_booking_slots`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        p_slug: workspaceSlug,
+        p_service_id: service.id,
+        p_booking_date: bookingDate,
+      }),
+    });
+    if (!slotRes.ok) return responseJson({ error: "Agendamento indisponível." }, 503);
+    const availableSlots = await slotRes.json() as AvailableSlotRow[];
+    if (!availableSlots.some((slot) => slot.slot_time.slice(0, 5) === bookingTime)) {
+      return responseJson({ error: "Este horário não está mais disponível. Escolha outro." }, 409);
+    }
+
     const totalCents = service.price_cents;
     const platformFeeCents = Math.round(totalCents * 0.05);
     const repasseCents = totalCents - platformFeeCents;
     const totalAmount = totalCents / 100;
-
-    // 2+4. Atomic conflict check + insert
     const durationMin = service.duration_min ?? 60;
+
     const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/create_workspace_booking_atomic`, {
       method: "POST",
       headers: { ...headers, Prefer: "return=representation" },
       body: JSON.stringify({
-        p_workspace_id: workspace_id,
-        p_service_id: service_id,
-        p_patient_name: patient_name.trim(),
-        p_patient_email: patient_email.trim().toLowerCase(),
-        p_patient_phone: patient_phone ?? null,
-        p_booking_date: booking_date,
-        p_booking_time: booking_time,
+        p_workspace_id: settings.workspace_id,
+        p_service_id: service.id,
+        p_patient_name: patientName,
+        p_patient_email: patientEmail,
+        p_patient_phone: patientPhone,
+        p_booking_date: bookingDate,
+        p_booking_time: bookingTime,
         p_service_duration_min: durationMin,
         p_total_amount_cents: totalCents,
         p_platform_fee_cents: platformFeeCents,
@@ -97,53 +199,40 @@ serve(async (req) => {
     if (!rpcRes.ok) {
       const rpcErr = await rpcRes.text();
       if (rpcErr.includes("BOOKING_CONFLICT")) {
-        return json({ error: "Este horário já foi reservado ou está em conflito. Escolha outro." }, 409);
+        return responseJson({ error: "Este horário já foi reservado ou está em conflito. Escolha outro." }, 409);
       }
-      console.error("create_workspace_booking_atomic error:", rpcErr);
-      return json({ error: "Erro ao criar agendamento." }, 500);
+      console.error("create_workspace_booking_atomic failed", rpcRes.status);
+      return responseJson({ error: "Erro ao criar agendamento." }, 500);
     }
-    const bookingId = (await rpcRes.json()) as string | null;
-    if (!bookingId) return json({ error: "Erro ao criar agendamento." }, 500);
+    const bookingId = await rpcRes.json() as string | null;
+    if (!bookingId) return responseJson({ error: "Erro ao criar agendamento." }, 500);
 
-    // 5. Create MP payment
-    const externalRef = `workspace_booking|${bookingId}|${workspace_id}|${patient_email.trim().toLowerCase()}`;
-    const nameParts = patient_name.trim().split(" ");
+    const externalRef = `workspace_booking|${bookingId}|${settings.workspace_id}|${patientEmail}`;
+    const nameParts = patientName.split(" ");
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(" ") || "Paciente";
     const idempotencyKey = `workspace-booking-${bookingId}`;
 
-    let mpBody: Record<string, unknown>;
-
-    if (payment_method_type === "credit_card") {
-      mpBody = {
+    const mpBody: Record<string, unknown> = paymentMethod === "credit_card"
+      ? {
         transaction_amount: totalAmount,
-        token: card_token,
+        token: cardToken,
         description: `${service.name} — Agendamento`,
-        installments: installments ?? 1,
-        payment_method_id: card_payment_method_id,
-        issuer_id: issuer_id ?? undefined,
+        installments: typeof body.installments === "number" ? body.installments : 1,
+        payment_method_id: stringField(body.card_payment_method_id, 80) ?? undefined,
+        issuer_id: typeof body.issuer_id === "string" ? body.issuer_id : undefined,
         external_reference: externalRef,
         notification_url: `${supabaseUrl}/functions/v1/payment-webhook`,
-        payer: {
-          email: patient_email.trim().toLowerCase(),
-          first_name: firstName,
-          last_name: lastName,
-        },
-      };
-    } else {
-      mpBody = {
+        payer: { email: patientEmail, first_name: firstName, last_name: lastName },
+      }
+      : {
         transaction_amount: totalAmount,
         payment_method_id: "pix",
         description: `${service.name} — Agendamento`,
         external_reference: externalRef,
         notification_url: `${supabaseUrl}/functions/v1/payment-webhook`,
-        payer: {
-          email: patient_email.trim().toLowerCase(),
-          first_name: firstName,
-          last_name: lastName,
-        },
+        payer: { email: patientEmail, first_name: firstName, last_name: lastName },
       };
-    }
 
     const mpRes = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
@@ -154,30 +243,29 @@ serve(async (req) => {
       },
       body: JSON.stringify(mpBody),
     });
-
     const mpPayment = await mpRes.json();
 
+    const bookingFilter = new URLSearchParams({
+      id: `eq.${bookingId}`,
+      workspace_id: `eq.${settings.workspace_id}`,
+    });
     if (!mpRes.ok) {
-      console.error("MP error:", JSON.stringify(mpPayment));
-      await fetch(`${supabaseUrl}/rest/v1/workspace_bookings?id=eq.${bookingId}`, {
+      console.error("Mercado Pago payment creation failed", mpRes.status);
+      await fetch(`${supabaseUrl}/rest/v1/workspace_bookings?${bookingFilter.toString()}`, {
         method: "PATCH",
         headers: { ...headers, Prefer: "return=minimal" },
         body: JSON.stringify({ status: "cancelled" }),
       });
-      if (payment_method_type === "credit_card") {
-        const cause = mpPayment?.cause?.[0]?.description ?? "";
-        return json({ error: `Pagamento recusado. ${cause}`.trim() }, 422);
+      if (paymentMethod === "credit_card") {
+        return responseJson({ error: "Pagamento recusado. Verifique os dados do cartão." }, 422);
       }
-      return json({ error: "Erro ao criar pagamento PIX." }, 500);
+      return responseJson({ error: "Erro ao criar pagamento PIX." }, 500);
     }
 
-    // 6. Update booking with payment info
-    const bookingStatus =
-      mpPayment.status === "approved" ? "paid"
+    const bookingStatus = mpPayment.status === "approved" ? "paid"
       : mpPayment.status === "rejected" ? "cancelled"
       : "pending_payment";
-
-    await fetch(`${supabaseUrl}/rest/v1/workspace_bookings?id=eq.${bookingId}`, {
+    const updateRes = await fetch(`${supabaseUrl}/rest/v1/workspace_bookings?${bookingFilter.toString()}`, {
       method: "PATCH",
       headers: { ...headers, Prefer: "return=minimal" },
       body: JSON.stringify({
@@ -187,13 +275,16 @@ serve(async (req) => {
         updated_at: new Date().toISOString(),
       }),
     });
+    if (!updateRes.ok) {
+      console.error("workspace booking payment update failed", updateRes.status);
+      return responseJson({ error: "Erro ao confirmar agendamento." }, 500);
+    }
 
-    if (payment_method_type === "credit_card") {
+    if (paymentMethod === "credit_card") {
       if (mpPayment.status === "rejected") {
-        const detail = mpPayment.status_detail ?? "";
-        return json({ error: `Pagamento recusado (${detail}). Verifique os dados do cartão.` }, 422);
+        return responseJson({ error: "Pagamento recusado. Verifique os dados do cartão." }, 422);
       }
-      return json({
+      return responseJson({
         booking_id: bookingId,
         payment_id: String(mpPayment.id),
         payment_status: mpPayment.status,
@@ -201,9 +292,8 @@ serve(async (req) => {
       });
     }
 
-    // PIX: return QR code
     const txData = mpPayment.point_of_interaction?.transaction_data;
-    return json({
+    return responseJson({
       booking_id: bookingId,
       payment_id: String(mpPayment.id),
       qr_code: txData?.qr_code ?? "",
@@ -211,8 +301,8 @@ serve(async (req) => {
       total_amount: totalAmount,
       payment_type: "pix",
     });
-  } catch (err) {
-    console.error("create-workspace-booking-payment error:", err);
-    return json({ error: "Erro interno." }, 500);
+  } catch (error) {
+    console.error("create-workspace-booking-payment error", error instanceof Error ? error.message : "unknown");
+    return responseJson({ error: "Erro interno." }, 500);
   }
 });

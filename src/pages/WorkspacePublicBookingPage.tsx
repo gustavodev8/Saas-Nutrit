@@ -6,18 +6,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  BookingService,
-  BookingSettings,
+  PublicBookingService,
+  PublicBookingSettings,
   FULL_DAY_NAMES,
-  fetchBookedSlots,
-  fetchPublicAvailability,
-  fetchPublicBlockedDates,
+  fetchPublicAvailableSlots,
+  fetchPublicBookingPaymentStatus,
   fetchPublicBookingSettings,
   fetchPublicServices,
   formatBRL,
-  generateTimeSlots,
   type BookingSlot,
-  type BookingAvailability,
 } from "@/lib/workspaceBookings";
 import { cn } from "@/lib/utils";
 import { parseISODate, toISODate } from "@/lib/bookingDates";
@@ -65,15 +62,15 @@ function formatDateBR(dateStr: string) {
 
 export default function WorkspacePublicBookingPage() {
   const { slug } = useParams<{ slug: string }>();
-  const [settings, setSettings] = useState<BookingSettings | null>(null);
-  const [services, setServices] = useState<BookingService[]>([]);
-  const [availability, setAvailability] = useState<BookingAvailability[]>([]);
+  const [settings, setSettings] = useState<PublicBookingSettings | null>(null);
+  const [services, setServices] = useState<PublicBookingService[]>([]);
+  const [activeDays, setActiveDays] = useState<Set<number>>(new Set());
   const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   const [step, setStep] = useState<Step>("service");
-  const [selectedService, setSelectedService] = useState<BookingService | null>(null);
+  const [selectedService, setSelectedService] = useState<PublicBookingService | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedTime, setSelectedTime] = useState<string>("");
   const [slots, setSlots] = useState<BookingSlot[]>([]);
@@ -95,29 +92,33 @@ export default function WorkspacePublicBookingPage() {
   const brickControllerRef = useRef<{ unmount: () => void } | null>(null);
 
   // Payment state
-  const [paymentId, setPaymentId] = useState<string>("");
   const [qrCode, setQrCode] = useState<string>("");
   const [qrBase64, setQrBase64] = useState<string>("");
-  const [bookingId, setBookingId] = useState<string>("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!slug) { setNotFound(true); setLoading(false); return; }
+    let cancelled = false;
     async function load() {
-      const s = await fetchPublicBookingSettings(slug!);
-      if (!s) { setNotFound(true); setLoading(false); return; }
-      setSettings(s);
-      const [svcs, avail, blocked] = await Promise.all([
-        fetchPublicServices(s.workspace_id),
-        fetchPublicAvailability(s.workspace_id),
-        fetchPublicBlockedDates(s.workspace_id),
-      ]);
-      setServices(svcs);
-      setAvailability(avail);
-      setBlockedDates(new Set(blocked));
-      setLoading(false);
+      try {
+        const s = await fetchPublicBookingSettings(slug);
+        if (!s) {
+          if (!cancelled) { setNotFound(true); setLoading(false); }
+          return;
+        }
+        const svcs = await fetchPublicServices(s.slug);
+        if (cancelled) return;
+        setSettings(s);
+        setServices(svcs);
+        setActiveDays(new Set(s.active_days));
+        setBlockedDates(new Set(s.blocked_dates));
+        setLoading(false);
+      } catch {
+        if (!cancelled) { setNotFound(true); setLoading(false); }
+      }
     }
     load();
+    return () => { cancelled = true; };
   }, [slug]);
 
   // Load and init MP Checkout Bricks when credit_card is selected
@@ -181,38 +182,18 @@ export default function WorkspacePublicBookingPage() {
   }, [step, paymentMethod]);
 
   async function handleDateSelect(date: string) {
+    if (!settings || !selectedService) return;
     setSelectedDate(date);
     setSelectedTime("");
     setLoadingSlots(true);
-    const booked = await fetchBookedSlots(settings!.workspace_id, date);
-    const dow = new Date(date + "T12:00:00").getDay();
-    const avails = availability.filter(a => a.day_of_week === dow && a.active);
-    if (avails.length === 0) { setSlots([]); setLoadingSlots(false); return; }
-    const genOpts = {
-      bufferMin: settings!.buffer_minutes ?? 0,
-      minNoticeMin: (settings!.min_notice_hours ?? 2) * 60,
-      slotIntervalMin: settings!.slot_interval_min ?? selectedService!.duration_min,
-    };
-    // Gera slots de cada janela do dia e mescla por horário (sem duplicatas; available = OR entre janelas)
-    const availByTime = new Map<string, boolean>();
-    for (const avail of avails) {
-      const windowSlots = generateTimeSlots(
-        date,
-        avail.start_time.slice(0, 5),
-        avail.end_time.slice(0, 5),
-        selectedService!.duration_min,
-        booked,
-        genOpts,
-      );
-      for (const slot of windowSlots) {
-        availByTime.set(slot.time, (availByTime.get(slot.time) ?? false) || slot.available);
-      }
+    try {
+      setSlots(await fetchPublicAvailableSlots(settings.slug, selectedService.id, date));
+    } catch {
+      setSlots([]);
+      setError("Não foi possível carregar os horários. Tente novamente.");
+    } finally {
+      setLoadingSlots(false);
     }
-    const merged: BookingSlot[] = [...availByTime.entries()]
-      .map(([time, available]) => ({ time, available }))
-      .sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
-    setSlots(merged);
-    setLoadingSlots(false);
   }
 
   async function callEdgeFunction(extraBody: Record<string, unknown>) {
@@ -226,7 +207,7 @@ export default function WorkspacePublicBookingPage() {
         "apikey": anonKey,
       },
       body: JSON.stringify({
-        workspace_id: settings!.workspace_id,
+        workspace_slug: settings!.slug,
         service_id: selectedService!.id,
         booking_date: selectedDate,
         booking_time: selectedTime,
@@ -253,12 +234,10 @@ export default function WorkspacePublicBookingPage() {
         setSubmitting(false);
         return;
       }
-      setPaymentId(data.payment_id);
       setQrCode(data.qr_code);
       setQrBase64(data.qr_code_base64);
-      setBookingId(data.booking_id);
       setStep("payment");
-      startPolling(data.payment_id);
+      startPolling(data.booking_id, data.payment_id);
     } catch {
       setError("Erro de conexão. Tente novamente.");
     } finally {
@@ -287,8 +266,6 @@ export default function WorkspacePublicBookingPage() {
         setSubmitting(false);
         return;
       }
-      setPaymentId(data.payment_id);
-      setBookingId(data.booking_id);
       if (data.payment_status === "approved") {
         setStep("success");
       } else if (data.payment_status === "rejected") {
@@ -296,7 +273,7 @@ export default function WorkspacePublicBookingPage() {
       } else {
         // in_process: wait for webhook
         setStep("payment");
-        startPolling(data.payment_id);
+        startPolling(data.booking_id, data.payment_id);
       }
     } catch {
       setError("Erro de conexão. Tente novamente.");
@@ -305,18 +282,12 @@ export default function WorkspacePublicBookingPage() {
     }
   }
 
-  function startPolling(pid: string) {
+  function startPolling(nextBookingId: string, pid: string) {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
-        const supabaseUrl = (import.meta.env as Record<string, string>).VITE_SUPABASE_URL;
-        const anonKey = (import.meta.env as Record<string, string>).VITE_SUPABASE_ANON_KEY;
-        const res = await fetch(
-          `${supabaseUrl}/rest/v1/workspace_bookings?mp_payment_id=eq.${pid}&select=status&limit=1`,
-          { headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` } },
-        );
-        const data = await res.json();
-        if (Array.isArray(data) && data[0]?.status === "paid") {
+        const status = await fetchPublicBookingPaymentStatus(nextBookingId, pid);
+        if (status === "paid") {
           clearInterval(pollRef.current!);
           setStep("success");
         }
@@ -350,11 +321,10 @@ export default function WorkspacePublicBookingPage() {
   const today = new Date();
   const minDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const maxDate = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() + (settings?.max_advance_days ?? 60));
-  const activeDows = new Set(availability.filter(a => a.active).map(a => a.day_of_week));
-  const monthGrid = buildMonthGrid({ year: viewYear, month: viewMonth, activeDows, blocked: blockedDates, minDate, maxDate });
+  const monthGrid = buildMonthGrid({ year: viewYear, month: viewMonth, activeDows: activeDays, blocked: blockedDates, minDate, maxDate });
   const prevEnabled = canGoPrevMonth(viewYear, viewMonth, minDate);
   const nextEnabled = canGoNextMonth(viewYear, viewMonth, maxDate);
-  const nextDate = findNextAvailableDate(minDate, maxDate, activeDows, blockedDates);
+  const nextDate = findNextAvailableDate(minDate, maxDate, activeDays, blockedDates);
 
   function jumpToNextAvailable() {
     if (!nextDate) return;
