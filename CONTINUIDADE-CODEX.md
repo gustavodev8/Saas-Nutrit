@@ -1,6 +1,16 @@
 # Continuidade Codex
 
-## Tarefa 3 — aba inicial das configuracoes — 2026-11-24
+## Hardening de agendamento público por workspace — rollout em duas fases — 2026-11-24
+
+- **Estado local:** a correção do pacote de agendamento público está somente local. Não houve migration remota, deploy, push, alteração de dados ou mudança de segredo.
+- **Fase A — aditiva:** 20261205000000_workspace_public_booking_hardening_candidate.sql cria RPCs mínimos de leitura pública e redefine create_workspace_booking_atomic para validar, dentro do lock, configuração ativa, escopo/estado do serviço, antecedência, limite futuro, janela ativa, data bloqueada, intervalo e conflito. Ela **não** remove policies ou grants anônimos legados.
+- **Edge Function:** create-workspace-booking-payment aceita temporariamente tanto `{ workspace_id, ... }` quanto `{ workspace_slug, ... }`. Se ambos forem recebidos, a consulta exige a mesma configuração ativa; um par divergente não é confiado. A função usa o RPC de slots antes de cobrar, mantém a inserção atômica como autoridade final e aplica rate limit com HMAC, falhando fechada sem SAAS_RATE_LIMIT_HMAC_SECRET.
+- **Fase B — contração:** 20261206000000_workspace_public_booking_contract_candidate.sql contém exclusivamente a remoção das policies/grants anônimos diretos. Só pode ser aplicada depois de Fase A, publicação da Edge Function compatível, publicação da UI RPC e smoke explícito dos dois contratos (legado por workspace_id e novo por workspace_slug).
+- **Ordem obrigatória de publicação:** Fase A migration -> preflight dos secrets SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MP_ACCESS_TOKEN e SAAS_RATE_LIMIT_HMAC_SECRET -> Edge Function compatível -> UI RPC -> smoke dos dois contratos -> Fase B migration. Não inverter a ordem.
+- **Validação local:** testes focados de contrato devem cobrir que a Fase A não contém DROP POLICY/REVOKE de tabela, que a Fase B contém a contração e que a inserção atômica mantém as regras de elegibilidade. Não considerar isso como prova de smoke remoto.
+- **Limitação:** o sistema ainda não possui timezone explícito por workspace; regras de antecedência usam o timezone do banco. Decidir e modelar timezone antes da abertura ampla de agendamento público.
+
+## Tarefa 3 — aba inicial das configurações — 2026-11-24
 
 - **Escopo local:** a selecao inicial em Configuracoes prioriza `?tab=` quando corresponder a uma aba valida; `?subscribed=1` continua levando a Plano quando nao houver aba valida; Perfil permanece o fallback final.
 - **Validacoes:** 3 testes focados passaram; `npm run build` e `git diff --check` passaram.

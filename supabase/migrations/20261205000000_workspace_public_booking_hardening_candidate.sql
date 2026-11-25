@@ -1,10 +1,15 @@
--- Public workspace booking hardening candidate.
+-- Phase A: additive public workspace booking hardening.
 --
--- Deployment contract:
---   1. Deploy the matching public booking UI and Edge Function in the same release.
---   2. Apply this migration once those clients are ready to call these RPCs.
--- Applying this migration by itself intentionally disables the old direct anon reads.
--- No patient data is returned by any function below.
+-- Safe rollout order:
+--   1. Apply this additive migration. Existing anon policies remain untouched.
+--   2. Deploy the backwards-compatible create-workspace-booking-payment Edge Function.
+--   3. Deploy the RPC-based public booking UI and smoke test both legacy and slug clients.
+--   4. Only then apply 20261206000000_workspace_public_booking_contract_candidate.sql.
+--
+-- Required Edge Function secrets before step 2:
+--   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MP_ACCESS_TOKEN,
+--   SAAS_RATE_LIMIT_HMAC_SECRET.
+-- The function must fail closed when its rate-limit secret or RPC is unavailable.
 
 DO $preflight$
 BEGIN
@@ -19,6 +24,8 @@ BEGIN
 END;
 $preflight$;
 
+-- Minimal public reads. These functions intentionally exclude workspace IDs,
+-- PIX keys, booking rows and all patient data.
 CREATE OR REPLACE FUNCTION public.get_public_workspace_booking_profile(p_slug text)
 RETURNS TABLE (
   slug text,
@@ -219,6 +226,176 @@ AS $function$
   LIMIT 1;
 $function$;
 
+-- The final booking authority repeats every scheduling rule inside the advisory
+-- lock. The Edge Function validates for early feedback; this function remains the
+-- race-safe enforcement point for legacy and new callers alike.
+CREATE OR REPLACE FUNCTION public.create_workspace_booking_atomic(
+  p_workspace_id uuid,
+  p_service_id uuid,
+  p_patient_name text,
+  p_patient_email text,
+  p_patient_phone text,
+  p_booking_date date,
+  p_booking_time time,
+  p_service_duration_min int,
+  p_total_amount_cents int,
+  p_platform_fee_cents int,
+  p_repasse_amount_cents int,
+  p_pending_ttl_min int default 15
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+DECLARE
+  v_settings public.workspace_booking_settings%ROWTYPE;
+  v_service public.workspace_booking_services%ROWTYPE;
+  v_new_start integer;
+  v_new_end integer;
+  v_buffer_minutes integer;
+  v_expected_fee integer;
+  v_id uuid;
+BEGIN
+  IF p_workspace_id IS NULL
+    OR p_service_id IS NULL
+    OR p_booking_date IS NULL
+    OR p_booking_time IS NULL
+    OR p_pending_ttl_min NOT BETWEEN 1 AND 60
+    OR p_patient_name IS NULL OR length(btrim(p_patient_name)) NOT BETWEEN 1 AND 160
+    OR p_patient_email IS NULL OR length(btrim(p_patient_email)) NOT BETWEEN 3 AND 254
+  THEN
+    RAISE EXCEPTION 'BOOKING_UNAVAILABLE' USING ERRCODE = 'P0001';
+  END IF;
+
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_workspace_id::text || p_booking_date::text, 0)
+  );
+
+  SELECT setting.*
+  INTO v_settings
+  FROM public.workspace_booking_settings AS setting
+  WHERE setting.workspace_id = p_workspace_id
+    AND setting.active = true
+  FOR KEY SHARE;
+
+  IF NOT FOUND
+    OR p_booking_date < CURRENT_DATE
+    OR p_booking_date > CURRENT_DATE + v_settings.max_advance_days
+    OR p_booking_date + p_booking_time < now() + make_interval(hours => v_settings.min_notice_hours)
+  THEN
+    RAISE EXCEPTION 'BOOKING_UNAVAILABLE' USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT service.*
+  INTO v_service
+  FROM public.workspace_booking_services AS service
+  WHERE service.id = p_service_id
+    AND service.workspace_id = p_workspace_id
+    AND service.active = true
+  FOR KEY SHARE;
+
+  IF NOT FOUND
+    OR p_service_duration_min IS DISTINCT FROM v_service.duration_min
+    OR p_total_amount_cents IS DISTINCT FROM v_service.price_cents
+  THEN
+    RAISE EXCEPTION 'BOOKING_UNAVAILABLE' USING ERRCODE = 'P0001';
+  END IF;
+
+  v_expected_fee := round(v_service.price_cents * 0.05)::integer;
+  IF p_platform_fee_cents IS DISTINCT FROM v_expected_fee
+    OR p_repasse_amount_cents IS DISTINCT FROM v_service.price_cents - v_expected_fee
+  THEN
+    RAISE EXCEPTION 'BOOKING_UNAVAILABLE' USING ERRCODE = 'P0001';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.workspace_booking_blocked_dates AS blocked
+    WHERE blocked.workspace_id = p_workspace_id
+      AND blocked.blocked_date = p_booking_date
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM public.workspace_booking_availability AS availability
+    WHERE availability.workspace_id = p_workspace_id
+      AND availability.active = true
+      AND availability.day_of_week = extract(dow FROM p_booking_date)::integer
+      AND p_booking_time >= availability.start_time
+      AND p_booking_time + make_interval(mins => v_service.duration_min) <= availability.end_time
+      AND mod(
+        extract(hour FROM p_booking_time)::integer * 60
+        + extract(minute FROM p_booking_time)::integer
+        - extract(hour FROM availability.start_time)::integer * 60
+        - extract(minute FROM availability.start_time)::integer,
+        GREATEST(COALESCE(v_settings.slot_interval_min, v_service.duration_min), 1)
+      ) = 0
+  ) THEN
+    RAISE EXCEPTION 'BOOKING_UNAVAILABLE' USING ERRCODE = 'P0001';
+  END IF;
+
+  v_new_start := extract(hour FROM p_booking_time)::integer * 60 + extract(minute FROM p_booking_time)::integer;
+  v_new_end := v_new_start + v_service.duration_min;
+  v_buffer_minutes := GREATEST(COALESCE(v_settings.buffer_minutes, 0), 0);
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.workspace_bookings AS booking
+    WHERE booking.workspace_id = p_workspace_id
+      AND booking.booking_date = p_booking_date
+      AND (
+        booking.status IN ('paid', 'confirmed', 'completed')
+        OR (
+          booking.status = 'pending_payment'
+          AND booking.created_at > now() - make_interval(mins => p_pending_ttl_min)
+        )
+      )
+      AND v_new_start < (
+        extract(hour FROM booking.booking_time)::integer * 60
+        + extract(minute FROM booking.booking_time)::integer
+        + COALESCE(booking.service_duration_min, 60)
+        + v_buffer_minutes
+      )
+      AND v_new_end > (
+        extract(hour FROM booking.booking_time)::integer * 60
+        + extract(minute FROM booking.booking_time)::integer
+      )
+  ) THEN
+    RAISE EXCEPTION 'BOOKING_CONFLICT' USING ERRCODE = 'P0001';
+  END IF;
+
+  INSERT INTO public.workspace_bookings(
+    workspace_id,
+    service_id,
+    patient_name,
+    patient_email,
+    patient_phone,
+    booking_date,
+    booking_time,
+    status,
+    total_amount_cents,
+    platform_fee_cents,
+    repasse_amount_cents,
+    service_duration_min
+  ) VALUES (
+    p_workspace_id,
+    p_service_id,
+    btrim(p_patient_name),
+    lower(btrim(p_patient_email)),
+    nullif(btrim(p_patient_phone), ''),
+    p_booking_date,
+    p_booking_time,
+    'pending_payment',
+    v_service.price_cents,
+    v_expected_fee,
+    v_service.price_cents - v_expected_fee,
+    v_service.duration_min
+  )
+  RETURNING id INTO v_id;
+
+  RETURN v_id;
+END;
+$function$;
+
 REVOKE ALL ON FUNCTION public.get_public_workspace_booking_profile(text)
   FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.get_public_workspace_booking_services(text)
@@ -227,28 +404,17 @@ REVOKE ALL ON FUNCTION public.get_public_workspace_booking_slots(text, uuid, dat
   FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.get_public_workspace_booking_payment_status(uuid, text)
   FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.create_workspace_booking_atomic(uuid, uuid, text, text, text, date, time, integer, integer, integer, integer, integer)
+  FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.get_public_workspace_booking_profile(text) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.get_public_workspace_booking_services(text) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.get_public_workspace_booking_slots(text, uuid, date) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.get_public_workspace_booking_payment_status(uuid, text) TO anon, authenticated, service_role;
-
-DROP POLICY IF EXISTS "booking_settings_anon_read" ON public.workspace_booking_settings;
-DROP POLICY IF EXISTS "booking_services_anon_read" ON public.workspace_booking_services;
-DROP POLICY IF EXISTS "booking_availability_anon_read" ON public.workspace_booking_availability;
-DROP POLICY IF EXISTS "blocked_dates_anon_read" ON public.workspace_booking_blocked_dates;
-DROP POLICY IF EXISTS "bookings_anon_slots_read" ON public.workspace_bookings;
-DROP POLICY IF EXISTS "bookings_anon_insert" ON public.workspace_bookings;
-
-REVOKE ALL ON TABLE public.workspace_booking_settings FROM anon;
-REVOKE ALL ON TABLE public.workspace_booking_services FROM anon;
-REVOKE ALL ON TABLE public.workspace_booking_availability FROM anon;
-REVOKE ALL ON TABLE public.workspace_booking_blocked_dates FROM anon;
-REVOKE ALL ON TABLE public.workspace_bookings FROM anon;
+GRANT EXECUTE ON FUNCTION public.create_workspace_booking_atomic(uuid, uuid, text, text, text, date, time, integer, integer, integer, integer, integer)
+  TO service_role;
 
 COMMENT ON FUNCTION public.get_public_workspace_booking_profile(text) IS
   'Minimal public booking profile. It intentionally excludes workspace IDs and payment credentials.';
 COMMENT ON FUNCTION public.get_public_workspace_booking_slots(text, uuid, date) IS
   'Returns only currently selectable slot start times; no booking rows or patient data are exposed.';
-COMMENT ON FUNCTION public.get_public_workspace_booking_payment_status(uuid, text) IS
-  'Returns only a status when both the opaque booking UUID and Mercado Pago payment ID match.';

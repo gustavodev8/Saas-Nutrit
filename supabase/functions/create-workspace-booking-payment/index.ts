@@ -3,6 +3,7 @@ import {
   assertMethod,
   buildCorsHeaders,
   enforceRateLimit,
+  getClientIp,
   handlePublicOptions,
   jsonResponse,
 } from "../_shared/publicEndpoint.ts";
@@ -17,6 +18,7 @@ type PaymentMethod = "pix" | "credit_card";
 
 interface BookingRequest {
   workspace_slug?: unknown;
+  workspace_id?: unknown;
   service_id?: unknown;
   booking_date?: unknown;
   booking_time?: unknown;
@@ -32,6 +34,7 @@ interface BookingRequest {
 
 interface BookingSettingsRow {
   workspace_id: string;
+  slug: string;
 }
 
 interface BookingServiceRow {
@@ -72,8 +75,9 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim();
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
     const mpToken = Deno.env.get("MP_ACCESS_TOKEN")?.trim();
+    const rateLimitSecret = Deno.env.get("SAAS_RATE_LIMIT_HMAC_SECRET")?.trim();
 
-    if (!supabaseUrl || !serviceKey || !mpToken) {
+    if (!supabaseUrl || !serviceKey || !mpToken || !rateLimitSecret) {
       return responseJson({ error: "Serviço indisponível." }, 503);
     }
 
@@ -83,8 +87,14 @@ serve(async (req) => {
     } catch {
       return responseJson({ error: "Dados inválidos." }, 400);
     }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return responseJson({ error: "Dados inválidos." }, 400);
+    }
 
     const workspaceSlug = stringField(body.workspace_slug, 80);
+    const requestedWorkspaceId = stringField(body.workspace_id, 36);
+    const hasWorkspaceSlug = body.workspace_slug !== null && body.workspace_slug !== undefined;
+    const hasWorkspaceId = body.workspace_id !== null && body.workspace_id !== undefined;
     const serviceId = stringField(body.service_id, 36);
     const bookingDate = stringField(body.booking_date, 10);
     const bookingTime = stringField(body.booking_time, 5);
@@ -96,10 +106,14 @@ serve(async (req) => {
     const paymentMethod: PaymentMethod = body.payment_method_type === "credit_card" ? "credit_card" : "pix";
 
     if (
-      !workspaceSlug || !SLUG_RE.test(workspaceSlug) || !serviceId || !UUID_RE.test(serviceId)
+      (hasWorkspaceSlug && (!workspaceSlug || !SLUG_RE.test(workspaceSlug)))
+      || (hasWorkspaceId && (!requestedWorkspaceId || !UUID_RE.test(requestedWorkspaceId)))
+      || (!workspaceSlug && !requestedWorkspaceId)
+      || !serviceId || !UUID_RE.test(serviceId)
       || !bookingDate || !validDate(bookingDate) || !bookingTime || !TIME_RE.test(bookingTime)
       || !patientName || !patientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)
       || (body.patient_phone !== null && body.patient_phone !== undefined && !patientPhone)
+      || (body.payment_method_type !== undefined && body.payment_method_type !== "pix" && body.payment_method_type !== "credit_card")
     ) {
       return responseJson({ error: "Dados inválidos." }, 400);
     }
@@ -115,7 +129,7 @@ serve(async (req) => {
       endpoint: "workspace-booking-payment",
       limit: 5,
       windowSeconds: 600,
-      extraKey: workspaceSlug,
+      identityKey: `${workspaceSlug ?? requestedWorkspaceId}|${patientEmail}|${getClientIp(req)}`,
     });
     if (rateLimitError) return rateLimitError;
 
@@ -126,11 +140,12 @@ serve(async (req) => {
     };
 
     const settingsQuery = new URLSearchParams({
-      slug: `eq.${workspaceSlug}`,
       active: "eq.true",
-      select: "workspace_id",
+      select: "workspace_id,slug",
       limit: "1",
     });
+    if (workspaceSlug) settingsQuery.set("slug", `eq.${workspaceSlug}`);
+    if (requestedWorkspaceId) settingsQuery.set("workspace_id", `eq.${requestedWorkspaceId}`);
     const settingsRes = await fetch(
       `${supabaseUrl}/rest/v1/workspace_booking_settings?${settingsQuery.toString()}`,
       { headers },
@@ -162,7 +177,7 @@ serve(async (req) => {
       method: "POST",
       headers,
       body: JSON.stringify({
-        p_slug: workspaceSlug,
+        p_slug: settings.slug,
         p_service_id: service.id,
         p_booking_date: bookingDate,
       }),
@@ -198,7 +213,7 @@ serve(async (req) => {
     });
     if (!rpcRes.ok) {
       const rpcErr = await rpcRes.text();
-      if (rpcErr.includes("BOOKING_CONFLICT")) {
+      if (rpcErr.includes("BOOKING_CONFLICT") || rpcErr.includes("BOOKING_UNAVAILABLE")) {
         return responseJson({ error: "Este horário já foi reservado ou está em conflito. Escolha outro." }, 409);
       }
       console.error("create_workspace_booking_atomic failed", rpcRes.status);
