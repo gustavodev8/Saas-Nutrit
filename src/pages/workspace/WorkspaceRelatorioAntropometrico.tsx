@@ -20,6 +20,7 @@ import {
   getAnthropometryComparisonIds,
   getReportBmiLabel,
   getReportSkinfoldValue,
+  normalizeHeightCm,
   selectAnthropometryComparisonMeasurements,
 } from "@/lib/anthropometricComparison";
 import type { Measurement } from "@/lib/supabase";
@@ -730,7 +731,7 @@ export default function WorkspaceRelatorioAntropometrico() {
               <tbody>
                 <SectionRow label="Medidas Gerais" colSpan={colSpan} />
                 <MetricRow label="Peso"   values={cols.map((m) => m.weight ?? null)} unit="kg" />
-                <MetricRow label="Altura" values={cols.map((m) => m.height ?? null)} unit="cm" decimals={0} showDelta={false} />
+                <MetricRow label="Altura" values={cols.map((m) => normalizeHeightCm(m.height))} unit="cm" decimals={0} showDelta={false} />
                 <MetricRow
                   label="IMC"
                   values={derived.map((d) => d.bmi)}

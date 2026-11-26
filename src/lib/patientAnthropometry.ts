@@ -9,9 +9,21 @@ import type { Measurement, Patient } from "@/lib/supabase";
 const numberOrUndefined = (value?: string) =>
   value != null && value !== "" ? parseFloat(value) : undefined;
 
+/**
+ * Normaliza a altura para CENTÍMETROS.
+ * Alguns registros gravaram a altura em metros (ex.: 1.80) em vez de cm (180),
+ * o que fazia o IMC sair ~10000× errado. Como ninguém tem 3 cm nem 3 m de altura,
+ * tratamos valores < 3 como metros e convertemos para cm.
+ */
+export const normalizeHeightCm = (height?: number | null): number | null => {
+  if (height == null || !Number.isFinite(height) || height <= 0) return null;
+  return height < 3 ? height * 100 : height;
+};
+
 export const calcBMI = (weight?: number, height?: number): string | null => {
-  if (!weight || !height) return null;
-  return (weight / Math.pow(height / 100, 2)).toFixed(1);
+  const h = normalizeHeightCm(height);
+  if (!weight || h == null) return null;
+  return (weight / Math.pow(h / 100, 2)).toFixed(1);
 };
 
 export const getBmiClass = (bmi: number) => {
@@ -103,6 +115,11 @@ export async function buildAnthropometryPayload(params: {
     }
   });
 
+  // Normaliza a altura para cm na gravação, para novos registros ficarem consistentes.
+  if (payload.height != null) {
+    payload.height = normalizeHeightCm(payload.height as number) ?? undefined;
+  }
+
   if (form.notes) {
     payload.notes = form.notes;
   }
@@ -175,7 +192,7 @@ export async function buildAnthropometryPayload(params: {
 
   const fourComponentErrors = validateFourComponentProtocol({
     weightKg: weight ?? undefined,
-    heightCm: numberOrUndefined(form.height),
+    heightCm: normalizeHeightCm(numberOrUndefined(form.height)) ?? undefined,
     bodyFatPct: typeof payload.body_fat === "number" ? payload.body_fat : undefined,
     biestyloidDiameterMm: numberOrUndefined(form.biestyloid_diameter_mm),
     biepicondylarFemurDiameterMm: numberOrUndefined(form.biepicondylar_femur_diameter_mm),
@@ -207,7 +224,7 @@ export const buildLatestMeasurementSummary = (
   },
   {
     label: "Altura",
-    value: latest?.height != null ? `${latest.height} cm` : "—",
+    value: normalizeHeightCm(latest?.height) != null ? `${normalizeHeightCm(latest?.height)} cm` : "—",
     badge: null,
   },
   {

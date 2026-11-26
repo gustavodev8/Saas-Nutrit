@@ -1,4 +1,5 @@
 import type { Booking } from "@/lib/supabase";
+import { normalizeHeightCm } from "@/lib/patientAnthropometry";
 
 export const CITIES = ["Alagoinhas", "Feira de Santana", "Salvador", "Crisópolis", "Olindina", "Aporá", "Acajutiba", "Esplanada"];
 
@@ -10,8 +11,9 @@ export function toLocalISO(date: Date) {
 }
 
 export const calcBMI = (w: number, h: number) => {
-  if (!w || !h) return null;
-  const bmi = w / Math.pow(h / 100, 2);
+  const height = normalizeHeightCm(h);
+  if (!w || height == null) return null;
+  const bmi = w / Math.pow(height / 100, 2);
   return bmi.toFixed(1);
 };
 

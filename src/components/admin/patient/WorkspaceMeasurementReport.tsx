@@ -9,6 +9,7 @@ import {
   getAnthropometryComparisonIds,
   getReportBmiLabel,
   getReportSkinfoldValue,
+  normalizeHeightCm,
   selectAnthropometryComparisonMeasurements,
 } from "@/lib/anthropometricComparison";
 import type { WorkspaceMeasurement } from "@/lib/workspaceMeasurements";
@@ -159,7 +160,7 @@ export function WorkspaceMeasurementReport({
               <tbody>
                 <SectionRow label="Medidas gerais" columns={count} />
                 <MetricRow label="Peso" values={columns.map((m) => m.weight)} unit="kg" />
-                <MetricRow label="Altura" values={columns.map((m) => m.height)} unit="cm" decimals={0} />
+                <MetricRow label="Altura" values={columns.map((m) => normalizeHeightCm(m.height))} unit="cm" decimals={0} />
                 <MetricRow label="IMC" values={derived.map((d) => d.bmi)} unit="kg/m²" suffixes={derived.map((d) => d.bmi == null ? null : getReportBmiLabel(d.bmi))} />
                 <SectionRow label="Composição corporal" columns={count} />
                 <MetricRow label="Gordura corporal" values={columns.map((m) => m.body_fat)} unit="%" suffixes={derived.map((d) => d.bodyFatClassification?.label ?? null)} />

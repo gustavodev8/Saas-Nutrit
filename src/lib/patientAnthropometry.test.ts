@@ -5,12 +5,38 @@ import {
   buildLatestMeasurementSummary,
   calcBMI,
   formatMeasurementHistoryCount,
+  normalizeHeightCm,
 } from "@/lib/patientAnthropometry";
 
 describe("patientAnthropometry", () => {
   it("calculates BMI when weight and height exist", () => {
     expect(calcBMI(80, 180)).toBe("24.7");
     expect(calcBMI(undefined, 180)).toBeNull();
+  });
+
+  it("normalizes height stored in meters so BMI is not ~10000x off", () => {
+    // Regressão: altura gravada como 1.80 (metros) em vez de 180 (cm) fazia o IMC estourar.
+    expect(normalizeHeightCm(1.8)).toBe(180);
+    expect(normalizeHeightCm(180)).toBe(180);
+    expect(normalizeHeightCm(0.95)).toBe(95);
+    expect(normalizeHeightCm(0)).toBeNull();
+    expect(normalizeHeightCm(null)).toBeNull();
+    expect(normalizeHeightCm(undefined)).toBeNull();
+    // Mesmo IMC quer a altura esteja em metros ou cm.
+    expect(calcBMI(73, 1.8)).toBe(calcBMI(73, 180));
+    expect(calcBMI(73, 1.8)).toBe("22.5");
+  });
+
+  it("stores height in cm on save even when entered in meters", async () => {
+    const payload = await buildAnthropometryPayload({
+      form: { assessment_date: "2026-08-06", weight: "73", height: "1.80" },
+      patientId: 11,
+      patientGender: "M",
+      patientBirthDate: "1990-01-10",
+      protocol: "JP3M",
+      officialSource: null,
+    });
+    expect(payload.height).toBe(180);
   });
 
   it("builds payload using bioimpedance as official source", async () => {

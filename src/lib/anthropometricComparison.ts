@@ -7,6 +7,8 @@ import {
   type SkinfoldKey,
 } from "@/lib/anthropometryUtils";
 import { calculateFourComponentAnthropometry } from "@/lib/fourComponentAnthropometry";
+import { normalizeHeightCm } from "@/lib/patientAnthropometry";
+export { normalizeHeightCm };
 
 export const ANTHROPOMETRY_COMPARISON_PRINT_MAX = 5;
 
@@ -66,9 +68,10 @@ export function calculateAnthropometryReportValues(
   gender: "M" | "F" | null,
   birthDate: string | null,
 ) {
-  const bmi = !measurement.weight || !measurement.height
+  const heightCm = normalizeHeightCm(measurement.height);
+  const bmi = !measurement.weight || heightCm == null
     ? null
-    : parseFloat((measurement.weight / Math.pow(measurement.height / 100, 2)).toFixed(1));
+    : parseFloat((measurement.weight / Math.pow(heightCm / 100, 2)).toFixed(1));
   const fatMass = measurement.weight != null && measurement.body_fat != null
     ? parseFloat((measurement.weight * (measurement.body_fat / 100)).toFixed(1))
     : null;
@@ -83,7 +86,7 @@ export function calculateAnthropometryReportValues(
       && measurement.four_component_reference
     ? calculateFourComponentAnthropometry({
         weightKg: measurement.weight,
-        heightCm: measurement.height,
+        heightCm: heightCm ?? measurement.height,
         bodyFatPct: measurement.body_fat,
         biestyloidDiameterMm: measurement.biestyloid_diameter_mm,
         biepicondylarFemurDiameterMm: measurement.biepicondylar_femur_diameter_mm,

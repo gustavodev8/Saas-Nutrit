@@ -20,6 +20,7 @@ import {
   type FourComponentReference,
   validateFourComponentProtocol,
 } from "@/lib/fourComponentAnthropometry";
+import { normalizeHeightCm } from "@/lib/patientAnthropometry";
 import type { Measurement, Patient } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -351,7 +352,7 @@ export function AnthropometryWizard({
 
   const isEditing = !!editingMeasurement;
   const currentWeight = form.weight ? parseFloat(form.weight) : null;
-  const currentHeight = form.height ? parseFloat(form.height) : null;
+  const currentHeight = form.height ? normalizeHeightCm(parseFloat(form.height)) : null;
   const currentBmi = currentWeight && currentHeight
     ? currentWeight / ((currentHeight / 100) ** 2)
     : null;
