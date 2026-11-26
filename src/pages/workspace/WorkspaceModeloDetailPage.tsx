@@ -287,6 +287,14 @@ export function WorkspaceModeloDetailPage() {
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{template.description}</p>
             )}
             <div className="flex flex-wrap items-center gap-3 mt-3">
+              <span
+                className={cn(
+                  "rounded px-2.5 py-1 text-xs font-medium",
+                  isOwnTemplate ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+                )}
+              >
+                {isOwnTemplate ? "Seu modelo" : "Modelo do sistema"}
+              </span>
               {template.strategy && (
                 <span className="rounded bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                   {STRATEGY_LABELS[template.strategy] ?? template.strategy}

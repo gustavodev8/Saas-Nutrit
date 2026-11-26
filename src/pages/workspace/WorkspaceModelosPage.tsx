@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, ArrowRight, BookOpen, Search, SlidersHorizontal, X } from "lucide-react";
+import { AlertCircle, ArrowRight, BookOpen, Search, Sparkles, SlidersHorizontal, User, X } from "lucide-react";
 import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { fetchWorkspaceTemplates, type WorkspaceDietTemplate } from "@/lib/workspaceTemplates";
 
 const STRATEGY_LABELS: Record<string, string> = {
@@ -28,6 +29,8 @@ const STRATEGY_COLORS: Record<string, string> = {
   mediterranea: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-200",
   maintenance: "bg-gray-100 text-gray-600 dark:bg-muted dark:text-muted-foreground",
 };
+
+type View = "meus" | "sistema";
 
 function kcalBadge(kcal?: number) {
   if (!kcal) return null;
@@ -54,12 +57,16 @@ function MacroBar({ protein, carbs, fat }: { protein?: number; carbs?: number; f
 }
 
 export function WorkspaceModelosPage() {
+  const { membership } = useWorkspaceAuth();
+  const workspaceId = membership?.workspaceId ?? null;
   const [templates, setTemplates] = useState<WorkspaceDietTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const [search, setSearch] = useState("");
   const [strategy, setStrategy] = useState("all");
+  // null = ainda não decidido (escolhe automaticamente após carregar)
+  const [view, setView] = useState<View | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -72,14 +79,29 @@ export function WorkspaceModelosPage() {
     return () => { active = false; };
   }, [retryKey]);
 
+  // Separa modelos próprios do workspace ativo dos modelos globais (do sistema).
+  // Qualquer modelo de outro workspace (não deveria ocorrer via RLS) é ocultado.
+  const ownTemplates = useMemo(
+    () => templates.filter((t) => t.workspace_id != null && t.workspace_id === workspaceId),
+    [templates, workspaceId],
+  );
+  const systemTemplates = useMemo(
+    () => templates.filter((t) => t.workspace_id == null),
+    [templates],
+  );
+
+  // Escolhe a aba inicial assim que os dados chegam: "Meus" se houver algum, senão "Do sistema".
+  const effectiveView: View = view ?? (ownTemplates.length > 0 ? "meus" : "sistema");
+  const baseList = effectiveView === "meus" ? ownTemplates : systemTemplates;
+
   const strategies = useMemo(() => {
-    const set = new Set(templates.map((t) => t.strategy).filter(Boolean));
+    const set = new Set(baseList.map((t) => t.strategy).filter(Boolean));
     return Array.from(set).sort() as string[];
-  }, [templates]);
+  }, [baseList]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return templates.filter((t) => {
+    return baseList.filter((t) => {
       const matchSearch =
         !q ||
         t.name.toLowerCase().includes(q) ||
@@ -88,13 +110,18 @@ export function WorkspaceModelosPage() {
       const matchStrategy = strategy === "all" || t.strategy === strategy;
       return matchSearch && matchStrategy;
     });
-  }, [templates, search, strategy]);
+  }, [baseList, search, strategy]);
 
   const hasFilter = search !== "" || strategy !== "all";
 
   function clearFilters() {
     setSearch("");
     setStrategy("all");
+  }
+
+  function switchView(next: View) {
+    setView(next);
+    clearFilters();
   }
 
   return (
@@ -104,9 +131,39 @@ export function WorkspaceModelosPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold text-foreground">Modelos de Dieta</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Protocolos base reutilizáveis — independentes de paciente
+            Protocolos base reutilizáveis — seus modelos e a biblioteca do sistema
           </p>
         </div>
+      </div>
+
+      {/* Abas: Meus modelos / Do sistema */}
+      <div className="mb-4 inline-flex rounded-md border border-border bg-muted/30 p-0.5">
+        <button
+          type="button"
+          onClick={() => switchView("meus")}
+          aria-pressed={effectiveView === "meus"}
+          className={cn(
+            "flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-sm font-medium transition-colors",
+            effectiveView === "meus"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <User size={14} aria-hidden="true" /> Meus modelos ({ownTemplates.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => switchView("sistema")}
+          aria-pressed={effectiveView === "sistema"}
+          className={cn(
+            "flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-sm font-medium transition-colors",
+            effectiveView === "sistema"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Sparkles size={14} aria-hidden="true" /> Do sistema ({systemTemplates.length})
+        </button>
       </div>
 
       {/* Filters */}
@@ -169,8 +226,32 @@ export function WorkspaceModelosPage() {
         </div>
       )}
 
-      {/* Empty */}
-      {!loading && !loadError && filtered.length === 0 && (
+      {/* Empty — Meus modelos sem nenhum criado (guia de criação) */}
+      {!loading && !loadError && effectiveView === "meus" && ownTemplates.length === 0 && (
+        <div className="flex min-h-72 flex-col items-start justify-center gap-4 border-y border-border py-10">
+          <span className="flex h-11 w-11 items-center justify-center rounded-md bg-primary/10 text-primary"><User size={21} aria-hidden="true" /></span>
+          <div className="max-w-xl min-w-0">
+            <h2 className="text-lg font-semibold text-foreground">Você ainda não tem modelos próprios</h2>
+            <p className="mt-1 break-words text-sm leading-6 text-muted-foreground">
+              Monte um plano alimentar para um paciente e use o botão <strong>“Salvar como modelo”</strong> dentro do plano.
+              Ele passa a aparecer aqui e você pode reutilizá-lo, renomeá-lo ou excluí-lo quando quiser.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link to="/workspace/patients">Ir para pacientes</Link>
+            </Button>
+            {systemTemplates.length > 0 && (
+              <Button variant="ghost" onClick={() => switchView("sistema")}>
+                Ver modelos do sistema
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Empty — filtro sem resultados ou aba do sistema vazia */}
+      {!loading && !loadError && filtered.length === 0 && !(effectiveView === "meus" && ownTemplates.length === 0) && (
         <div className="flex min-h-72 flex-col items-start justify-center gap-4 border-y border-border py-10">
           <span className="flex h-11 w-11 items-center justify-center rounded-md bg-primary/10 text-primary"><BookOpen size={21} aria-hidden="true" /></span>
           <div className="max-w-lg min-w-0">

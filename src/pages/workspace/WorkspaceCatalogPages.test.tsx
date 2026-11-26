@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/components/workspace/LeafLoader", () => ({ LeafLoader: () => <span>Carregando</span> }));
+vi.mock("@/contexts/WorkspaceAuthContext", () => ({
+  useWorkspaceAuth: () => ({ membership: { workspaceId: "ws-a" } }),
+}));
 vi.mock("@/lib/workspaceTemplates", () => ({ fetchWorkspaceTemplates: mocks.templates }));
 vi.mock("@/lib/workspaceFoods", () => ({
   fetchWorkspaceFoods: mocks.foods,
@@ -40,6 +43,34 @@ describe("workspace catalog load states", () => {
     render(<MemoryRouter><WorkspaceModelosPage /></MemoryRouter>);
     expect(await screen.findByRole("heading", { name: "Nenhum modelo disponível" })).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("separa meus modelos dos modelos do sistema em abas", async () => {
+    mocks.templates.mockResolvedValue([
+      { id: 1, name: "Meu plano", strategy: "low_carb", workspace_id: "ws-a" },
+      { id: 2, name: "Plano do sistema", strategy: "maintenance", workspace_id: null },
+    ]);
+    render(<MemoryRouter><WorkspaceModelosPage /></MemoryRouter>);
+    // Com modelo próprio, a aba inicial é "Meus modelos".
+    expect(await screen.findByRole("link", { name: /Meu plano/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Plano do sistema/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Meus modelos \(1\)/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Do sistema \(1\)/ })).toBeInTheDocument();
+    // Troca para a aba do sistema.
+    fireEvent.click(screen.getByRole("button", { name: /Do sistema \(1\)/ }));
+    expect(await screen.findByRole("link", { name: /Plano do sistema/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Meu plano/ })).not.toBeInTheDocument();
+  });
+
+  it("orienta a criar o primeiro modelo quando não há modelos próprios", async () => {
+    mocks.templates.mockResolvedValue([
+      { id: 2, name: "Plano do sistema", strategy: "maintenance", workspace_id: null },
+    ]);
+    render(<MemoryRouter><WorkspaceModelosPage /></MemoryRouter>);
+    // Sem modelo próprio, abre na aba do sistema, mas a aba "Meus modelos (0)" existe.
+    expect(await screen.findByRole("button", { name: /Meus modelos \(0\)/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Meus modelos \(0\)/ }));
+    expect(await screen.findByRole("heading", { name: "Você ainda não tem modelos próprios" })).toBeInTheDocument();
   });
 
   it("shows a food error and retries the list", async () => {
