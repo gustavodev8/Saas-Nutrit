@@ -8,8 +8,11 @@ import type { WorkspacePatient } from "@/lib/workspacePatients";
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   fetch: vi.fn(),
+  fetchArchived: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  archive: vi.fn(),
+  restore: vi.fn(),
   fetchMeasurements: vi.fn(),
   createMeasurement: vi.fn(),
   updateMeasurement: vi.fn(),
@@ -22,8 +25,11 @@ vi.mock("@/lib/workspacePatients", async (importOriginal) => {
   return {
     ...actual,
     fetchWorkspacePatients: mocks.fetch,
+    fetchArchivedWorkspacePatients: mocks.fetchArchived,
     createWorkspacePatient: mocks.create,
     updateWorkspacePatient: mocks.update,
+    archiveWorkspacePatient: mocks.archive,
+    restoreWorkspacePatient: mocks.restore,
   };
 });
 vi.mock("@/lib/workspaceMeasurements", () => ({
@@ -45,6 +51,7 @@ function makePatient(overrides: Partial<WorkspacePatient> = {}): WorkspacePatien
     occupation: "Professora",
     city: "Salvador",
     created_at: "2026-11-01T10:00:00.000Z",
+    archived_at: null,
     ...overrides,
   };
 }
@@ -79,6 +86,7 @@ describe("WorkspacePatientsPage", () => {
     vi.resetAllMocks();
     setWorkspace("workspace-a");
     mocks.fetch.mockResolvedValue([makePatient()]);
+    mocks.fetchArchived.mockResolvedValue([]);
     mocks.create.mockResolvedValue(makePatient({ id: 2, name: "Bruno" }));
     mocks.update.mockResolvedValue(makePatient({ name: "Ana editada" }));
   });

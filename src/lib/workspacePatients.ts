@@ -1,6 +1,6 @@
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
 
-const PATIENT_COLUMNS = "id, workspace_id, name, email, phone, birth_date, gender, occupation, city, created_at";
+const PATIENT_COLUMNS = "id, workspace_id, name, email, phone, birth_date, gender, occupation, city, created_at, archived_at";
 
 export type WorkspacePatientGender = "M" | "F" | "outro";
 export type WorkspacePatientGenderFilter = WorkspacePatientGender | "all" | "unspecified";
@@ -17,6 +17,7 @@ export interface WorkspacePatient {
   occupation: string | null;
   city: string | null;
   created_at: string | null;
+  archived_at: string | null;
 }
 
 export interface WorkspacePatientInput {
@@ -123,7 +124,20 @@ export async function fetchWorkspacePatients(workspaceId: string): Promise<Works
     .from("patients")
     .select(PATIENT_COLUMNS)
     .eq("workspace_id", workspaceId)
+    .is("archived_at", null)
     .order("name");
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as WorkspacePatient[];
+}
+
+export async function fetchArchivedWorkspacePatients(workspaceId: string): Promise<WorkspacePatient[]> {
+  const { data, error } = await workspaceSupabase
+    .from("patients")
+    .select(PATIENT_COLUMNS)
+    .eq("workspace_id", workspaceId)
+    .not("archived_at", "is", null)
+    .order("archived_at", { ascending: false });
 
   if (error) throw new Error(error.message);
   return (data ?? []) as WorkspacePatient[];
@@ -156,6 +170,33 @@ export async function createWorkspacePatient(
 
   if (error) throw new Error(error.message);
   return data as WorkspacePatient;
+}
+
+async function setWorkspacePatientArchivedAt(
+  workspaceId: string,
+  patientId: number,
+  archivedAt: string | null,
+): Promise<WorkspacePatient> {
+  const { data, error } = await workspaceSupabase
+    .from("patients")
+    .update({ archived_at: archivedAt })
+    .eq("workspace_id", workspaceId)
+    .eq("id", patientId)
+    .select(PATIENT_COLUMNS)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as WorkspacePatient;
+}
+
+/** Arquiva o paciente (some da lista ativa; reversível, nada é apagado). */
+export async function archiveWorkspacePatient(workspaceId: string, patientId: number): Promise<WorkspacePatient> {
+  return setWorkspacePatientArchivedAt(workspaceId, patientId, new Date().toISOString());
+}
+
+/** Restaura um paciente arquivado de volta para a lista ativa. */
+export async function restoreWorkspacePatient(workspaceId: string, patientId: number): Promise<WorkspacePatient> {
+  return setWorkspacePatientArchivedAt(workspaceId, patientId, null);
 }
 
 export async function updateWorkspacePatient(

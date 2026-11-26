@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { BookOpen, ChevronLeft, ChevronRight, FolderOpen, Pencil, Plus, Save, Search, Users, X } from "lucide-react";
+import { Archive, ArchiveRestore, BookOpen, ChevronLeft, ChevronRight, FolderOpen, Pencil, Plus, Save, Search, Users, X } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,11 +7,14 @@ import { Label } from "@/components/ui/label";
 import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import {
+  archiveWorkspacePatient,
   createWorkspacePatient,
+  fetchArchivedWorkspacePatients,
   fetchWorkspacePatients,
   filterWorkspacePatients,
   getWorkspacePatientCities,
   paginateWorkspacePatients,
+  restoreWorkspacePatient,
   updateWorkspacePatient,
   type WorkspacePatient,
   type WorkspacePatientGenderFilter,
@@ -54,7 +57,7 @@ export default function WorkspacePatientsPage() {
   const [searchParams] = useSearchParams();
   const selectForTemplate = searchParams.get("selectFor") === "template";
   const incomingTemplateId = searchParams.get("templateId");
-  const [patientSnapshot, setPatientSnapshot] = useState<{ workspaceId: string | null; items: WorkspacePatient[] }>({ workspaceId: null, items: [] });
+  const [patientSnapshot, setPatientSnapshot] = useState<{ workspaceId: string | null; items: WorkspacePatient[]; archived: WorkspacePatient[] }>({ workspaceId: null, items: [], archived: [] });
   const [form, setForm] = useState<WorkspacePatientInput>(emptyForm);
   const [formWorkspaceId, setFormWorkspaceId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -63,6 +66,9 @@ export default function WorkspacePatientsPage() {
   const [city, setCity] = useState("");
   const [sort, setSort] = useState<WorkspacePatientSort>("name");
   const [page, setPage] = useState(1);
+  const [view, setView] = useState<"ativos" | "arquivados">("ativos");
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -71,6 +77,8 @@ export default function WorkspacePatientsPage() {
   const currentWorkspaceId = membership?.workspaceId ?? null;
   const patientSnapshotMatches = patientSnapshot.workspaceId === currentWorkspaceId;
   const patients = useMemo(() => patientSnapshotMatches ? patientSnapshot.items : [], [patientSnapshot, patientSnapshotMatches]);
+  const archivedPatients = useMemo(() => patientSnapshotMatches ? patientSnapshot.archived : [], [patientSnapshot, patientSnapshotMatches]);
+  const sourceList = view === "arquivados" ? archivedPatients : patients;
   const listLoading = loading || Boolean(currentWorkspaceId && !patientSnapshotMatches);
   const formMatchesWorkspace = formWorkspaceId === currentWorkspaceId;
   const visibleForm = formMatchesWorkspace ? form : emptyForm;
@@ -82,26 +90,29 @@ export default function WorkspacePatientsPage() {
     const workspaceId = membership.workspaceId;
     setLoading(true);
     try {
-      const items = await fetchWorkspacePatients(workspaceId);
-      if (requestId === patientRequestRef.current) { setPatientSnapshot({ workspaceId, items }); setError(""); }
+      const [items, archived] = await Promise.all([
+        fetchWorkspacePatients(workspaceId),
+        fetchArchivedWorkspacePatients(workspaceId),
+      ]);
+      if (requestId === patientRequestRef.current) { setPatientSnapshot({ workspaceId, items, archived }); setError(""); }
     } catch (loadError) {
-      if (requestId === patientRequestRef.current) { setPatientSnapshot({ workspaceId, items: [] }); setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar pacientes."); }
+      if (requestId === patientRequestRef.current) { setPatientSnapshot({ workspaceId, items: [], archived: [] }); setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar pacientes."); }
     } finally {
       if (requestId === patientRequestRef.current) setLoading(false);
     }
   }, [membership]);
 
   useEffect(() => { void loadPatients(); }, [loadPatients]);
-  useEffect(() => { setPage(1); }, [search, gender, city, sort]);
+  useEffect(() => { setPage(1); }, [search, gender, city, sort, view]);
   useEffect(() => { setEditingId(null); setForm(emptyForm); setFormWorkspaceId(currentWorkspaceId); setError(""); }, [currentWorkspaceId]);
 
-  const cities = useMemo(() => getWorkspacePatientCities(patients), [patients]);
-  const filteredPatients = useMemo(() => filterWorkspacePatients(patients, { query: search, gender, city, sort }), [patients, search, gender, city, sort]);
+  const cities = useMemo(() => getWorkspacePatientCities(sourceList), [sourceList]);
+  const filteredPatients = useMemo(() => filterWorkspacePatients(sourceList, { query: search, gender, city, sort }), [sourceList, search, gender, city, sort]);
   const pageData = useMemo(() => paginateWorkspacePatients(filteredPatients, page, PAGE_SIZE), [filteredPatients, page]);
   const thisMonth = new Date().toISOString().slice(0, 7);
   const newThisMonth = patients.filter((p) => p.created_at?.slice(0, 7) === thisMonth).length;
 
-  const resetForm = () => { setForm(emptyForm); setEditingId(null); setFormWorkspaceId(currentWorkspaceId); };
+  const resetForm = () => { setForm(emptyForm); setEditingId(null); setFormWorkspaceId(currentWorkspaceId); setConfirmingArchive(false); };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -120,9 +131,35 @@ export default function WorkspacePatientsPage() {
 
   const editPatient = (patient: WorkspacePatient) => {
     if (!membership) return;
+    setConfirmingArchive(false);
     setEditingId(patient.id);
     setFormWorkspaceId(membership.workspaceId);
     setForm({ name: patient.name, email: patient.email ?? "", phone: patient.phone ?? "", birth_date: patient.birth_date ?? "", gender: patient.gender ?? "", occupation: patient.occupation ?? "", city: patient.city ?? "" });
+  };
+
+  const handleArchive = async () => {
+    if (!membership || editingId == null) return;
+    setArchiving(true); setError("");
+    try {
+      await archiveWorkspacePatient(membership.workspaceId, editingId);
+      resetForm();
+      await loadPatients();
+    } catch (archiveError) {
+      setError(archiveError instanceof Error ? archiveError.message : "Não foi possível arquivar o paciente.");
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  const handleRestore = async (patientId: number) => {
+    if (!membership) return;
+    setError("");
+    try {
+      await restoreWorkspacePatient(membership.workspaceId, patientId);
+      await loadPatients();
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : "Não foi possível restaurar o paciente.");
+    }
   };
 
   return (
@@ -169,9 +206,18 @@ export default function WorkspacePatientsPage() {
             <div className="rounded-md border border-border/80 bg-background p-3 dark:border-white/15 dark:bg-[#20332b]">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/70 px-1 pb-3">
                 <div>
-                  <h2 className="text-sm font-semibold">Diretório de pacientes</h2>
+                  <h2 className="text-sm font-semibold">{view === "arquivados" ? "Pacientes arquivados" : "Diretório de pacientes"}</h2>
                   <p className="text-xs text-muted-foreground">{listLoading ? "Atualizando lista..." : `${filteredPatients.length} ${filteredPatients.length === 1 ? "resultado" : "resultados"}`}</p>
                 </div>
+                {view === "arquivados" ? (
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setView("ativos")}>
+                    <ChevronLeft size={13} /> Voltar aos ativos
+                  </Button>
+                ) : archivedPatients.length > 0 ? (
+                  <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={() => setView("arquivados")}>
+                    <Archive size={13} /> Arquivados ({archivedPatients.length})
+                  </Button>
+                ) : null}
               </div>
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_auto_auto_auto]">
               <div className="relative min-w-0">
@@ -209,8 +255,8 @@ export default function WorkspacePatientsPage() {
                   <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                     <Users size={22} className="text-muted-foreground" />
                   </div>
-                  <p className="font-medium">{patients.length === 0 ? "Nenhum paciente cadastrado" : "Nenhum paciente encontrado"}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{patients.length === 0 ? "Adicione o primeiro paciente pelo formulário ao lado." : "Altere os filtros para ver resultados."}</p>
+                  <p className="font-medium">{view === "arquivados" ? "Nenhum paciente arquivado" : sourceList.length === 0 ? "Nenhum paciente cadastrado" : "Nenhum paciente encontrado"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{view === "arquivados" ? "Pacientes arquivados aparecem aqui e podem ser restaurados." : sourceList.length === 0 ? "Adicione o primeiro paciente pelo formulário ao lado." : "Altere os filtros para ver resultados."}</p>
                 </div>
               ) : (
                 <>
@@ -233,20 +279,26 @@ export default function WorkspacePatientsPage() {
                           </div>
                           {/* Actions */}
                           <div className="ml-auto flex shrink-0 items-center gap-1">
-                            {selectForTemplate && incomingTemplateId ? (
+                            {view === "arquivados" ? (
+                              <Button size="sm" variant="outline" className="h-8 text-xs" title="Restaurar paciente" aria-label={`Restaurar ${patient.name}`} onClick={() => handleRestore(patient.id)}>
+                                <ArchiveRestore size={13} /> Restaurar
+                              </Button>
+                            ) : selectForTemplate && incomingTemplateId ? (
                               <Button asChild size="sm" className="h-8 bg-primary text-xs text-primary-foreground hover:bg-primary/90" title="Usar modelo para este paciente">
                                 <Link to={`/workspace/patients/${patient.id}?tab=planos&templateId=${incomingTemplateId}`}>
                                   <BookOpen size={13} />Usar modelo
                                 </Link>
                               </Button>
                             ) : (
-                              <Button asChild size="icon" variant="ghost" className="h-10 w-10 text-primary hover:text-primary" title="Abrir prontuário" aria-label={`Abrir prontuário de ${patient.name}`}>
-                                <Link to={`/workspace/patients/${patient.id}`}><FolderOpen size={15} /></Link>
-                              </Button>
+                              <>
+                                <Button asChild size="icon" variant="ghost" className="h-10 w-10 text-primary hover:text-primary" title="Abrir prontuário" aria-label={`Abrir prontuário de ${patient.name}`}>
+                                  <Link to={`/workspace/patients/${patient.id}`}><FolderOpen size={15} /></Link>
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-10 w-10" title="Editar cadastro" aria-label={`Editar ${patient.name}`} onClick={() => editPatient(patient)}>
+                                  <Pencil size={15} />
+                                </Button>
+                              </>
                             )}
-                            <Button size="icon" variant="ghost" className="h-10 w-10" title="Editar cadastro" aria-label={`Editar ${patient.name}`} onClick={() => editPatient(patient)}>
-                              <Pencil size={15} />
-                            </Button>
                           </div>
                         </li>
                       );
@@ -294,6 +346,28 @@ export default function WorkspacePatientsPage() {
                 {visibleEditingId == null ? <Plus size={15} /> : <Save size={15} />}
                 {saving ? "Salvando…" : visibleEditingId == null ? "Adicionar paciente" : "Salvar alterações"}
               </Button>
+
+              {visibleEditingId != null && (
+                <div className="border-t border-border/70 pt-3 dark:border-white/10">
+                  {confirmingArchive ? (
+                    <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+                      <p className="text-xs text-muted-foreground">Arquivar este paciente? Ele sai da lista mas o histórico é mantido e pode ser restaurado depois.</p>
+                      <div className="flex gap-2">
+                        <Button type="button" size="sm" variant="outline" className="h-8 flex-1 border-amber-600/40 text-xs text-amber-700 hover:bg-amber-500/10 dark:text-amber-400" disabled={archiving} onClick={() => void handleArchive()}>
+                          <Archive size={13} /> {archiving ? "Arquivando…" : "Sim, arquivar"}
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" disabled={archiving} onClick={() => setConfirmingArchive(false)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button type="button" variant="ghost" size="sm" className="w-full text-xs text-muted-foreground hover:text-amber-700 dark:hover:text-amber-400" onClick={() => setConfirmingArchive(true)}>
+                      <Archive size={14} /> Arquivar paciente
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           </form>
         </section>
