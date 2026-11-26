@@ -23,6 +23,7 @@ import { WorkspaceMeasurementCharts } from "@/components/workspace/WorkspaceMeas
 import { WorkspaceRecordatorioTab } from "@/components/workspace/WorkspaceRecordatorioTab";
 import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { WorkspaceTrainingTab } from "@/components/workspace/WorkspaceTrainingTab";
+import { WorkspaceUseTemplateDialog } from "@/components/workspace/WorkspaceUseTemplateDialog";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
 import {
@@ -133,6 +134,7 @@ export default function WorkspacePatientDetailPage() {
   const [form, setForm] = useState<WorkspacePatientInput>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [useTemplateOpen, setUseTemplateOpen] = useState(false);
   const [error, setError] = useState("");
   const [workspaceNameSnapshot, setWorkspaceNameSnapshot] = useState<{ workspaceId: string | null; name: string | null }>({ workspaceId: null, name: null });
   const [mealPlanSnapshot, setMealPlanSnapshot] = useState<{
@@ -591,6 +593,12 @@ export default function WorkspacePatientDetailPage() {
                           <Users size={14} aria-hidden="true" />Copiar de outro paciente
                         </Button>
                       )}
+                      {mealPlansEnabled && (
+                        <Button type="button" size="sm" variant="outline"
+                          onClick={() => setUseTemplateOpen(true)}>
+                          <BookOpen size={14} aria-hidden="true" />Usar modelo
+                        </Button>
+                      )}
                       <Button asChild size="sm" className="bg-[#166b50] hover:bg-[#145e45] text-white">
                         <Link to={`/workspace/patients/${patient.id}/plan/novo${templateId ? `?templateId=${templateId}` : ""}`}>
                           <BookOpen size={14} aria-hidden="true" />{templateId ? "Criar plano do modelo" : "Novo plano"}
@@ -598,6 +606,14 @@ export default function WorkspacePatientDetailPage() {
                       </Button>
                     </div>
                   </div>
+                  {mealPlansEnabled && (
+                    <WorkspaceUseTemplateDialog
+                      open={useTemplateOpen}
+                      onOpenChange={setUseTemplateOpen}
+                      workspaceId={workspaceId}
+                      patientId={patient.id}
+                    />
+                  )}
                   {templateId && (
                     <div className="rounded-md border border-[#166b50]/30 bg-[#166b50]/5 px-4 py-3 flex items-center gap-3">
                       <BookOpen size={16} className="text-[#166b50] shrink-0" />
