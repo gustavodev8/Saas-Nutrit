@@ -149,3 +149,22 @@ export async function createWorkspaceTemplate(
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error("O RPC não retornou um modelo válido.");
   return id;
 }
+
+/** Exclui (soft delete) um modelo PRÓPRIO do workspace. Modelos globais não podem ser excluídos. */
+export async function deleteWorkspaceTemplate(workspaceId: string, templateId: number): Promise<void> {
+  const { error } = await workspaceSupabase.rpc("delete_workspace_diet_template", {
+    p_workspace_id: workspaceId,
+    p_template_id: templateId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Renomeia um modelo PRÓPRIO do workspace. */
+export async function renameWorkspaceTemplate(workspaceId: string, templateId: number, name: string): Promise<void> {
+  const { error } = await workspaceSupabase.rpc("rename_workspace_diet_template", {
+    p_workspace_id: workspaceId,
+    p_template_id: templateId,
+    p_name: name,
+  });
+  if (error) throw new Error(error.message);
+}

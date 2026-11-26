@@ -82,6 +82,21 @@ export async function fetchWorkspaceMeasurements(
   return (data ?? []) as WorkspaceMeasurement[];
 }
 
+export async function deleteWorkspaceMeasurement(workspaceId: string, measurementId: number): Promise<void> {
+  assertWorkspaceMeasurementsEnabled();
+  const { data, error } = await workspaceSupabase
+    .from("measurements")
+    .delete()
+    .eq("workspace_id", workspaceId)
+    .eq("id", measurementId)
+    .select("id");
+
+  if (error) throw getWorkspaceMeasurementError(error);
+  if (!data || data.length === 0) {
+    throw new Error("Não foi possível excluir a avaliação (verifique as permissões).");
+  }
+}
+
 async function buildWorkspaceMeasurementRecord(
   workspaceId: string,
   patient: WorkspacePatient,

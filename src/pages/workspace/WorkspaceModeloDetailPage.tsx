@@ -1,12 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  ArrowLeft, BookOpen, ChevronDown, ChevronRight, Clock, Flame, Utensils,
+  ArrowLeft, BookOpen, ChevronDown, ChevronRight, Clock, Flame, Loader2, Pencil, Trash2, Utensils,
 } from "lucide-react";
 import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { cn } from "@/lib/utils";
-import { fetchWorkspaceTemplateById, type WorkspaceDietTemplate, type WorkspaceDietTemplateMeal } from "@/lib/workspaceTemplates";
+import {
+  deleteWorkspaceTemplate,
+  fetchWorkspaceTemplateById,
+  renameWorkspaceTemplate,
+  type WorkspaceDietTemplate,
+  type WorkspaceDietTemplateMeal,
+} from "@/lib/workspaceTemplates";
 
 const STRATEGY_LABELS: Record<string, string> = {
   low_carb: "Low Carb",
@@ -121,8 +138,16 @@ export function WorkspaceModeloDetailPage() {
   const { templateId: id } = useParams<{ templateId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { membership } = useWorkspaceAuth();
   const [template, setTemplate] = useState<WorkspaceDietTemplate | null>(null);
   const [loading, setLoading] = useState(true);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [renameError, setRenameError] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   // Optional: patientId for "Usar modelo" flow
   const patientId = searchParams.get("patientId");
@@ -141,6 +166,55 @@ export function WorkspaceModeloDetailPage() {
       navigate(`/workspace/patients/${patientId}?tab=planos&templateId=${template.id}`);
     } else {
       navigate(`/workspace/patients?selectFor=template&templateId=${template.id}`);
+    }
+  }
+
+  // Apenas modelos próprios do workspace (workspace_id preenchido) podem ser renomeados/excluídos.
+  const isOwnTemplate = Boolean(template?.workspace_id);
+
+  function startRename() {
+    if (!template) return;
+    setRenameValue(template.name);
+    setRenameError("");
+    setRenaming(true);
+  }
+
+  function cancelRename() {
+    setRenaming(false);
+    setRenameError("");
+  }
+
+  async function handleRenameSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!template || !membership) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      setRenameError("Informe um nome para o modelo.");
+      return;
+    }
+    setRenameSaving(true);
+    setRenameError("");
+    try {
+      await renameWorkspaceTemplate(membership.workspaceId, template.id, trimmed);
+      setTemplate({ ...template, name: trimmed });
+      setRenaming(false);
+    } catch (err: unknown) {
+      setRenameError(err instanceof Error ? err.message : "Não foi possível renomear o modelo.");
+    } finally {
+      setRenameSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!template || !membership) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteWorkspaceTemplate(membership.workspaceId, template.id);
+      navigate("/workspace/modelos");
+    } catch (err: unknown) {
+      setDeleteError(err instanceof Error ? err.message : "Não foi possível excluir o modelo.");
+      setDeleting(false);
     }
   }
 
@@ -183,7 +257,32 @@ export function WorkspaceModeloDetailPage() {
       <div className="mb-6 border-y border-border py-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex-1 min-w-0">
-            <h1 className="break-words text-2xl font-semibold text-foreground">{template.name}</h1>
+            {renaming ? (
+              <form onSubmit={(e) => void handleRenameSubmit(e)} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  aria-label="Novo nome do modelo"
+                  autoFocus
+                  disabled={renameSaving}
+                  className="max-w-md text-lg font-semibold"
+                />
+                <div className="flex items-center gap-2">
+                  <Button type="submit" size="sm" disabled={renameSaving}>
+                    {renameSaving && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
+                    {renameSaving ? "Salvando…" : "Salvar"}
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={cancelRename} disabled={renameSaving}>
+                    Cancelar
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <h1 className="break-words text-2xl font-semibold text-foreground">{template.name}</h1>
+            )}
+            {renameError && (
+              <p role="alert" className="mt-2 text-sm text-destructive">{renameError}</p>
+            )}
             {template.description && (
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{template.description}</p>
             )}
@@ -195,12 +294,32 @@ export function WorkspaceModeloDetailPage() {
               )}
             </div>
           </div>
-          <Button
-            onClick={handleUsarModelo}
-            className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            Usar modelo
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {isOwnTemplate && !renaming && (
+              <>
+                <Button type="button" variant="outline" size="sm" onClick={startRename}>
+                  <Pencil size={14} aria-hidden="true" />
+                  Renomear
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => { setDeleteError(""); setDeleteOpen(true); }}
+                >
+                  <Trash2 size={14} aria-hidden="true" />
+                  Excluir modelo
+                </Button>
+              </>
+            )}
+            <Button
+              onClick={handleUsarModelo}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              Usar modelo
+            </Button>
+          </div>
         </div>
 
         {/* Totais */}
@@ -250,6 +369,39 @@ export function WorkspaceModeloDetailPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {isOwnTemplate && (
+        <AlertDialog
+          open={deleteOpen}
+          onOpenChange={(open) => { if (!open && !deleting) setDeleteOpen(false); }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir modelo?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O modelo <strong>{template.name}</strong> será removido do workspace. Essa ação não pode ser desfeita.
+              </AlertDialogDescription>
+              {deleteError && (
+                <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                  {deleteError}
+                </p>
+              )}
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={deleting}
+                onClick={() => void handleDelete()}
+              >
+                {deleting ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Trash2 size={14} aria-hidden="true" />}
+                {deleting ? "Excluindo…" : "Excluir modelo"}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );

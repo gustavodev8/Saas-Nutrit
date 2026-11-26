@@ -103,6 +103,34 @@ export async function createRecall(
   return { ...(data as WorkspaceDietaryRecall), meals };
 }
 
+export async function updateRecall(
+  workspaceId: string,
+  id: number,
+  input: WorkspaceRecallInput,
+): Promise<WorkspaceDietaryRecall> {
+  const meals = input.meals.filter((m) => m.description.trim() || m.kcal != null);
+  const payload = {
+    recall_date:     input.recall_date,
+    meals,
+    total_kcal:      sumMacro(meals, "kcal"),
+    total_protein_g: sumMacro(meals, "protein_g"),
+    total_carbs_g:   sumMacro(meals, "carbs_g"),
+    total_fat_g:     sumMacro(meals, "fat_g"),
+    notes:           input.notes?.trim() || null,
+  };
+
+  const { data, error } = await workspaceSupabase
+    .from("workspace_dietary_recalls")
+    .update(payload)
+    .eq("workspace_id", workspaceId)
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) throw handleError(error);
+  return { ...(data as WorkspaceDietaryRecall), meals };
+}
+
 export async function deleteRecall(workspaceId: string, id: number): Promise<void> {
   const { error } = await workspaceSupabase
     .from("workspace_dietary_recalls")

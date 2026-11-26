@@ -93,6 +93,7 @@ describe("PatientAnthropometryTab legacy defaults", () => {
           occupation: null,
           city: null,
           created_at: null,
+          archived_at: null,
         }}
       />,
     );
@@ -115,7 +116,7 @@ describe("PatientAnthropometryTab legacy defaults", () => {
         workspaceName="Consultório Piloto"
         workspacePatient={{
           id: 41, workspace_id: "workspace-a", name: "Ana", email: null, phone: null,
-          birth_date: null, gender: "F", occupation: null, city: null, created_at: null,
+          birth_date: null, gender: "F", occupation: null, city: null, created_at: null, archived_at: null,
         }}
       />,
     );

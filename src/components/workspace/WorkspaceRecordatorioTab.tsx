@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { ChevronDown, ChevronUp, Loader2, Plus, Trash2, Utensils } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, Pencil, Plus, Trash2, Utensils } from "lucide-react";
 import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { toast } from "sonner";
 import {
   fetchPatientRecalls,
   createRecall,
+  updateRecall,
   deleteRecall,
   emptyMeal,
   sumMacro,
@@ -34,7 +35,15 @@ function MacroChip({ label, value, unit, color }: { label: string; value: number
   );
 }
 
-function RecallCard({ recall, onDelete }: { recall: WorkspaceDietaryRecall; onDelete: () => void }) {
+function RecallCard({
+  recall,
+  onEdit,
+  onDelete,
+}: {
+  recall: WorkspaceDietaryRecall;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const hasMeals = recall.meals.some((m) => m.description || m.kcal != null);
 
@@ -73,7 +82,18 @@ function RecallCard({ recall, onDelete }: { recall: WorkspaceDietaryRecall; onDe
           )}
           <button
             type="button"
+            onClick={onEdit}
+            aria-label="Editar recordatório"
+            title="Editar recordatório"
+            className="p-1.5 rounded text-muted-foreground hover:text-[#166b50] hover:bg-[#166b50]/10 transition-colors"
+          >
+            <Pencil size={13} />
+          </button>
+          <button
+            type="button"
             onClick={onDelete}
+            aria-label="Excluir recordatório"
+            title="Excluir recordatório"
             className="p-1.5 rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
           >
             <Trash2 size={13} />
@@ -162,6 +182,8 @@ export function WorkspaceRecordatorioTab({ workspaceId, patient }: Props) {
   const [formMeals, setFormMeals]   = useState<RecallMeal[]>(() => DEFAULT_MEAL_LABELS.map(emptyMeal));
   const [formNotes, setFormNotes]   = useState("");
   const [saving, setSaving]         = useState(false);
+  const [editingId, setEditingId]   = useState<number | null>(null);
+  const isEditing = editingId !== null;
 
   useEffect(() => {
     fetchPatientRecalls(workspaceId, patient.id)
@@ -173,10 +195,29 @@ export function WorkspaceRecordatorioTab({ workspaceId, patient }: Props) {
   }, [workspaceId, patient.id]);
 
   function openForm() {
+    setEditingId(null);
     setFormDate(today());
     setFormMeals(DEFAULT_MEAL_LABELS.map(emptyMeal));
     setFormNotes("");
     setShowForm(true);
+  }
+
+  function openEdit(recall: WorkspaceDietaryRecall) {
+    setEditingId(recall.id);
+    setFormDate(recall.recall_date);
+    // Mantém refeições salvas com rótulo personalizado: updateRecall substitui o array inteiro.
+    const extras = recall.meals.filter((m) => !DEFAULT_MEAL_LABELS.includes(m.label));
+    setFormMeals([
+      ...DEFAULT_MEAL_LABELS.map((label) => recall.meals.find((m) => m.label === label) ?? emptyMeal(label)),
+      ...extras,
+    ]);
+    setFormNotes(recall.notes ?? "");
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setEditingId(null);
+    setShowForm(false);
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -188,10 +229,17 @@ export function WorkspaceRecordatorioTab({ workspaceId, patient }: Props) {
     }
     setSaving(true);
     try {
-      const created = await createRecall(workspaceId, patient.id, { recall_date: formDate, meals: formMeals, notes: formNotes });
-      setItems((prev) => [created, ...prev]);
-      toast.success("Recordatório registrado.");
-      setShowForm(false);
+      const input = { recall_date: formDate, meals: formMeals, notes: formNotes };
+      if (editingId !== null) {
+        const updated = await updateRecall(workspaceId, editingId, input);
+        setItems((prev) => prev.map((r) => (r.id === editingId ? updated : r)));
+        toast.success("Recordatório atualizado.");
+      } else {
+        const created = await createRecall(workspaceId, patient.id, input);
+        setItems((prev) => [created, ...prev]);
+        toast.success("Recordatório registrado.");
+      }
+      closeForm();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao salvar.");
     } finally {
@@ -238,7 +286,7 @@ export function WorkspaceRecordatorioTab({ workspaceId, patient }: Props) {
         </div>
         <button
           type="button"
-          onClick={showForm ? () => setShowForm(false) : openForm}
+          onClick={showForm ? closeForm : openForm}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#166b50] px-3 py-2 text-xs font-semibold text-white hover:bg-[#145e45] transition-colors"
         >
           <Plus size={13} /> Registrar R24h
@@ -249,7 +297,7 @@ export function WorkspaceRecordatorioTab({ workspaceId, patient }: Props) {
       {showForm && (
         <form onSubmit={handleSubmit} className="rounded-xl border border-[#166b50]/30 bg-[#166b50]/5 p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-[#153f34]">Novo recordatório</p>
+            <p className="text-sm font-semibold text-[#153f34]">{isEditing ? "Editar recordatório" : "Novo recordatório"}</p>
             <div>
               <label className="text-xs font-medium text-muted-foreground mr-2">Data</label>
               <input
@@ -297,12 +345,12 @@ export function WorkspaceRecordatorioTab({ workspaceId, patient }: Props) {
           </div>
 
           <div className="flex gap-2 justify-end">
-            <button type="button" onClick={() => setShowForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors">
+            <button type="button" onClick={closeForm} className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors">
               Cancelar
             </button>
             <button type="submit" disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-[#166b50] px-4 py-2 text-sm font-semibold text-white hover:bg-[#145e45] transition-colors disabled:opacity-60">
               {saving && <Loader2 size={13} className="animate-spin" />}
-              Salvar
+              {isEditing ? "Salvar alterações" : "Registrar"}
             </button>
           </div>
         </form>
@@ -323,7 +371,7 @@ export function WorkspaceRecordatorioTab({ workspaceId, patient }: Props) {
       {items.length > 0 && (
         <div className="space-y-3">
           {items.map((r) => (
-            <RecallCard key={r.id} recall={r} onDelete={() => handleDelete(r.id)} />
+            <RecallCard key={r.id} recall={r} onEdit={() => openEdit(r)} onDelete={() => handleDelete(r.id)} />
           ))}
         </div>
       )}

@@ -31,6 +31,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   createWorkspaceMeasurement,
+  deleteWorkspaceMeasurement,
   fetchWorkspaceMeasurements,
   isWorkspaceMeasurementsEnabled,
   updateWorkspaceMeasurement,
@@ -211,8 +212,25 @@ function PatientAnthropometryContent({
   };
 
   const handleDelete = async (measurementId: number) => {
-    if (workspaceMode) return;
     if (!confirm("Excluir avaliação?")) return;
+    if (workspaceMode) {
+      if (!workspaceId || !workspacePatient || workspacePatient.workspace_id !== workspaceId) {
+        toast.error("Não foi possível validar o escopo deste paciente.");
+        return;
+      }
+      try {
+        await deleteWorkspaceMeasurement(workspaceId, measurementId);
+        setMeasurements((current) =>
+          current.filter((measurement) => measurement.id !== measurementId),
+        );
+        setWorkspaceError("");
+        toast.success("Removida.");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        toast.error(`Erro ao excluir: ${message}`);
+      }
+      return;
+    }
     if (await deleteMeasurement(measurementId)) {
       setMeasurements((current) =>
         current.filter((measurement) => measurement.id !== measurementId),
@@ -454,13 +472,15 @@ function PatientAnthropometryContent({
                           >
                             <Pencil size={14} />
                           </button>
-                          {!workspaceMode && <button
+                          <button
+                            type="button"
                             onClick={() => handleDelete(measurement.id!)}
                             className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                             aria-label="Excluir avaliação"
+                            title="Excluir avaliação"
                           >
                             <Trash2 size={14} />
-                          </button>}
+                          </button>
                         </div>
                       </td>
                     </tr>
