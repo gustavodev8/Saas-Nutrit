@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Activity, ArrowLeft, BookOpen, CalendarDays, ClipboardList, Copy, Dumbbell,
-  FileDown, FlaskConical, LayoutDashboard, Loader2, Mail, MapPin, Pencil, Phone, Save, Trash2, User, UserRound, Users, Utensils,
+  FileDown, FileText, FlaskConical, LayoutDashboard, Loader2, Mail, MapPin, Pencil, Phone, Save, Trash2, User, UserRound, Users, Utensils,
 } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -22,11 +22,13 @@ import { WorkspaceConsultasTab } from "@/components/workspace/WorkspaceConsultas
 import { WorkspaceExamesTab } from "@/components/workspace/WorkspaceExamesTab";
 import { WorkspaceMeasurementCharts } from "@/components/workspace/WorkspaceMeasurementCharts";
 import { WorkspaceRecordatorioTab } from "@/components/workspace/WorkspaceRecordatorioTab";
+import { WorkspaceReportsTab } from "@/components/workspace/WorkspaceReportsTab";
 import { LeafLoader } from "@/components/workspace/LeafLoader";
 import { WorkspaceTrainingTab } from "@/components/workspace/WorkspaceTrainingTab";
 import { WorkspaceUseTemplateDialog } from "@/components/workspace/WorkspaceUseTemplateDialog";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { isWorkspaceExamsEnabled } from "@/lib/workspaceExams";
+import { isWorkspaceReportsEnabled } from "@/lib/workspaceReports";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
 import {
   fetchWorkspacePatient,
@@ -47,7 +49,7 @@ import { cn } from "@/lib/utils";
 
 // --- Types -------------------------------------------------------------------
 
-type TabKey = "central" | "perfil" | "anamnese" | "medidas" | "consultas" | "recordatorio" | "planos" | "treinos" | "exames";
+type TabKey = "central" | "perfil" | "anamnese" | "medidas" | "consultas" | "recordatorio" | "planos" | "treinos" | "exames" | "relatorio";
 
 interface TabDef {
   key: TabKey;
@@ -69,6 +71,8 @@ const BASE_TABS: TabDef[] = [
 ];
 
 const EXAMES_TAB: TabDef = { key: "exames", label: "Exames", icon: <FlaskConical size={15} aria-hidden="true" /> };
+
+const RELATORIO_TAB: TabDef = { key: "relatorio", label: "Relatório", icon: <FileText size={15} aria-hidden="true" /> };
 
 const DEFAULT_TAB: TabKey = "central";
 
@@ -115,7 +119,14 @@ function initials(name: string): string {
 
 export default function WorkspacePatientDetailPage() {
   const { authReady, membershipReady, isAuthenticated, authUserId, membership, userEmail } = useWorkspaceAuth();
-  const TABS = useMemo<TabDef[]>(() => (isWorkspaceExamsEnabled() ? [...BASE_TABS, EXAMES_TAB] : BASE_TABS), []);
+  const TABS = useMemo<TabDef[]>(
+    () => [
+      ...BASE_TABS,
+      ...(isWorkspaceExamsEnabled() ? [EXAMES_TAB] : []),
+      ...(isWorkspaceReportsEnabled() ? [RELATORIO_TAB] : []),
+    ],
+    [],
+  );
   const { id } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const workspaceId = membership?.workspaceId ?? null;
@@ -587,6 +598,16 @@ export default function WorkspacePatientDetailPage() {
               {activeTab === "exames" && workspaceId && (
                 <WorkspaceExamesTab
                   key={`${workspaceId}:${patient.id}:exames`}
+                  workspaceId={workspaceId}
+                  patient={patient}
+                  professionalName={workspaceName ?? userEmail}
+                />
+              )}
+
+              {/* ── Relatório ── */}
+              {activeTab === "relatorio" && workspaceId && (
+                <WorkspaceReportsTab
+                  key={`${workspaceId}:${patient.id}:relatorio`}
                   workspaceId={workspaceId}
                   patient={patient}
                   professionalName={workspaceName ?? userEmail}
