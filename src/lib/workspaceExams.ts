@@ -16,6 +16,22 @@ import type {
  * Backend: supabase/migration-candidates/20261208000000_workspace_exams_candidate.sql
  */
 
+/** Feature flag: módulo de Exames do workspace. Default DESLIGADO. */
+export function isWorkspaceExamsEnabled(): boolean {
+  return import.meta.env.VITE_WORKSPACE_EXAMS_ENABLED === "true";
+}
+
+/** Mensagem amigável para erros da camada de exames (inclui MIGRATION_PENDING). */
+export function workspaceExamsErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    if (err.message === "MIGRATION_PENDING") {
+      return "O módulo de Exames ainda não está disponível neste workspace. Tente novamente mais tarde.";
+    }
+    return err.message;
+  }
+  return "Erro desconhecido.";
+}
+
 function assertScope(workspaceId: string, patientId: number): void {
   if (!workspaceId || !Number.isSafeInteger(patientId) || patientId <= 0) {
     throw new Error("Workspace e paciente são obrigatórios.");
