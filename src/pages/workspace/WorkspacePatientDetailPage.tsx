@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Activity, ArrowLeft, BookOpen, CalendarDays, ClipboardList, Copy, Dumbbell,
-  FileDown, FileText, FlaskConical, LayoutDashboard, Loader2, Mail, MapPin, Pencil, Phone, Save, Trash2, User, UserRound, Users, Utensils,
+  FileDown, FileText, FlaskConical, LayoutDashboard, Loader2, Mail, MapPin, Pencil, Phone, Pill, Save, Trash2, User, UserRound, Users, Utensils,
 } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { WorkspaceAnamnesisForm } from "@/components/workspace/WorkspaceAnamnesi
 import { WorkspaceConsultasTab } from "@/components/workspace/WorkspaceConsultasTab";
 import { WorkspaceExamesTab } from "@/components/workspace/WorkspaceExamesTab";
 import { WorkspaceMeasurementCharts } from "@/components/workspace/WorkspaceMeasurementCharts";
+import { WorkspacePrescriptionTab } from "@/components/workspace/WorkspacePrescriptionTab";
 import { WorkspaceRecordatorioTab } from "@/components/workspace/WorkspaceRecordatorioTab";
 import { WorkspaceReportsTab } from "@/components/workspace/WorkspaceReportsTab";
 import { LeafLoader } from "@/components/workspace/LeafLoader";
@@ -28,6 +29,7 @@ import { WorkspaceTrainingTab } from "@/components/workspace/WorkspaceTrainingTa
 import { WorkspaceUseTemplateDialog } from "@/components/workspace/WorkspaceUseTemplateDialog";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { isWorkspaceExamsEnabled } from "@/lib/workspaceExams";
+import { isWorkspacePrescriptionsEnabled } from "@/lib/workspacePrescriptions";
 import { isWorkspaceReportsEnabled } from "@/lib/workspaceReports";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
 import {
@@ -49,7 +51,7 @@ import { cn } from "@/lib/utils";
 
 // --- Types -------------------------------------------------------------------
 
-type TabKey = "central" | "perfil" | "anamnese" | "medidas" | "consultas" | "recordatorio" | "planos" | "treinos" | "exames" | "relatorio";
+type TabKey = "central" | "perfil" | "anamnese" | "medidas" | "consultas" | "recordatorio" | "planos" | "treinos" | "exames" | "relatorio" | "prescricao";
 
 interface TabDef {
   key: TabKey;
@@ -73,6 +75,8 @@ const BASE_TABS: TabDef[] = [
 const EXAMES_TAB: TabDef = { key: "exames", label: "Exames", icon: <FlaskConical size={15} aria-hidden="true" /> };
 
 const RELATORIO_TAB: TabDef = { key: "relatorio", label: "Relatório", icon: <FileText size={15} aria-hidden="true" /> };
+
+const PRESCRICAO_TAB: TabDef = { key: "prescricao", label: "Prescrição", icon: <Pill size={15} aria-hidden="true" /> };
 
 const DEFAULT_TAB: TabKey = "central";
 
@@ -124,6 +128,7 @@ export default function WorkspacePatientDetailPage() {
       ...BASE_TABS,
       ...(isWorkspaceExamsEnabled() ? [EXAMES_TAB] : []),
       ...(isWorkspaceReportsEnabled() ? [RELATORIO_TAB] : []),
+      ...(isWorkspacePrescriptionsEnabled() ? [PRESCRICAO_TAB] : []),
     ],
     [],
   );
@@ -610,6 +615,17 @@ export default function WorkspacePatientDetailPage() {
                   key={`${workspaceId}:${patient.id}:relatorio`}
                   workspaceId={workspaceId}
                   patient={patient}
+                  professionalName={workspaceName ?? userEmail}
+                />
+              )}
+
+              {/* ── Prescrição ── */}
+              {activeTab === "prescricao" && workspaceId && (
+                <WorkspacePrescriptionTab
+                  key={`${workspaceId}:${patient.id}:prescricao`}
+                  workspaceId={workspaceId}
+                  patientId={patient.id}
+                  patientName={patient.name}
                   professionalName={workspaceName ?? userEmail}
                 />
               )}
