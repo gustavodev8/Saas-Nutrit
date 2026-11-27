@@ -1664,7 +1664,9 @@ export async function fetchFullMealPlan(planId: number): Promise<Meal[]> {
     .select("*, foods:meal_foods(*)")
     .eq("plan_id", planId)
     .order("sort_order");
-  if (error) { console.error("[Supabase] fetchFullMealPlan:", error.message); return []; }
+  // NÃO engolir o erro: um [] silencioso faz o editor tratar "falha de leitura" como
+  // "plano vazio" e, no autosave, apagar as refeições reais (replace_meals=true).
+  if (error) { console.error("[Supabase] fetchFullMealPlan:", error.message); throw new Error(error.message); }
   type MealRow = Meal & { foods?: MealFood[] | null };
   return ((data ?? []) as MealRow[]).map((m) => ({ ...m, foods: m.foods ?? [] }));
 }

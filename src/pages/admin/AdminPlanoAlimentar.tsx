@@ -274,6 +274,10 @@ export default function AdminPlanoAlimentar() {
   const [previousPlan, setPreviousPlan]  = useState<MealPlan | null>(null);
   const [autosaveState, setAutosaveState] = useState<"idle" | "pending" | "saving" | "saved" | "error">("idle");
   const [autosaveError, setAutosaveError] = useState<string | null>(null);
+  // Proteção contra perda de dados: leitura falhou, ou plano existente abriu sem refeições
+  // (pode ser bloqueio de leitura/RLS, não plano realmente vazio).
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadedEmptyExisting, setLoadedEmptyExisting] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   const [energyFormula, setEnergyFormula] = useState<EnergyFormula>("mifflin");
@@ -293,6 +297,8 @@ export default function AdminPlanoAlimentar() {
     lastSavedSnapshotRef.current = "";
     setAutosaveState("idle");
     setAutosaveError(null);
+    setLoadFailed(false);
+    setLoadedEmptyExisting(false);
     setLoading(true);
     try {
       const plans = await fetchMealPlans(patientId);
@@ -306,6 +312,16 @@ export default function AdminPlanoAlimentar() {
       }
 
       const loadedMeals = await fetchFullMealPlan(resolvedPlanId);
+      if (loadedMeals.length === 0) {
+        // Plano existente abriu sem refeições. Pode ser bloqueio de leitura/RLS (dados ainda
+        // no banco), não necessariamente plano vazio. Sinaliza e o saveCurrentPlan impede
+        // sobrescrever por cima enquanto estiver vazio.
+        setLoadedEmptyExisting(true);
+        toast.error(
+          "Este plano abriu SEM refeições. Pode ser bloqueio de leitura — os dados podem ainda estar no banco. NÃO salve por cima; avise o suporte.",
+          { duration: 12000 },
+        );
+      }
       const normalizedMeals = recalculateMealMacros(loadedMeals);
       setLegacyOptionsPendingSave(
         normalizedMeals.length < loadedMeals.length || hasStaleMealMacros(loadedMeals),
@@ -317,7 +333,10 @@ export default function AdminPlanoAlimentar() {
           ? normalizedMeals.map(mealToEditor)
           : DEFAULT_MEALS.map((p) => ({ meal_name: p.meal_name, time_suggestion: p.time_suggestion, foods: [] }))
       );
-    } catch { toast.error("Erro ao carregar o plano."); }
+    } catch {
+      setLoadFailed(true);
+      toast.error("Erro ao carregar o plano. Salvamento desativado para proteger os dados já gravados.");
+    }
     finally { setLoading(false); }
   }, [isNew, patientId, resolvedPlanId]);
 
@@ -338,7 +357,14 @@ export default function AdminPlanoAlimentar() {
       return;
     }
 
-    const sourceMeals = await fetchFullMealPlan(previousPlan.id);
+    let sourceMeals: Meal[];
+    try {
+      sourceMeals = await fetchFullMealPlan(previousPlan.id);
+    } catch {
+      toast.error("Erro ao carregar o plano anterior para clonar.");
+      setShowCloneConfirm(false);
+      return;
+    }
     setPlan((current) => ({
       ...current,
       title: previousPlan.title ? `${previousPlan.title} (cópia)` : current.title,
@@ -721,6 +747,29 @@ export default function AdminPlanoAlimentar() {
       return false;
     }
 
+    // Guard anti-perda: se a leitura do plano falhou, nunca salvar (evita regravar vazio por cima).
+    if (loadFailed) {
+      if (!silent) toast.error("Carregamento do plano falhou — salvamento bloqueado para não apagar dados.");
+      return false;
+    }
+
+    // Guard anti-perda: nunca sobrescrever um plano JÁ SALVO com conteúdo vazio na tela.
+    // Cobre o caso de render em branco por bloqueio de leitura/RLS (retorna [] sem erro):
+    // sem este guard, o replace_meals=true apagaria as refeições reais no banco.
+    const hasContent = meals.some((meal) => mealHasEditableContent(meal));
+    if (!isNew && plan.id && !hasContent) {
+      if (autosave) {
+        setAutosaveState("idle");
+        setAutosaveError(null);
+      } else {
+        toast.error(
+          "O plano está vazio na tela — salvamento bloqueado para não apagar as refeições já gravadas. Recarregue a página; se continuar vazio, avise o suporte.",
+          { duration: 12000 },
+        );
+      }
+      return false;
+    }
+
     saveInFlightRef.current = true;
     setSaving(true);
     if (autosave) {
@@ -775,7 +824,7 @@ export default function AdminPlanoAlimentar() {
       saveInFlightRef.current = false;
       setSaving(false);
     }
-  }, [id, isNew, latestMeasurement?.id, meals, navigate, plan, suggestedKcal]);
+  }, [id, isNew, latestMeasurement?.id, loadFailed, meals, navigate, plan, suggestedKcal]);
 
   const handleSave = () => {
     void saveCurrentPlan();
@@ -835,6 +884,7 @@ export default function AdminPlanoAlimentar() {
     }
 
     if (legacyOptionsPendingSave) return;
+    if (loadFailed) return;
 
     if (autosaveSnapshot === lastSavedSnapshotRef.current) {
       if (autosaveState === "pending") {
@@ -857,7 +907,7 @@ export default function AdminPlanoAlimentar() {
         autosaveTimeoutRef.current = null;
       }
     };
-  }, [autosaveSnapshot, autosaveState, ctxLoading, lastSavedAt, legacyOptionsPendingSave, loading, saveCurrentPlan]);
+  }, [autosaveSnapshot, autosaveState, ctxLoading, lastSavedAt, legacyOptionsPendingSave, loadFailed, loading, saveCurrentPlan]);
 
   useEffect(() => () => {
     if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
@@ -982,6 +1032,12 @@ export default function AdminPlanoAlimentar() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-w-0 space-y-4">
+
+        {loadedEmptyExisting && (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <strong className="font-semibold">Atenção:</strong> este plano abriu sem refeições. Os dados podem ainda estar no banco (bloqueio de leitura) — <strong>não salve por cima</strong>. O salvamento foi bloqueado enquanto a tela estiver vazia; avise o suporte para recuperar.
+          </div>
+        )}
 
         {/* â”€â”€ Metadados â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <section className="bg-card border border-border/60 rounded-2xl p-4 shadow-sm">
