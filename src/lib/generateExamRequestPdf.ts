@@ -30,6 +30,23 @@ export interface ExamRequestPdfData {
   items: ExamRequestPdfItem[];
 }
 
+/**
+ * Dados opcionais do profissional. Sem este parâmetro, o PDF mantém os valores
+ * fixos do admin (Dr. Fillipe David / CRN-5 / Alagoinhas / assinatura.png).
+ * Quando informado (ex.: workspace), nada do Dr. Fillipe é reaproveitado:
+ * a assinatura só aparece se `signatureUrl` for passada.
+ */
+export interface ExamRequestPdfProfessional {
+  name?: string | null;
+  crn?: string | null;
+  city?: string | null;
+  signatureUrl?: string | null;
+}
+
+const DEFAULT_PROFESSIONAL_NAME = "Dr. Fillipe David";
+const DEFAULT_PROFESSIONAL_ROLE = "Nutricionista Clínico e Esportivo · CRN-5";
+const DEFAULT_PROFESSIONAL_CITY = "Alagoinhas / BA";
+
 function formatDate(date: Date) {
   return date.toLocaleDateString("pt-BR", {
     day: "2-digit",
@@ -156,7 +173,19 @@ function drawField(
   doc.text(lines.slice(0, 2), x, y + 5);
 }
 
-export async function generateExamRequestPdf(data: ExamRequestPdfData): Promise<jsPDF> {
+export async function generateExamRequestPdf(
+  data: ExamRequestPdfData,
+  professional?: ExamRequestPdfProfessional,
+): Promise<jsPDF> {
+  const custom = professional != null;
+  const professionalName = custom
+    ? professional?.name?.trim() || "Nutricionista"
+    : DEFAULT_PROFESSIONAL_NAME;
+  const professionalRole = custom
+    ? ["Nutricionista", professional?.crn?.trim()].filter(Boolean).join(" · ")
+    : DEFAULT_PROFESSIONAL_ROLE;
+  const professionalCity = custom ? professional?.city?.trim() || null : DEFAULT_PROFESSIONAL_CITY;
+  const signatureSrc = custom ? professional?.signatureUrl ?? null : "/assinatura.png";
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -168,10 +197,12 @@ export async function generateExamRequestPdf(data: ExamRequestPdfData): Promise<
   let y = 16;
 
   let signatureImage: string | null = null;
-  try {
-    signatureImage = await loadImageDataUrl("/assinatura.png");
-  } catch (error) {
-    console.warn("[generateExamRequestPdf] Assinatura não carregou:", error);
+  if (signatureSrc) {
+    try {
+      signatureImage = await loadImageDataUrl(signatureSrc);
+    } catch (error) {
+      console.warn("[generateExamRequestPdf] Assinatura não carregou:", error);
+    }
   }
 
   const ensureSpace = (needed: number) => {
@@ -198,12 +229,12 @@ export async function generateExamRequestPdf(data: ExamRequestPdfData): Promise<
     doc.setTextColor(...RGB.ink);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.text("Dr. Fillipe David", pageWidth - margin, y + 7, { align: "right" });
+    doc.text(professionalName, pageWidth - margin, y + 7, { align: "right" });
     doc.setTextColor(...RGB.muted);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.text("Nutricionista Clínico e Esportivo · CRN-5", pageWidth - margin, y + 12, { align: "right" });
-    doc.text("Alagoinhas / BA", pageWidth - margin, y + 17, { align: "right" });
+    doc.text(professionalRole, pageWidth - margin, y + 12, { align: "right" });
+    if (professionalCity) doc.text(professionalCity, pageWidth - margin, y + 17, { align: "right" });
 
     y += 28;
   };
@@ -349,11 +380,11 @@ export async function generateExamRequestPdf(data: ExamRequestPdfData): Promise<
   doc.setTextColor(...RGB.ink);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.text("Dr. Fillipe David", pageWidth / 2, signatureLineY + 5, { align: "center" });
+  doc.text(professionalName, pageWidth / 2, signatureLineY + 5, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...RGB.muted);
-  doc.text("Nutricionista Clínico e Esportivo · CRN-5", pageWidth / 2, signatureLineY + 10, { align: "center" });
+  doc.text(professionalRole, pageWidth / 2, signatureLineY + 10, { align: "center" });
 
   return doc;
 }

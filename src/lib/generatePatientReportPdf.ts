@@ -1,5 +1,5 @@
 import { jsPDF } from "jspdf";
-import type { Patient, PatientReport } from "@/lib/supabase";
+import type { PatientReport } from "@/lib/supabase";
 import { ageYears, formatBirthDate, formatIsoDate } from "@/lib/patientReportUtils";
 
 const RGB = {
@@ -82,7 +82,40 @@ async function loadImageDataUrl(src: string): Promise<string> {
   });
 }
 
-export async function generatePatientReportPdf(patient: Patient, report: PatientReport): Promise<jsPDF> {
+/** Subconjunto do paciente usado no PDF (aceita o Patient do admin e o WorkspacePatient). */
+export interface ReportPdfPatient {
+  name?: string | null;
+  city?: string | null;
+  birth_date?: string | null;
+}
+
+/** Subconjunto do relatório usado no PDF. */
+export type ReportPdfContent = Pick<PatientReport, "title" | "report_date" | "report_text">;
+
+/**
+ * Dados opcionais do profissional. Sem este parâmetro, o PDF mantém os valores fixos do
+ * admin (Dr. Fillipe David / CRN-5 / assinatura.png). Quando informado (ex.: workspace),
+ * nada do Dr. Fillipe é reaproveitado: a assinatura só aparece com `signatureUrl`.
+ */
+export interface PatientReportPdfProfessional {
+  name?: string | null;
+  crn?: string | null;
+  signatureUrl?: string | null;
+}
+
+export async function generatePatientReportPdf(
+  patient: ReportPdfPatient,
+  report: ReportPdfContent,
+  professional?: PatientReportPdfProfessional,
+): Promise<jsPDF> {
+  const custom = professional != null;
+  const professionalName = custom
+    ? professional?.name?.trim() || "Nutricionista"
+    : "Dr. Fillipe David";
+  const professionalRole = custom
+    ? ["Nutricionista", professional?.crn?.trim()].filter(Boolean).join(" · ")
+    : "Nutricionista · CRN-5";
+  const signatureSrc = custom ? professional?.signatureUrl ?? null : "/assinatura.png";
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -167,11 +200,13 @@ export async function generatePatientReportPdf(patient: Patient, report: Patient
   const signatureImageX = (pageWidth - signatureImageWidth) / 2;
   const signatureImageY = signatureLineY - signatureImageHeight - 1;
 
-  try {
-    const signatureImage = await loadImageDataUrl("/assinatura.png");
-    doc.addImage(signatureImage, "PNG", signatureImageX, signatureImageY, signatureImageWidth, signatureImageHeight);
-  } catch (error) {
-    console.warn("[generatePatientReportPdf] Assinatura não carregou:", error);
+  if (signatureSrc) {
+    try {
+      const signatureImage = await loadImageDataUrl(signatureSrc);
+      doc.addImage(signatureImage, "PNG", signatureImageX, signatureImageY, signatureImageWidth, signatureImageHeight);
+    } catch (error) {
+      console.warn("[generatePatientReportPdf] Assinatura não carregou:", error);
+    }
   }
 
   doc.setDrawColor(...RGB.text);
@@ -180,11 +215,11 @@ export async function generatePatientReportPdf(patient: Patient, report: Patient
   doc.setTextColor(...RGB.text);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.text("Dr. Fillipe David", pageWidth / 2, signatureLineY + 5, { align: "center" });
+  doc.text(professionalName, pageWidth / 2, signatureLineY + 5, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...RGB.muted);
-  doc.text("Nutricionista · CRN-5", pageWidth / 2, signatureLineY + 10, { align: "center" });
+  doc.text(professionalRole, pageWidth / 2, signatureLineY + 10, { align: "center" });
 
   const totalPages = doc.getNumberOfPages();
   for (let page = 1; page <= totalPages; page++) {

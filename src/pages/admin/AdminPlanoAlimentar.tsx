@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
-  ArrowLeft, Plus, Save, Loader2, FileText, Mail, Zap, Soup, ChevronUp, ChevronDown,
-  AlertTriangle, TrendingDown, TrendingUp, Info, LayoutList, Printer, Copy, ShoppingCart, MoreHorizontal,
+  ArrowLeft, Plus, Save, Loader2, FileText, Mail, Soup, ChevronUp, ChevronDown,
+  AlertTriangle, TrendingDown, LayoutList, Printer, Copy, ShoppingCart, MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,11 +47,9 @@ import {
   type MacroGoals,
 } from "@/lib/planningUtils";
 import {
-  calcEnergy, applyAdjustment, auditDiet,
-  canUseCunningham,
-  ACTIVITY_OPTIONS,
-  type EnergyFormula, type ActivityLevel,
+  auditDiet,
 } from "@/lib/energyUtils";
+import { EnergyEnginePanel, useEnergyPlanning } from "@/components/diet/EnergyEnginePanel";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -280,9 +278,6 @@ export default function AdminPlanoAlimentar() {
   const [loadedEmptyExisting, setLoadedEmptyExisting] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
-  const [energyFormula, setEnergyFormula] = useState<EnergyFormula>("mifflin");
-  const [activityLevel, setActivityLevel] = useState<ActivityLevel>("moderate");
-  const [adjustment, setAdjustment]       = useState(0);
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedSnapshotRef = useRef("");
   const hasInitializedAutosaveRef = useRef(false);
@@ -711,14 +706,8 @@ export default function AdminPlanoAlimentar() {
     };
   }, [latestMeasurement, patient, ageYears]);
 
-  const cunninghamAvailable = energyInput ? canUseCunningham(energyInput) : false;
-
-  const resolvedFormula: EnergyFormula = (energyFormula === "cunningham" && !cunninghamAvailable)
-    ? "mifflin"
-    : energyFormula;
-
-  const energyResult  = energyInput ? calcEnergy(energyInput, resolvedFormula, activityLevel) : null;
-  const suggestedKcal = energyResult ? applyAdjustment(energyResult.get, adjustment) : null;
+  const energy = useEnergyPlanning(energyInput);
+  const suggestedKcal = energy.suggestedKcal;
 
   const clinicalAlerts = generateClinicalAlerts(anamnesis, latestMeasurement);
 
@@ -1079,113 +1068,12 @@ export default function AdminPlanoAlimentar() {
         />
 
         {/* Painel de Metas Energéticas */}
-        <section className="bg-card border border-border/60 rounded-lg overflow-hidden">
-          <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border/60 bg-muted/30">
-            <Zap size={14} className="text-primary" />
-            <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Motor de Gasto Energético</p>
-          </div>
-
-          {!energyInput ? (
-            <div className="flex items-center gap-2.5 px-5 py-4 text-sm text-muted-foreground">
-              <Info size={14} className="shrink-0" />
-              Registre uma avaliação antropométrica com peso, altura e gênero do paciente para calcular o GET automaticamente.
-            </div>
-          ) : (
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Fórmula</Label>
-                  <div className="flex gap-2 flex-wrap">
-                    {([
-                      ["mifflin",         "Mifflin-St Jeor"],
-                      ["harris_benedict", "Harris-Benedict"],
-                      ...(cunninghamAvailable ? [["cunningham", "Cunningham (MLG)"]] as [EnergyFormula, string][] : []),
-                    ] as [EnergyFormula, string][]).map(([val, label]) => (
-                      <button key={val} type="button" onClick={() => setEnergyFormula(val)}
-                        className={cn("flex-1 h-8 rounded-md text-xs font-medium border transition-all min-w-[120px]",
-                          resolvedFormula === val
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "border-border text-muted-foreground hover:border-primary/50")}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  {cunninghamAvailable && resolvedFormula === "cunningham" && (
-                    <p className="text-[10px] text-muted-foreground">
-                      MLG: <strong className="text-foreground">{latestMeasurement!.lean_mass} kg</strong> — TMB = 500 + 22 × MLG
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Nível de atividade</Label>
-                  <select
-                    value={activityLevel}
-                    onChange={e => setActivityLevel(e.target.value as ActivityLevel)}
-                    className="w-full h-8 rounded-md border border-border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring text-foreground"
-                  >
-                    {ACTIVITY_OPTIONS.map(o => (
-                      <option key={o.key} value={o.key}>{o.label} — {o.description}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-lg bg-muted/40 border border-border/60 px-4 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">TMB</p>
-                  <p className="text-xl font-bold tabular-nums text-foreground mt-0.5">{energyResult!.tmb} <span className="text-xs font-normal text-muted-foreground">kcal</span></p>
-                </div>
-                <div className="rounded-lg bg-primary/5 border border-primary/20 px-4 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">GET</p>
-                  <p className="text-xl font-bold tabular-nums text-foreground mt-0.5">{energyResult!.get} <span className="text-xs font-normal text-muted-foreground">kcal</span></p>
-                </div>
-
-                <div className="sm:col-span-2 rounded-lg bg-muted/40 border border-border/60 px-4 py-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                      {adjustment < 0 ? "Déficit" : adjustment > 0 ? "Superávit" : "Manutenção"}
-                    </p>
-                    <span className={cn("text-xs font-bold tabular-nums",
-                      adjustment < 0 ? "text-blue-600" : adjustment > 0 ? "text-emerald-600" : "text-muted-foreground")}>
-                      {adjustment > 0 ? "+" : ""}{adjustment}%
-                    </span>
-                  </div>
-                  <input type="range" min={-40} max={40} step={5} value={adjustment}
-                    onChange={e => setAdjustment(Number(e.target.value))}
-                    className="w-full accent-primary cursor-pointer" />
-                  <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
-                    <span>−40% (corte agressivo)</span><span>+40% (bulk)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-4 pt-1 border-t border-border/60 flex-wrap">
-                <div className="flex items-center gap-3">
-                  {adjustment < 0 ? <TrendingDown size={16} className="text-blue-500 shrink-0" /> : adjustment > 0 ? <TrendingUp size={16} className="text-emerald-500 shrink-0" /> : <Zap size={16} className="text-primary shrink-0" />}
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Meta calórica sugerida</p>
-                    <p className="text-2xl font-bold tabular-nums text-foreground">{suggestedKcal} <span className="text-sm font-normal text-muted-foreground">kcal/dia</span></p>
-                  </div>
-                </div>
-                <Button type="button" size="sm" variant="outline"
-                  onClick={() => setPF("daily_calories", suggestedKcal ?? undefined)}
-                  className="gap-1.5 shrink-0">
-                  Aplicar ao plano
-                </Button>
-              </div>
-
-              <p className="text-[10px] text-muted-foreground">
-                Calculado com: {energyInput!.weight} kg · {energyInput!.height} cm · {energyInput!.age} anos · {energyInput!.gender === "F" ? "Feminino" : "Masculino"}
-                {energyInput!.lean_mass ? ` · MLG ${energyInput!.lean_mass} kg` : ""}
-                {" "}— avaliação mais recente
-                {latestMeasurement?.id && (
-                  <span className="ml-1 opacity-50">(avaliação #{latestMeasurement.id})</span>
-                )}
-              </p>
-            </div>
-          )}
-        </section>
+        <EnergyEnginePanel
+          energyInput={energyInput}
+          state={energy}
+          onApply={(kcal) => setPF("daily_calories", kcal)}
+          measurementId={latestMeasurement?.id}
+        />
 
         {/* Planejamento Dietético (travamento de macros) */}
         <DietaryPlanningPanel

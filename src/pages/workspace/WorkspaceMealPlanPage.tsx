@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bookmark, Printer, ShoppingCart, Utensils } from "lucide-react";
+import { ArrowLeft, Bookmark, Printer, ShoppingCart } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,18 +8,18 @@ import { buildShoppingList, shoppingListToText } from "@/lib/shoppingList";
 import { WorkspaceMealPlanEditor } from "@/components/workspace/WorkspaceMealPlanEditor";
 import { MealPlanPdfOptionsDialog } from "@/components/admin/MealPlanPdfOptionsDialog";
 import { generateMealPlanPdf, type MealPlanPdfOptions } from "@/lib/generateMealPlanPdf";
-import type { Meal, MealPlan, Patient } from "@/lib/supabase";
+import type { Meal, MealPlan, Measurement, Patient } from "@/lib/supabase";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
 import { useWorkspaceAuth } from "@/contexts/WorkspaceAuthContext";
 import { fetchWorkspacePatient, type WorkspacePatient } from "@/lib/workspacePatients";
 import {
   fetchWorkspaceMealPlan,
-  isWorkspaceMealPlansEnabled,
   saveWorkspaceMealPlan,
   templateToPlanInput,
-  WORKSPACE_MEAL_PLANS_GATE_MESSAGE,
   type WorkspaceMealPlanInput,
 } from "@/lib/workspaceMealPlans";
+import { fetchWorkspaceMeasurements } from "@/lib/workspaceMeasurements";
+import type { WorkspaceEnergyProfile } from "@/components/workspace/WorkspaceDietPlanningSection";
 import { createWorkspaceTemplate, fetchWorkspaceTemplateById } from "@/lib/workspaceTemplates";
 
 const DEFAULT_MEALS = [
@@ -35,6 +35,30 @@ function parseId(value: string | undefined): number | null {
   if (!value || !/^\d+$/.test(value)) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function ageFromBirthDate(birthDate: string | null): number | undefined {
+  if (!birthDate) return undefined;
+  const birth = new Date(birthDate);
+  if (Number.isNaN(birth.getTime())) return undefined;
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const beforeBirthday = now.getMonth() < birth.getMonth()
+    || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
+  if (beforeBirthday) age -= 1;
+  return age > 0 ? age : undefined;
+}
+
+function buildEnergyProfile(patient: WorkspacePatient, latest: Measurement | undefined): WorkspaceEnergyProfile | null {
+  if (!latest) return null;
+  return {
+    weightKg: latest.weight,
+    heightCm: latest.height,
+    leanMassKg: latest.lean_mass ?? null,
+    ageYears: ageFromBirthDate(patient.birth_date),
+    gender: patient.gender === "F" ? "F" : patient.gender === "M" ? "M" : undefined,
+    measurementId: latest.id,
+  };
 }
 
 function blankPlan(workspaceId: string, patientId: number): WorkspaceMealPlanInput {
@@ -60,7 +84,6 @@ export default function WorkspaceMealPlanPage() {
   const patientId = useMemo(() => parseId(id), [id]);
   const numericPlanId = useMemo(() => parseId(planId), [planId]);
   const isNew = planId === "novo";
-  const enabled = isWorkspaceMealPlansEnabled();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -69,9 +92,10 @@ export default function WorkspaceMealPlanPage() {
   const scopeRef = useRef<string | null>(null);
   const scope = workspaceId && patientId ? `${workspaceId}:${patientId}:${planId ?? ""}:${templateId ?? ""}` : null;
   scopeRef.current = scope;
-  const [snapshot, setSnapshot] = useState<{ scope: string | null; patient: WorkspacePatient | null; plan: WorkspaceMealPlanInput | null }>({ scope: null, patient: null, plan: null });
+  const [snapshot, setSnapshot] = useState<{ scope: string | null; patient: WorkspacePatient | null; plan: WorkspaceMealPlanInput | null; energy: WorkspaceEnergyProfile | null }>({ scope: null, patient: null, plan: null, energy: null });
   const scopedPatient = snapshot.scope === scope ? snapshot.patient : null;
   const scopedPlan = snapshot.scope === scope ? snapshot.plan : null;
+  const scopedEnergy = snapshot.scope === scope ? snapshot.energy : null;
   const [pdfScope, setPdfScope] = useState<string | null>(null);
   const [shoppingOpen, setShoppingOpen] = useState(false);
   const [tplOpen, setTplOpen] = useState(false);
@@ -81,7 +105,7 @@ export default function WorkspaceMealPlanPage() {
   const shoppingItems = useMemo(() => (scopedPlan ? buildShoppingList(scopedPlan.meals) : []), [scopedPlan]);
   const [issuer, setIssuer] = useState<{ id: string; name: string } | null>(null);
   useEffect(() => {
-    if (!enabled || !workspaceId || isNew) return;
+    if (!workspaceId || isNew) return;
     let active = true;
     void (async () => {
       try {
@@ -92,14 +116,13 @@ export default function WorkspaceMealPlanPage() {
       }
     })();
     return () => { active = false; };
-  }, [enabled, workspaceId, isNew]);
+  }, [workspaceId, isNew]);
 
   const load = useCallback(async () => {
     const requestId = ++requestRef.current;
     setPdfScope(null);
     saveRequestRef.current += 1;
-    setLoading(true); setSaving(false); setError(""); setSnapshot({ scope: null, patient: null, plan: null });
-    if (!enabled) { setLoading(false); return; }
+    setLoading(true); setSaving(false); setError(""); setSnapshot({ scope: null, patient: null, plan: null, energy: null });
     if (!workspaceId || patientId == null || (!isNew && numericPlanId == null) || !scope) {
       setLoading(false); setError("Paciente ou plano inválido."); return;
     }
@@ -119,13 +142,21 @@ export default function WorkspaceMealPlanPage() {
           loadedPlan.patient_id !== patientId || (!isNew && (
             !("workspace_id" in loadedPlan) || loadedPlan.workspace_id !== workspaceId || loadedPlan.id !== numericPlanId
           ))) throw new Error("Plano ou paciente fora do workspace ativo.");
-      setSnapshot({ scope, patient: loadedPatient, plan: loadedPlan });
+      let energy: WorkspaceEnergyProfile | null = null;
+      try {
+        const measurements = await fetchWorkspaceMeasurements(workspaceId, patientId);
+        energy = buildEnergyProfile(loadedPatient, measurements[0]);
+      } catch {
+        energy = null; // sem avaliação disponível: o painel mostra o aviso
+      }
+      if (requestId !== requestRef.current) return;
+      setSnapshot({ scope, patient: loadedPatient, plan: loadedPlan, energy });
     } catch (loadError) {
       if (requestId === requestRef.current) setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar o plano.");
     } finally {
       if (requestId === requestRef.current) setLoading(false);
     }
-  }, [enabled, isNew, numericPlanId, patientId, scope, templateId, workspaceId]);
+  }, [isNew, numericPlanId, patientId, scope, templateId, workspaceId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -173,7 +204,7 @@ export default function WorkspaceMealPlanPage() {
     }
   };
 
-  const canExport = enabled && !isNew && !loading && !saving && !!scopedPatient && !!scopedPlan?.id;
+  const canExport = !isNew && !loading && !saving && !!scopedPatient && !!scopedPlan?.id;
   const exportPdf = (selectedAlternatives: Record<number, number[]>, substitutionLayout: MealPlanPdfOptions["substitutionLayout"]) => {
     if (!canExport || !scope || pdfScope !== scope || scopeRef.current !== scope || !scopedPatient || !scopedPlan) return;
     try {
@@ -195,9 +226,8 @@ export default function WorkspaceMealPlanPage() {
     <main className="px-4 py-5 sm:px-8">
       <div className="mx-auto max-w-7xl space-y-4">
         <Button asChild variant="ghost" className="px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"><Link to={`/workspace/patients/${id}`}><ArrowLeft size={16} />Voltar para o prontuário</Link></Button>
-        {!enabled && <section role="status" className="rounded-md border border-dashed bg-background p-8"><div className="flex items-center gap-3"><Utensils className="text-muted-foreground" /><div><h1 className="text-xl font-semibold">Planos alimentares</h1><p className="mt-1 text-sm text-muted-foreground">{WORKSPACE_MEAL_PLANS_GATE_MESSAGE}</p></div></div></section>}
-        {enabled && loading && <p role="status" className="rounded-md border bg-background p-6 text-sm text-muted-foreground">Carregando plano alimentar...</p>}
-        {enabled && !loading && error && <p role="alert" className="rounded-md border border-destructive/30 bg-background p-4 text-sm text-destructive">{error}</p>}
+        {loading && <p role="status" className="rounded-md border bg-background p-6 text-sm text-muted-foreground">Carregando plano alimentar...</p>}
+        {!loading && error && <p role="alert" className="rounded-md border border-destructive/30 bg-background p-4 text-sm text-destructive">{error}</p>}
         {canExport && scopedPlan && <>
           <Button type="button" variant="outline" onClick={() => setPdfScope(scope)}><Printer size={16} />PDF do plano salvo</Button>
           <Button type="button" variant="outline" onClick={() => setShoppingOpen(true)}>
@@ -256,7 +286,7 @@ export default function WorkspaceMealPlanPage() {
             confirmLabel="Baixar PDF" emptyMessage="Nenhuma refeição com opções alternativas."
             onOpenChange={(open) => setPdfScope(open ? scope : null)} onConfirm={exportPdf} />
         </>}
-        {enabled && !loading && scopedPatient && scopedPlan && <><header className="flex flex-wrap items-center justify-between gap-3 border-b pb-3"><div className="min-w-0"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{scopedPlan.id ? "Editar plano alimentar" : "Novo plano alimentar"}</p><h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{scopedPatient.name}</h1></div><span className="shrink-0 rounded-md border bg-background px-2.5 py-1 text-xs text-muted-foreground">Paciente #{scopedPatient.id}</span></header><WorkspaceMealPlanEditor key={scope ?? "workspace-meal-plan-empty"} workspaceId={workspaceId ?? ""} scopeKey={scope ?? ""} initialPlan={scopedPlan} onSave={handleSave} saving={saving} onAutosave={handleAutosave} canAutosave={!isNew && !!scopedPlan?.id} /></>}
+        {!loading && scopedPatient && scopedPlan && <><header className="flex flex-wrap items-center justify-between gap-3 border-b pb-3"><div className="min-w-0"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{scopedPlan.id ? "Editar plano alimentar" : "Novo plano alimentar"}</p><h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{scopedPatient.name}</h1></div><span className="shrink-0 rounded-md border bg-background px-2.5 py-1 text-xs text-muted-foreground">Paciente #{scopedPatient.id}</span></header><WorkspaceMealPlanEditor key={scope ?? "workspace-meal-plan-empty"} workspaceId={workspaceId ?? ""} scopeKey={scope ?? ""} initialPlan={scopedPlan} onSave={handleSave} saving={saving} onAutosave={handleAutosave} canAutosave={!isNew && !!scopedPlan?.id} energyProfile={scopedEnergy} /></>}
       </div>
     </main>
   );

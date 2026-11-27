@@ -5,12 +5,14 @@ import {
 import {
   AlertTriangle, ArrowLeft, Brain, CalendarDays, CheckCircle2, ChevronRight,
   ChevronDown, ChevronUp, Copy,
-  Dumbbell, Edit2, Info, Loader2, PauseCircle, Plus, Sparkles, Trash2, Users, Zap,
+  Dumbbell, Edit2, Info, Loader2, PauseCircle, Plus, Printer, Sparkles, Trash2, Users, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { generateWorkoutPlanPdf, workoutPlanPdfFileName } from "@/lib/generateWorkoutPlanPdf";
 import {
   createWorkspaceTrainingExercise,
   createWorkspaceTrainingPlan,
@@ -437,6 +439,10 @@ function PlanDetail({
   const [deletingExId, setDeletingExId] = useState<number | null>(null);
 
   const [exerciseNameHistory, setExerciseNameHistory] = useState<string[]>([]);
+  const { toast } = useToast();
+
+  // TODO: publicar o treino no portal do paciente depende de unificar
+  // `workspace_training_*` com o modelo `workout_plans` do admin.
 
   useEffect(() => {
     let active = true;
@@ -476,7 +482,35 @@ function PlanDetail({
     try {
       await deleteWorkspaceTrainingPlan(workspaceId, plan.id);
       onBack();
-    } catch { setDeletingPlan(false); }
+    } catch (e) {
+      setDeletingPlan(false);
+      toast({
+        title: "Erro ao excluir plano",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handlePrintPdf = () => {
+    try {
+      const doc = generateWorkoutPlanPdf(plan, exercises, {
+        patientName: patient.name,
+        professional: {
+          // TODO: membership ainda não expõe nome/CRN/cidade; preencher quando houver perfil do profissional.
+          name: null,
+          registration: null,
+          city: null,
+        },
+      });
+      doc.save(workoutPlanPdfFileName(plan, patient.name));
+    } catch (e) {
+      toast({
+        title: "Erro ao gerar PDF",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleAddExercise = async (input: WorkspaceTrainingExerciseInput, addAnother = false) => {
@@ -553,8 +587,13 @@ function PlanDetail({
     try {
       await deleteWorkspaceTrainingExercise(workspaceId, exId);
       setExercises((prev) => prev.filter((e) => e.id !== exId));
-    } catch {}
-    finally { setDeletingExId(null); }
+    } catch (e) {
+      toast({
+        title: "Erro ao excluir exercício",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally { setDeletingExId(null); }
   };
 
   const handleDuplicateExercise = async (ex: WorkspaceTrainingExercise) => {
@@ -635,6 +674,10 @@ function PlanDetail({
               {plan.notes && <p className="text-xs text-muted-foreground">{plan.notes}</p>}
             </div>
             <div className="flex items-center gap-2">
+              <button type="button" onClick={handlePrintPdf} disabled={loadingEx}
+                className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50">
+                <Printer size={12} />Imprimir/PDF
+              </button>
               <button type="button" onClick={() => setEditingPlan(true)}
                 className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted">
                 <Edit2 size={12} />Editar
@@ -839,6 +882,7 @@ function PlanList({
   const [applyingTemplate, setApplyingTemplate] = useState<string | null>(null);
   const [duplicatingPlanId, setDuplicatingPlanId] = useState<number | null>(null);
   const [duplicateError, setDuplicateError] = useState("");
+  const { toast } = useToast();
 
   // "Copiar de outro paciente" panel state
   const [showCopyPanel, setShowCopyPanel] = useState(false);
@@ -923,6 +967,7 @@ function PlanList({
 
   const handleApplyTemplate = async (tpl: (typeof TRAINING_TEMPLATES)[number]) => {
     setApplyingTemplate(tpl.goal);
+    let createdPlanId: number | null = null;
     try {
       const plan = await createWorkspaceTrainingPlan(workspaceId, patient.id, {
         name: tpl.label,
@@ -934,13 +979,31 @@ function PlanList({
         notes: tpl.description,
         status: "active",
       });
+      createdPlanId = plan.id;
       let pos = 0;
       for (const ex of tpl.exercises) {
         await createWorkspaceTrainingExercise(workspaceId, plan.id, ex, pos++);
       }
+      createdPlanId = null; // sucesso: nada a compensar
       onTemplateApplied();
-    } catch {}
-    finally { setApplyingTemplate(null); setShowTemplates(false); }
+      toast({ title: "Template aplicado", description: `Plano "${tpl.label}" criado.` });
+    } catch (e) {
+      // Compensação: não deixa plano parcial/órfão se algum exercício falhar.
+      let cleanupFailed = false;
+      if (createdPlanId != null) {
+        try { await deleteWorkspaceTrainingPlan(workspaceId, createdPlanId); }
+        catch { cleanupFailed = true; }
+      }
+      const base = e instanceof Error ? e.message : "Erro ao aplicar template.";
+      toast({
+        title: "Não foi possível aplicar o template",
+        description: cleanupFailed
+          ? `${base} O plano parcial não pôde ser removido; exclua-o manualmente.`
+          : base,
+        variant: "destructive",
+      });
+      onTemplateApplied(); // recarrega a lista para refletir o estado real
+    } finally { setApplyingTemplate(null); setShowTemplates(false); }
   };
 
   return (

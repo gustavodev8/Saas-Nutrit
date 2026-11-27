@@ -1,3 +1,4 @@
+import type { SubstitutionItem } from "./supabase";
 import { workspaceSupabase } from "./workspaceSupabase";
 
 export interface WorkspaceDietTemplateFood {
@@ -25,6 +26,8 @@ export interface WorkspaceDietTemplateMeal {
   order_index?: number;
   notes?: string;
   is_substitution_of?: number | null;
+  /** Trocas por alimento (jsonb); exige a coluna da migration candidata de substituicoes. */
+  substitution_items?: SubstitutionItem[] | null;
   foods?: WorkspaceDietTemplateFood[];
 }
 
@@ -79,6 +82,27 @@ export async function fetchWorkspaceTemplateById(id: number): Promise<WorkspaceD
   };
 }
 
+interface TemplateSourceFood {
+  food_name: string;
+  quantity?: number;
+  unit?: string;
+  household_measure?: string;
+  measure_amount?: number;
+  kcal_per_100g?: number;
+  protein_per_100g?: number;
+  carbs_per_100g?: number;
+  fat_per_100g?: number;
+  food_group?: string;
+  notes?: string;
+}
+
+interface TemplateSourceAlternative {
+  meal_name: string;
+  time_suggestion?: string;
+  notes?: string;
+  foods?: TemplateSourceFood[];
+}
+
 interface TemplateSourcePlan {
   title: string;
   strategy_type?: string;
@@ -91,20 +115,26 @@ interface TemplateSourcePlan {
     meal_name: string;
     time_suggestion?: string;
     notes?: string;
-    foods?: Array<{
-      food_name: string;
-      quantity?: number;
-      unit?: string;
-      household_measure?: string;
-      measure_amount?: number;
-      kcal_per_100g?: number;
-      protein_per_100g?: number;
-      carbs_per_100g?: number;
-      fat_per_100g?: number;
-      food_group?: string;
-      notes?: string;
-    }>;
+    foods?: TemplateSourceFood[];
+    alternative_meals?: TemplateSourceAlternative[];
+    substitution_items?: SubstitutionItem[];
   }>;
+}
+
+function foodPayload(f: TemplateSourceFood) {
+  return {
+    food_name: f.food_name,
+    quantity: f.quantity ?? null,
+    unit: f.unit ?? null,
+    household_measure: f.household_measure ?? null,
+    measure_amount: f.measure_amount ?? null,
+    kcal_per_100g: f.kcal_per_100g ?? null,
+    protein_per_100g: f.protein_per_100g ?? null,
+    carbs_per_100g: f.carbs_per_100g ?? null,
+    fat_per_100g: f.fat_per_100g ?? null,
+    food_group: f.food_group ?? null,
+    notes: f.notes ?? null,
+  };
 }
 
 /** Salva um plano alimentar como MODELO do workspace via RPC SECURITY DEFINER. Retorna o id do modelo. */
@@ -125,19 +155,16 @@ export async function createWorkspaceTemplate(
     meal_name: m.meal_name,
     time_suggestion: m.time_suggestion ?? null,
     notes: m.notes ?? null,
-    foods: (m.foods ?? []).map((f) => ({
-      food_name: f.food_name,
-      quantity: f.quantity ?? null,
-      unit: f.unit ?? null,
-      household_measure: f.household_measure ?? null,
-      measure_amount: f.measure_amount ?? null,
-      kcal_per_100g: f.kcal_per_100g ?? null,
-      protein_per_100g: f.protein_per_100g ?? null,
-      carbs_per_100g: f.carbs_per_100g ?? null,
-      fat_per_100g: f.fat_per_100g ?? null,
-      food_group: f.food_group ?? null,
-      notes: f.notes ?? null,
+    foods: (m.foods ?? []).map(foodPayload),
+    // Alternativas viram refeicoes-filhas (is_substitution_of) no RPC; chaves extras
+    // sao ignoradas pelo RPC antigo, entao o envio e seguro antes da migration.
+    substitutions: (m.alternative_meals ?? []).map((alt) => ({
+      meal_name: alt.meal_name,
+      time_suggestion: alt.time_suggestion ?? null,
+      notes: alt.notes ?? null,
+      foods: (alt.foods ?? []).map(foodPayload),
     })),
+    substitution_items: (m.substitution_items ?? []).map((item) => ({ ...item })),
   }));
   const { data, error } = await workspaceSupabase.rpc("create_workspace_diet_template", {
     p_workspace_id: workspaceId,

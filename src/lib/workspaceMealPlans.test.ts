@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { deleteWorkspaceMealPlan, fetchWorkspaceMealPlans, saveWorkspaceMealPlan, type WorkspaceMealPlanInput } from "./workspaceMealPlans";
+import { deleteWorkspaceMealPlan, fetchWorkspaceMealPlans, saveWorkspaceMealPlan, templateToPlanInput, type WorkspaceMealPlanInput } from "./workspaceMealPlans";
 
 const mocks = vi.hoisted(() => ({ from: vi.fn(), rpc: vi.fn() }));
 vi.mock("@/lib/workspaceSupabase", () => ({ workspaceSupabase: { from: mocks.from, rpc: mocks.rpc } }));
@@ -133,5 +133,30 @@ describe("workspaceMealPlans", () => {
   it("rejects invalid plan IDs before issuing a delete", async () => {
     await expect(deleteWorkspaceMealPlan("workspace-a", 41, 0)).rejects.toThrow(/inválido/i);
     expect(mocks.from).not.toHaveBeenCalled();
+  });
+});
+
+describe("templateToPlanInput", () => {
+  it("preserves alternative meals and substitution items from the template", () => {
+    const tFood = { id: 1, template_meal_id: 1, food_name: "Arroz", quantity: 200, unit: "g", kcal_per_100g: 130, protein_per_100g: 2.5, carbs_per_100g: 28, fat_per_100g: 0.3 };
+    const altFood = { id: 2, template_meal_id: 2, food_name: "Macarrão", quantity: 100, unit: "g", kcal_per_100g: 150, protein_per_100g: 5, carbs_per_100g: 30, fat_per_100g: 1 };
+    const result = templateToPlanInput({
+      id: 9, name: "Modelo", total_kcal: 2000,
+      meals: [
+        { id: 1, template_id: 9, meal_name: "Almoço", foods: [tFood], substitution_items: [{ food_name: "Batata", replaces_food: "Arroz", quantity: 150, unit: "g" }] },
+        { id: 2, template_id: 9, meal_name: "Opção 2", is_substitution_of: 1, foods: [altFood] },
+        { id: 3, template_id: 9, meal_name: "Jantar", foods: [] },
+      ],
+    }, "workspace-a", 41);
+
+    expect(result.meals).toHaveLength(2);
+    const lunch = result.meals[0];
+    expect(lunch.foods[0].calories).toBeCloseTo(260);
+    expect(lunch.substitution_items).toEqual([{ food_name: "Batata", replaces_food: "Arroz", quantity: 150, unit: "g" }]);
+    expect(lunch.alternative_meals).toHaveLength(1);
+    expect(lunch.alternative_meals?.[0].meal_name).toBe("Opção 2");
+    expect(lunch.alternative_meals?.[0].foods?.[0]).toMatchObject({ food_name: "Macarrão", calories: 150, carbs: 30 });
+    expect(result.meals[1].alternative_meals).toEqual([]);
+    expect(result.meals[1].substitution_items).toEqual([]);
   });
 });
