@@ -1661,7 +1661,9 @@ export async function deleteMealPlan(id: number): Promise<boolean> {
 export async function fetchFullMealPlan(planId: number): Promise<Meal[]> {
   const { data, error } = await supabaseAdmin
     .from("meals")
-    .select("*, foods:meal_foods(*)")
+    // FK explícita: meal_foods tem 2 FKs para meals (meal_id e a composta workspace_id+meal_id),
+    // o que torna o embed ambíguo (PGRST201) e quebrava o carregamento do plano. Nomear a FK resolve.
+    .select("*, foods:meal_foods!meal_foods_meal_id_fkey(*)")
     .eq("plan_id", planId)
     .order("sort_order");
   // NÃO engolir o erro: um [] silencioso faz o editor tratar "falha de leitura" como
