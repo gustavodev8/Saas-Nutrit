@@ -3,6 +3,7 @@ import { AlertTriangle, ChevronDown, ChevronUp, Copy, Plus, Save } from "lucide-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   getMealCalorieTargets,
   MealSection,
@@ -99,6 +100,7 @@ function blankMeal(plan: WorkspaceMealPlanInput): WorkspaceMeal {
 export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, onSave, saving = false, onAutosave, canAutosave = false }: WorkspaceMealPlanEditorProps) {
   const [draft, setDraft] = useState(() => clonePlan(initialPlan));
   const [error, setError] = useState("");
+  const [showDetails, setShowDetails] = useState(false);
   const [autosaveState, setAutosaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSavedAt, setLastSavedAt] = useState("");
   const lastSavedSnapshotRef = useRef<string>("");
@@ -190,18 +192,31 @@ export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, on
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-4">
       {error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
-      <section className="grid gap-4 rounded-md border bg-background p-5 sm:grid-cols-2">
-        <div className="space-y-1 sm:col-span-2"><Label htmlFor="workspace-plan-title">Título do plano</Label><Input id="workspace-plan-title" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} required /></div>
-        <div className="space-y-1"><Label htmlFor="workspace-plan-start">Início</Label><Input id="workspace-plan-start" type="date" value={draft.start_date ?? ""} onChange={(event) => setDraft({ ...draft, start_date: event.target.value })} /></div>
-        <div className="space-y-1"><Label htmlFor="workspace-plan-end">Fim</Label><Input id="workspace-plan-end" type="date" value={draft.end_date ?? ""} onChange={(event) => setDraft({ ...draft, end_date: event.target.value })} /></div>
-        <div className="space-y-1"><Label htmlFor="workspace-plan-calories">Calorias diárias</Label><Input id="workspace-plan-calories" type="number" min="0" step="any" value={displayNumber(draft.daily_calories)} onChange={(event) => setDraft({ ...draft, daily_calories: numeric(event.target.value) })} /></div>
-        <div className="space-y-1"><Label htmlFor="workspace-plan-strategy">Estratégia</Label><Input id="workspace-plan-strategy" value={draft.strategy_type ?? ""} onChange={(event) => setDraft({ ...draft, strategy_type: event.target.value })} placeholder="manutenção, déficit..." /></div>
-        <div className="space-y-1 sm:col-span-2"><Label htmlFor="workspace-plan-notes">Observações</Label><textarea id="workspace-plan-notes" className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={draft.notes ?? ""} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></div>
-        <div className="space-y-1"><Label htmlFor="workspace-plan-protein-target">Meta de proteínas (g/dia)</Label><Input id="workspace-plan-protein-target" type="number" min="0" step="any" value={displayNumber(draft.target_protein_g)} onChange={(event) => setDraft({ ...draft, target_protein_g: numeric(event.target.value) })} /></div>
-        <div className="space-y-1"><Label htmlFor="workspace-plan-carbs-target">Meta de carboidratos (g/dia)</Label><Input id="workspace-plan-carbs-target" type="number" min="0" step="any" value={displayNumber(draft.target_carbs_g)} onChange={(event) => setDraft({ ...draft, target_carbs_g: numeric(event.target.value) })} /></div>
-        <div className="space-y-1"><Label htmlFor="workspace-plan-fat-target">Meta de gorduras (g/dia)</Label><Input id="workspace-plan-fat-target" type="number" min="0" step="any" value={displayNumber(draft.target_fat_g)} onChange={(event) => setDraft({ ...draft, target_fat_g: numeric(event.target.value) })} /></div>
+      <section className="space-y-3 rounded-md border bg-background p-4">
+        <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
+          <div className="space-y-1"><Label htmlFor="workspace-plan-title">Título do plano</Label><Input id="workspace-plan-title" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} required /></div>
+          <div className="space-y-1"><Label htmlFor="workspace-plan-calories">Calorias diárias</Label><Input id="workspace-plan-calories" type="number" min="0" step="any" value={displayNumber(draft.daily_calories)} onChange={(event) => setDraft({ ...draft, daily_calories: numeric(event.target.value) })} /></div>
+          <div className="space-y-1"><Label htmlFor="workspace-plan-strategy">Estratégia</Label><Input id="workspace-plan-strategy" value={draft.strategy_type ?? ""} onChange={(event) => setDraft({ ...draft, strategy_type: event.target.value })} placeholder="manutenção…" /></div>
+          <div className="flex items-end">
+            <button type="button" onClick={() => setShowDetails((value) => !value)} aria-expanded={showDetails} className="inline-flex h-10 items-center gap-1 whitespace-nowrap px-1 text-sm font-medium text-primary hover:underline">
+              {showDetails ? "Menos detalhes" : "Mais detalhes"}
+              <ChevronDown size={15} className={cn("transition-transform", showDetails && "rotate-180")} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        {showDetails && (
+          <div className="grid gap-3 border-t pt-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-1"><Label htmlFor="workspace-plan-start">Início</Label><Input id="workspace-plan-start" type="date" value={draft.start_date ?? ""} onChange={(event) => setDraft({ ...draft, start_date: event.target.value })} /></div>
+            <div className="space-y-1"><Label htmlFor="workspace-plan-end">Fim</Label><Input id="workspace-plan-end" type="date" value={draft.end_date ?? ""} onChange={(event) => setDraft({ ...draft, end_date: event.target.value })} /></div>
+            <div className="hidden lg:block" aria-hidden="true" />
+            <div className="space-y-1"><Label htmlFor="workspace-plan-protein-target">Meta de proteínas (g/dia)</Label><Input id="workspace-plan-protein-target" type="number" min="0" step="any" value={displayNumber(draft.target_protein_g)} onChange={(event) => setDraft({ ...draft, target_protein_g: numeric(event.target.value) })} /></div>
+            <div className="space-y-1"><Label htmlFor="workspace-plan-carbs-target">Meta de carboidratos (g/dia)</Label><Input id="workspace-plan-carbs-target" type="number" min="0" step="any" value={displayNumber(draft.target_carbs_g)} onChange={(event) => setDraft({ ...draft, target_carbs_g: numeric(event.target.value) })} /></div>
+            <div className="space-y-1"><Label htmlFor="workspace-plan-fat-target">Meta de gorduras (g/dia)</Label><Input id="workspace-plan-fat-target" type="number" min="0" step="any" value={displayNumber(draft.target_fat_g)} onChange={(event) => setDraft({ ...draft, target_fat_g: numeric(event.target.value) })} /></div>
+            <div className="space-y-1 sm:col-span-2 lg:col-span-3"><Label htmlFor="workspace-plan-notes">Observações</Label><textarea id="workspace-plan-notes" className="min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={draft.notes ?? ""} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></div>
+          </div>
+        )}
       </section>
 
       <section aria-labelledby="workspace-plan-summary-title" className="space-y-3">
@@ -216,9 +231,9 @@ export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, on
             const adh = mealAdherence(item.value, item.target);
             const barColor = adh.status === "under" ? "bg-amber-500" : adh.status === "over" ? "bg-red-500" : "bg-green-500";
             return (
-              <div key={item.label} className="rounded-md border bg-background p-3">
+              <div key={item.label} className="rounded-md border bg-background p-2.5">
                 <dt className="text-xs font-medium text-muted-foreground">{item.label}</dt>
-                <dd className="mt-1 text-xl font-semibold tabular-nums">{nutritionNumber.format(item.value)} <span className="text-xs font-normal text-muted-foreground">{item.unit}</span></dd>
+                <dd className="mt-0.5 text-lg font-semibold tabular-nums">{nutritionNumber.format(item.value)} <span className="text-xs font-normal text-muted-foreground">{item.unit}</span></dd>
                 {adh.status !== "none" && item.target != null ? (
                   <>
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">

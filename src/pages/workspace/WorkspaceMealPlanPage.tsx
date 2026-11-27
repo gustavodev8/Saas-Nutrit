@@ -192,8 +192,8 @@ export default function WorkspaceMealPlanPage() {
   };
 
   return (
-    <main className="px-4 py-6 sm:px-8">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <main className="px-4 py-5 sm:px-8">
+      <div className="mx-auto max-w-7xl space-y-4">
         <Button asChild variant="ghost" className="px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"><Link to={`/workspace/patients/${id}`}><ArrowLeft size={16} />Voltar para o prontuário</Link></Button>
         {!enabled && <section role="status" className="rounded-md border border-dashed bg-background p-8"><div className="flex items-center gap-3"><Utensils className="text-muted-foreground" /><div><h1 className="text-xl font-semibold">Planos alimentares</h1><p className="mt-1 text-sm text-muted-foreground">{WORKSPACE_MEAL_PLANS_GATE_MESSAGE}</p></div></div></section>}
         {enabled && loading && <p role="status" className="rounded-md border bg-background p-6 text-sm text-muted-foreground">Carregando plano alimentar...</p>}
@@ -256,7 +256,7 @@ export default function WorkspaceMealPlanPage() {
             confirmLabel="Baixar PDF" emptyMessage="Nenhuma refeição com opções alternativas."
             onOpenChange={(open) => setPdfScope(open ? scope : null)} onConfirm={exportPdf} />
         </>}
-        {enabled && !loading && scopedPatient && scopedPlan && <><header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Workspace · Plano alimentar</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">{scopedPatient.name}</h1><p className="mt-1 text-sm text-muted-foreground">{scopedPlan.id ? "Editar plano" : "Novo plano"} · gravação transacional workspace</p></div><div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Paciente #{scopedPatient.id}</div></header><WorkspaceMealPlanEditor key={scope ?? "workspace-meal-plan-empty"} workspaceId={workspaceId ?? ""} scopeKey={scope ?? ""} initialPlan={scopedPlan} onSave={handleSave} saving={saving} onAutosave={handleAutosave} canAutosave={!isNew && !!scopedPlan?.id} /></>}
+        {enabled && !loading && scopedPatient && scopedPlan && <><header className="flex flex-wrap items-center justify-between gap-3 border-b pb-3"><div className="min-w-0"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{scopedPlan.id ? "Editar plano alimentar" : "Novo plano alimentar"}</p><h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{scopedPatient.name}</h1></div><span className="shrink-0 rounded-md border bg-background px-2.5 py-1 text-xs text-muted-foreground">Paciente #{scopedPatient.id}</span></header><WorkspaceMealPlanEditor key={scope ?? "workspace-meal-plan-empty"} workspaceId={workspaceId ?? ""} scopeKey={scope ?? ""} initialPlan={scopedPlan} onSave={handleSave} saving={saving} onAutosave={handleAutosave} canAutosave={!isNew && !!scopedPlan?.id} /></>}
       </div>
     </main>
   );
