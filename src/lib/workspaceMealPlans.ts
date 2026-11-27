@@ -1,9 +1,10 @@
-import type { Meal, MealFood, MealPlan } from "@/lib/supabase";
+import type { AlternativeMeal, Meal, MealFood, MealPlan, SubstitutionItem } from "@/lib/supabase";
 import { workspaceSupabase } from "@/lib/workspaceSupabase";
 
-export const WORKSPACE_MEAL_PLANS_GATE_MESSAGE =
-  "Planos alimentares do workspace ainda estão fechados até a migration e os testes de isolamento serem aprovados.";
-
+/**
+ * @deprecated Os planos do workspace estao sempre habilitados; mantido apenas porque
+ * WorkspacePatientDetailPage ainda o importa. Remover junto com esse uso.
+ */
 export function isWorkspaceMealPlansEnabled(): boolean {
   return true;
 }
@@ -189,8 +190,6 @@ export async function deleteWorkspaceMealPlan(
   if (error) throw new Error(error.message);
 }
 
-export const workspaceMealPlanColumns = { PLAN_COLUMNS, MEAL_COLUMNS, FOOD_COLUMNS };
-
 /** "X" -> "X (cópia)"; se já existir (case-insensitive), "X (cópia 2)", "X (cópia 3)"... */
 export function duplicateMealPlanTitle(title: string, existingTitles: string[]): string {
   const base = title.trim();
@@ -254,45 +253,69 @@ export async function duplicateWorkspaceMealPlan(
 
 // ─── Template → Plan conversion ───────────────────────────────────────────────
 
-import type { WorkspaceDietTemplate } from "./workspaceTemplates";
+import type { WorkspaceDietTemplate, WorkspaceDietTemplateFood } from "./workspaceTemplates";
 
+function templateFoodToMealFood(f: WorkspaceDietTemplateFood): MealFood {
+  const quantity = f.quantity ?? 100;
+  return {
+    meal_id: 0,
+    food_name: f.food_name,
+    quantity,
+    unit: f.unit ?? "g",
+    calories: ((f.kcal_per_100g ?? 0) * quantity) / 100,
+    protein: ((f.protein_per_100g ?? 0) * quantity) / 100,
+    carbs: ((f.carbs_per_100g ?? 0) * quantity) / 100,
+    fat: ((f.fat_per_100g ?? 0) * quantity) / 100,
+    notes: f.notes ?? "",
+    kcal_per_100g: f.kcal_per_100g ?? 0,
+    protein_per_100g: f.protein_per_100g ?? 0,
+    carbs_per_100g: f.carbs_per_100g ?? 0,
+    fat_per_100g: f.fat_per_100g ?? 0,
+    household_measure: f.household_measure ?? undefined,
+    measure_amount: f.measure_amount ?? undefined,
+    food_group: f.food_group ?? undefined,
+  };
+}
+
+/**
+ * Converte um modelo em entrada de plano. Refeicoes-alternativa do modelo
+ * (is_substitution_of = id da refeicao principal) viram `alternative_meals` da
+ * refeicao principal e `substitution_items` do modelo sao preservados.
+ */
 export function templateToPlanInput(
   template: WorkspaceDietTemplate,
   workspaceId: string,
   patientId: number,
 ): WorkspaceMealPlanInput {
-  const meals: WorkspaceMeal[] = (template.meals ?? [])
+  const allMeals = template.meals ?? [];
+  const meals: WorkspaceMeal[] = allMeals
     .filter((m) => m.is_substitution_of == null)
-    .map((m, sortOrder) => ({
-      workspace_id: workspaceId,
-      plan_id: 0,
-      meal_name: m.meal_name,
-      time_suggestion: m.time_suggestion ?? "",
-      sort_order: sortOrder,
-      notes: m.notes ?? "",
-      substitution_items: [],
-      alternative_meals: [],
-      foods: (m.foods ?? []).map((f, fi) => ({
+    .map((m, sortOrder) => {
+      const alternatives: AlternativeMeal[] = allMeals
+        .filter((candidate) => candidate.is_substitution_of != null && candidate.is_substitution_of === m.id)
+        .map((alt) => ({
+          meal_name: alt.meal_name,
+          time_suggestion: alt.time_suggestion ?? "",
+          notes: alt.notes ?? "",
+          foods: (alt.foods ?? []).map(templateFoodToMealFood),
+        }));
+      const substitutionItems: SubstitutionItem[] = (m.substitution_items ?? []).map((item) => ({ ...item }));
+      return {
         workspace_id: workspaceId,
-        meal_id: 0,
-        food_name: f.food_name,
-        quantity: f.quantity ?? 100,
-        unit: f.unit ?? "g",
-        calories: ((f.kcal_per_100g ?? 0) * (f.quantity ?? 100)) / 100,
-        protein: ((f.protein_per_100g ?? 0) * (f.quantity ?? 100)) / 100,
-        carbs: ((f.carbs_per_100g ?? 0) * (f.quantity ?? 100)) / 100,
-        fat: ((f.fat_per_100g ?? 0) * (f.quantity ?? 100)) / 100,
-        notes: f.notes ?? "",
-        sort_order: fi,
-        kcal_per_100g: f.kcal_per_100g ?? 0,
-        protein_per_100g: f.protein_per_100g ?? 0,
-        carbs_per_100g: f.carbs_per_100g ?? 0,
-        fat_per_100g: f.fat_per_100g ?? 0,
-        household_measure: f.household_measure ?? undefined,
-        measure_amount: f.measure_amount ?? undefined,
-        food_group: f.food_group ?? undefined,
-      } as WorkspaceMealFood),
-    )}));
+        plan_id: 0,
+        meal_name: m.meal_name,
+        time_suggestion: m.time_suggestion ?? "",
+        sort_order: sortOrder,
+        notes: m.notes ?? "",
+        substitution_items: substitutionItems,
+        alternative_meals: alternatives,
+        foods: (m.foods ?? []).map((f, fi): WorkspaceMealFood => ({
+          ...templateFoodToMealFood(f),
+          workspace_id: workspaceId,
+          sort_order: fi,
+        })),
+      };
+    });
 
   return {
     patient_id: patientId,

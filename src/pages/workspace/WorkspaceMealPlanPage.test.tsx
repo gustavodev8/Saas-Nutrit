@@ -7,7 +7,7 @@ import WorkspaceMealPlanPage from "./WorkspaceMealPlanPage";
 import type { WorkspacePatient } from "@/lib/workspacePatients";
 import type { WorkspaceMealPlan } from "@/lib/workspaceMealPlans";
 
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), fetchPatient: vi.fn(), fetchPlan: vi.fn(), save: vi.fn(), enabled: vi.fn(() => true), name: vi.fn(), download: vi.fn() }));
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), fetchPatient: vi.fn(), fetchPlan: vi.fn(), save: vi.fn(), name: vi.fn(), download: vi.fn() }));
 vi.mock("@/lib/supabase", () => ({
   fetchSmartSubstitutions: vi.fn().mockResolvedValue([]),
   searchFoodsInSupabase: vi.fn().mockResolvedValue([]),
@@ -31,9 +31,8 @@ vi.mock("@/lib/workspacePatients", () => ({ fetchWorkspacePatient: mocks.fetchPa
 vi.mock("@/lib/workspaceMealPlans", () => ({
   fetchWorkspaceMealPlan: mocks.fetchPlan,
   saveWorkspaceMealPlan: mocks.save,
-  isWorkspaceMealPlansEnabled: mocks.enabled,
-  WORKSPACE_MEAL_PLANS_GATE_MESSAGE: "Planos bloqueados",
 }));
+vi.mock("@/lib/workspaceMeasurements", () => ({ fetchWorkspaceMeasurements: vi.fn().mockResolvedValue([]) }));
 
 function patient(workspace_id: string, name: string): WorkspacePatient {
   return { id: 41, workspace_id, name, email: null, phone: null, birth_date: null, gender: null, occupation: null, city: null, created_at: null };

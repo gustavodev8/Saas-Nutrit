@@ -11,6 +11,7 @@ import {
   type EditorMeal,
 } from "@/components/admin/MealTableEditor";
 import { calculateFoodMacros } from "@/lib/calculateFoodMacros";
+import { WorkspaceDietPlanningSection, type WorkspaceEnergyProfile } from "@/components/workspace/WorkspaceDietPlanningSection";
 import { mealAdherence } from "@/lib/mealAdherence";
 import { summarizeWorkspaceMealPlan } from "@/lib/workspaceMealPlanSummary";
 import type { AlternativeMeal, MealFood } from "@/lib/supabase";
@@ -24,6 +25,8 @@ interface WorkspaceMealPlanEditorProps {
   saving?: boolean;
   onAutosave?: (input: WorkspaceMealPlanInput) => Promise<void>;
   canAutosave?: boolean;
+  /** Dados do paciente para o motor de planejamento dietético; `undefined` oculta o painel. */
+  energyProfile?: WorkspaceEnergyProfile | null;
 }
 
 function clonePlan(plan: WorkspaceMealPlanInput): WorkspaceMealPlanInput {
@@ -97,7 +100,7 @@ function blankMeal(plan: WorkspaceMealPlanInput): WorkspaceMeal {
   };
 }
 
-export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, onSave, saving = false, onAutosave, canAutosave = false }: WorkspaceMealPlanEditorProps) {
+export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, onSave, saving = false, onAutosave, canAutosave = false, energyProfile }: WorkspaceMealPlanEditorProps) {
   const [draft, setDraft] = useState(() => clonePlan(initialPlan));
   const [error, setError] = useState("");
   const [showDetails, setShowDetails] = useState(false);
@@ -218,6 +221,22 @@ export function WorkspaceMealPlanEditor({ workspaceId, scopeKey, initialPlan, on
           </div>
         )}
       </section>
+
+      {energyProfile !== undefined && (
+        <WorkspaceDietPlanningSection
+          profile={energyProfile}
+          dailyCalories={draft.daily_calories}
+          actual={mainTotals}
+          meals={draft.meals}
+          onApplyCalories={(kcal) => setDraft((current) => ({
+            ...current,
+            daily_calories: kcal,
+            get_kcal: energyProfile?.measurementId != null ? kcal : current.get_kcal,
+            measurement_id: energyProfile?.measurementId ?? current.measurement_id,
+          }))}
+          onApplyMacroTargets={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+        />
+      )}
 
       <section aria-labelledby="workspace-plan-summary-title" className="space-y-3">
         <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resumo nutricional</p><h2 id="workspace-plan-summary-title" className="text-lg font-semibold">Totais das refeições principais</h2><p className="text-xs text-muted-foreground">Opções e substituições não são somadas ao total diário.</p></div>
